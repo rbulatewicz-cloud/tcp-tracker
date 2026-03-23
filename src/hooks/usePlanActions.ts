@@ -1,0 +1,244 @@
+import { updatePlanStage, handleClearPlans, uploadTCPRevision, linkNewLOC, deleteDocument, updatePlanField as updatePlanFieldService, updatePlanFields as updatePlanFieldsService, deletePlan as deletePlanService } from '../services/planService';
+import { addLogEntry, revertLogEntry, deleteLogEntry, clearLog, handleClearLog } from '../services/logService';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { Plan, Stage, User, UserRole, LoadingState, LogEntry } from '../types';
+import { showToast } from '../lib/toast';
+
+interface UsePlanActionsParams {
+  plans: Plan[];
+  setPlans: React.Dispatch<React.SetStateAction<Plan[]>>;
+  selectedPlan: Plan | null;
+  setSelectedPlan: React.Dispatch<React.SetStateAction<Plan | null>>;
+  draftPlan: Plan | null;
+  setDraftPlan: React.Dispatch<React.SetStateAction<Plan | null>>;
+  isDirty: boolean;
+  setIsDirty: React.Dispatch<React.SetStateAction<boolean>>;
+  td: string;
+  getUserLabel: () => string;
+  STAGES: Stage[];
+  setLoading: React.Dispatch<React.SetStateAction<LoadingState>>;
+  setClearLogConfirm: React.Dispatch<React.SetStateAction<any>>;
+  setClearPlansConfirm: React.Dispatch<React.SetStateAction<boolean>>;
+  setSelectedPlanIds: React.Dispatch<React.SetStateAction<string[]>>;
+  currentUser: User | null;
+  role: UserRole | null;
+  _UserRole: typeof UserRole;
+}
+
+export const usePlanActions = ({
+  plans, setPlans,
+  selectedPlan, setSelectedPlan,
+  draftPlan, setDraftPlan,
+  isDirty, setIsDirty,
+  td, getUserLabel, STAGES, setLoading,
+  setClearLogConfirm, setClearPlansConfirm, setSelectedPlanIds,
+  currentUser, role, _UserRole
+}: UsePlanActionsParams) => {
+  // O(1) plan lookup — avoids repeated O(n) .find() across every action handler
+  const plansById = new Map(plans.map(p => [p.id, p]));
+
+  const updateStage = async (pid: string, ns: string, date: string = td, isDraft: boolean = true) => {
+    if (role === _UserRole.SFTC) return;
+    const plan = isDraft ? draftPlan : plansById.get(pid);
+    if (!plan) return;
+    await updatePlanStage(plan, ns, date, getUserLabel, () => {}, STAGES, selectedPlan, setSelectedPlan, isDraft, draftPlan, setDraftPlan, setIsDirty);
+  };
+
+  const handleDOTCommentsRec = async (pid: string) => {
+    const currentDate = td;
+    const plan = plansById.get(pid);
+    if (!plan) return;
+
+    const dotCommentsLogs = (plan.log || []).filter((l: LogEntry) => l.action.includes("DOT Comments Received"));
+    const m = dotCommentsLogs.length;
+    const newAction = m > 0 ? `  DOT Comments Received (Rev.${m})` : "  DOT Comments Received";
+
+    const newLog = [...(plan.log || []), { date: currentDate, action: newAction, user: getUserLabel() }];
+
+    try {
+      const planRef = doc(db, 'plans', pid);
+      await updateDoc(planRef, { log: newLog });
+      if (selectedPlan?.id === pid) {
+        setSelectedPlan({ ...plan, log: newLog });
+      }
+    } catch (e) {
+      console.error("Error updating plan:", e);
+      showToast("Failed to record DOT comments. Please try again.", "error");
+    }
+  };
+
+  const pushTicket = async (pid: string, target: 'sftc' | 'engineering') => {
+    const plan = plansById.get(pid);
+    if (!plan) return;
+    
+    const newType = target === 'engineering' ? 'Engineered' : (plan.type === 'Engineered' ? 'Standard' : plan.type);
+    const actionText = target === 'engineering' ? 'Pushed to Engineering Team' : 'Pushed to SFTC Drafting';
+    
+    try {
+      const newLog = [...plan.log, { date: td, action: actionText, user: getUserLabel() }];
+      const updateData = {
+        ...plan,
+        type: newType,
+        stage: "drafting",
+        log: newLog
+      };
+      await updateDoc(doc(db, 'plans', pid), updateData);
+      if (selectedPlan?.id === pid) {
+        setSelectedPlan({ ...plan, type: newType, stage: "drafting", log: newLog });
+      }
+    } catch (error) {
+      console.error("Error pushing ticket:", error);
+      showToast("Failed to push ticket. Please try again.", "error");
+    }
+  };
+
+  const addLogEntryHandler = async (pid: string, entry: string, attachments?: File[], field?: string, previousValue?: any, newValue?: any) => {
+    await addLogEntry(pid, entry, attachments, td, getUserLabel, field, previousValue, newValue);
+  };
+
+  const revertLogEntryHandler = async (pid: string, logEntryId: string) => {
+    await revertLogEntry(pid, logEntryId, getUserLabel, td);
+  };
+
+  const deleteLogEntryHandler = async (pid: string, logEntryId: string) => {
+    await deleteLogEntry(pid, logEntryId);
+  };
+
+  const deleteDocumentHandler = async (pid: string, docId: string, type: 'tcp' | 'loc', plan: Plan, isDraft: boolean = true) => {
+    const p = isDraft ? draftPlan : plan;
+    await deleteDocument(pid, docId, type, p, setSelectedPlan, getUserLabel, td, isDraft, draftPlan, setDraftPlan, setIsDirty);
+  };
+
+  const clearLogHandler = async (pid: string, isDraft: boolean) => {
+    if (isDraft) {
+      if (!draftPlan) return;
+      const updatedDraft = { ...draftPlan, log: [] };
+      setDraftPlan(updatedDraft);
+      setSelectedPlan(updatedDraft);
+      setIsDirty(true);
+    } else {
+      await clearLog(pid, td, getUserLabel);
+      if (selectedPlan?.id === pid) {
+        setSelectedPlan({ ...selectedPlan, log: [] });
+      }
+    }
+  };
+
+  const handleClearLogHandler = async (clearLogConfirm: { isOpen: boolean; type: 'global' | 'plan'; planId: string | null } | null) => {
+    await handleClearLog(clearLogConfirm, plans, td, getUserLabel, setClearLogConfirm, setLoading);
+  };
+
+  const uploadTCPRevisionHandler = async (pid: string, file: File) => {
+    const plan = plansById.get(pid);
+    if (!plan) return;
+    await uploadTCPRevision(pid, file, plan, getUserLabel, td, setSelectedPlan, currentUser);
+  };
+
+  const linkNewLOCHandler = async (pid: string, file: File) => {
+    const plan = plansById.get(pid);
+    if (!plan) return;
+    await linkNewLOC(pid, file, plan, getUserLabel, td, setSelectedPlan, currentUser);
+  };
+
+  const handleClearPlansHandler = async () => {
+    await handleClearPlans(plans, setPlans, setSelectedPlan, setSelectedPlanIds, setLoading, setClearPlansConfirm);
+  };
+
+  const updatePlanField = async (pid: string, field: string, value: string | number | boolean | null, isDraft: boolean = true) => {
+    await updatePlanFieldService(pid, field, value, isDraft, selectedPlan, draftPlan, setDraftPlan, setSelectedPlan, setIsDirty, getUserLabel, td, currentUser, role, _UserRole);
+  };
+
+  const discardDraft = () => {
+    const originalPlan = plansById.get(selectedPlan.id);
+    setDraftPlan(originalPlan);
+    setSelectedPlan(originalPlan);
+    setIsDirty(false);
+  };
+
+  const handleClosePlanCard = () => {
+    if (isDirty) {
+      if (window.confirm("You have unsaved changes. Are you sure you want to discard them and close?")) {
+        discardDraft();
+        setSelectedPlan(null);
+      }
+    } else {
+      setSelectedPlan(null);
+    }
+  };
+
+  const saveDraft = async () => {
+    const changes: any = {};
+    for (const key in draftPlan) {
+      const dv = draftPlan[key];
+      const sv = selectedPlan[key];
+      // Use fast reference/primitive check first; only serialize complex types if needed
+      const changed = dv !== sv && (
+        typeof dv !== 'object' || typeof sv !== 'object'
+          ? true
+          : JSON.stringify(dv) !== JSON.stringify(sv)
+      );
+      if (changed) changes[key] = dv;
+    }
+    
+    // Update database for all changed fields in one atomic call
+    await updatePlanFieldsService(selectedPlan.id, changes, selectedPlan, setSelectedPlan, getUserLabel, td);
+    
+    setIsDirty(false);
+  };
+
+  const updateLogEntry = async (pid: string, index: number, field: string, value: string | number | boolean | null, isDraft: boolean = true) => {
+    const plan = plansById.get(pid);
+    if (!plan) return;
+
+    try {
+      const currentPlan = isDraft ? draftPlan : plan;
+      const newLog = [...currentPlan.log];
+      newLog[index] = { ...newLog[index], [field]: value };
+      const updateData = {
+        ...currentPlan,
+        log: newLog
+      };
+      
+      if (isDraft) {
+        setDraftPlan(updateData);
+        setSelectedPlan(updateData);
+        setIsDirty(true);
+      } else {
+        await updateDoc(doc(db, 'plans', pid), updateData);
+        if (selectedPlan?.id === pid) {
+          setSelectedPlan({ ...plan, log: newLog });
+        }
+      }
+    } catch (error) {
+      console.error("Error updating log entry:", error);
+      showToast("Failed to update log entry. Please try again.", "error");
+    }
+  };
+
+  const deletePlan = async (pid: string) => {
+    if (!window.confirm(`Are you sure you want to permanently delete ${pid}? This cannot be undone.`)) return;
+    await deletePlanService(pid, setSelectedPlan);
+  };
+
+  return {
+    updateStage,
+    handleDOTCommentsRec,
+    pushTicket,
+    deletePlan,
+    addLogEntry: addLogEntryHandler,
+    revertLogEntry: revertLogEntryHandler,
+    deleteLogEntry: deleteLogEntryHandler,
+    deleteDocument: deleteDocumentHandler,
+    clearLog: clearLogHandler,
+    uploadTCPRevision: uploadTCPRevisionHandler,
+    linkNewLOC: linkNewLOCHandler,
+    handleClearLog: handleClearLogHandler,
+    handleClearPlans: handleClearPlansHandler,
+    updatePlanField,
+    discardDraft,
+    handleClosePlanCard,
+    saveDraft,
+    updateLogEntry
+  };
+};

@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l C:UsersrbulaDesktopTCP Tracker/src/**/*.tsx C:UsersrbulaDesktopTCP Tracker/src/**/*.ts)",
+      "mcp__Claude_Preview__preview_start",
+      "Read(//usr/local/bin/**)",
+      "Bash(command -v npm)",
+      "Bash(\"C:/Program Files/nodejs/node.exe\" --version)",
+      "Bash(\"/c/Program Files/nodejs/node.exe\" \"/c/Program Files/nodejs/node_modules/npm/bin/npm-cli.js\" install)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(k,v\\) for k,v in d.get\\(''''dependencies'''',{}\\).items\\(\\)]\")",
+      "Bash(node -e \"const d=require\\(''./package.json''\\); Object.entries\\(d.dependencies||{}\\).forEach\\(\\([k,v]\\)=>console.log\\(k,v\\)\\)\")",
+      "Bash(where firebase:*)",
+      "Bash(firebase --version)",
+      "Bash(npm install:*)",
+      "Bash(firebase login:*)",
+      "Bash(firebase projects:list)",
+      "Bash(find \"C:\\\\Users\\\\rbula\\\\Desktop\\\\TCP Tracker\\\\src\" -type f \\\\\\( -name \"*.tsx\" -o -name \"*.ts\" \\\\\\) -exec wc -l {} +)"
+    ]
+  }
+}

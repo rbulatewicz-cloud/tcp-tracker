@@ -1,0 +1,22 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Plans and LOCs are publicly readable (guests can view)
+    match /plans/{planId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    match /locs/{locId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Everything else requires authentication
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

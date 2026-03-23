@@ -1,0 +1,123 @@
+import React from 'react';
+import { FIELD_REGISTRY } from '../../constants';
+import { UserRole, User, ReportTemplate, PlanForm } from '../../types';
+import { Permission } from '../../permissions/PermissionContextDef';
+import { StreetInput } from '../StreetInput';
+
+const FORM_GROUPS = ['Identification', 'Location', 'Schedule', 'Team & Priority'] as const;
+const DIR_FIELDS = ['dir_nb', 'dir_sb', 'dir_directional', 'side_street'];
+const EXCLUDED_FORM_FIELDS = ['lead'];
+
+interface RequestFormFieldsProps {
+  form: PlanForm;
+  setForm: React.Dispatch<React.SetStateAction<PlanForm>>;
+  currentUser: User | null;
+  canView: (key: string) => boolean;
+  fieldPermissions: Record<string, Permission>;
+  setFieldPermissions: React.Dispatch<React.SetStateAction<Record<string, Permission>>>;
+  reportTemplate: ReportTemplate;
+  setWarningMessage: (msg: string) => void;
+  setShowNeedByWarningModal: (show: boolean) => void;
+  TODAY: Date;
+}
+
+export const RequestFormFields: React.FC<RequestFormFieldsProps> = ({
+  form, setForm, currentUser, canView, reportTemplate, setWarningMessage, setShowNeedByWarningModal, TODAY
+}) => {
+  const update = (key: string, value: unknown) => setForm(f => ({ ...f, [key]: value }));
+
+  const renderField = (k: string, v: typeof FIELD_REGISTRY[string]) => {
+    if (!canView(k)) return null;
+
+    // FIELD_REGISTRY uses streetFrom/streetTo but Firestore documents use street1/street2
+    const formKey = k === 'streetFrom' ? 'street1' : k === 'streetTo' ? 'street2' : k;
+
+    const isLeadDisabled = k === 'lead' && currentUser?.role !== UserRole.MOT && currentUser?.role !== UserRole.ADMIN;
+    const isIdDisabled = k === 'id' && currentUser?.role !== UserRole.MOT && currentUser?.role !== UserRole.ADMIN;
+
+    return (
+      <div key={k} className="flex flex-col gap-1">
+        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{v.label}</div>
+        {v.type === 'select' && v.options ? (
+          <select
+            value={(form[formKey] as string) || ""}
+            disabled={isLeadDisabled}
+            onChange={e => update(formKey, e.target.value)}
+            className={`text-xs font-semibold text-slate-900 bg-white border border-slate-200 rounded-md p-2 w-full ${isLeadDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+          >
+            {v.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+          </select>
+        ) : v.type === 'date' ? (
+          <input
+            type="date"
+            value={(form[formKey] as string) || ""}
+            onChange={e => {
+              const newDate = e.target.value;
+              update(formKey, newDate);
+              if (k === 'needByDate' && reportTemplate?.needByThresholds) {
+                const threshold = reportTemplate.needByThresholds[form.type as string] || 0;
+                const daysToNeed = Math.ceil((new Date(newDate).getTime() - TODAY.getTime()) / (1000 * 60 * 60 * 24));
+                if (daysToNeed < threshold) {
+                  setWarningMessage(`The selected need-by date is less than the threshold of ${threshold} days for ${form.type} plans.`);
+                  setShowNeedByWarningModal(true);
+                }
+              }
+            }}
+            className="text-xs font-semibold text-slate-900 bg-white border border-slate-200 rounded-md p-2 w-full"
+          />
+        ) : k === 'streetFrom' || k === 'streetTo' ? (
+          <StreetInput value={(form[formKey] as string) || ""} onChange={e => update(formKey, e.target.value)} />
+        ) : (
+          <input
+            type="text"
+            value={(form[formKey] as string) || ""}
+            disabled={isIdDisabled}
+            placeholder={k === 'id' ? 'SFTC-0001' : undefined}
+            onChange={e => update(formKey, e.target.value)}
+            className={`text-xs font-semibold text-slate-900 bg-white border border-slate-200 rounded-md p-2 w-full ${isIdDisabled ? 'bg-slate-50 opacity-70 cursor-not-allowed' : ''}`}
+          />
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-2 gap-3">
+        {FORM_GROUPS.map(group => {
+          const fields = Object.entries(FIELD_REGISTRY).filter(
+            ([k, v]) => v.group === group && v.inForm && !DIR_FIELDS.includes(k) && !EXCLUDED_FORM_FIELDS.includes(k)
+          );
+          if (fields.length === 0) return null;
+          return (
+            <div key={group} className="bg-slate-50 border border-slate-100 rounded-lg p-3">
+              <h3 className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">{group}</h3>
+              <div className="flex flex-col gap-2">
+                {fields.map(([k, v]) => renderField(k, v))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Direction checkboxes */}
+      <div className="flex gap-4 pt-2 border-t border-slate-100">
+        {DIR_FIELDS.map(k => {
+          const v = FIELD_REGISTRY[k];
+          if (!v) return null;
+          return (
+            <label key={k} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!form[k]}
+                onChange={e => update(k, e.target.checked)}
+                className="rounded border-slate-300"
+              />
+              {v.label}
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+};

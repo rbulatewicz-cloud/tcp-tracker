@@ -1,0 +1,200 @@
+{
+  "entities": {
+    "UserPublic": {
+      "title": "UserPublic",
+      "description": "Publicly accessible user information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["uid", "name", "email"]
+    },
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Privately accessible user information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "role": { "type": "string", "enum": ["GUEST", "SFTC", "MOT", "CR", "ADMIN"] }
+      },
+      "required": ["uid", "role"]
+    },
+    "Plan": {
+      "title": "Plan",
+      "description": "A TCP/LOC plan request.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "loc": { "type": "string" },
+        "type": { "type": "string" },
+        "scope": { "type": "string" },
+        "segment": { "type": "string" },
+        "street1": { "type": "string" },
+        "street2": { "type": "string" },
+        "lead": { "type": "string" },
+        "priority": { "type": "string" },
+        "stage": { "type": "string" },
+        "requestDate": { "type": "string" },
+        "submitDate": { "type": "string" },
+        "needByDate": { "type": "string" },
+        "approvedDate": { "type": "string" },
+        "notes": { "type": "string" },
+        "impact_driveway": { "type": "boolean" },
+        "impact_fullClosure": { "type": "boolean" },
+        "impact_busStop": { "type": "boolean" },
+        "impact_transit": { "type": "boolean" },
+        "dir_nb": { "type": "boolean" },
+        "dir_sb": { "type": "boolean" },
+        "dir_directional": { "type": "boolean" },
+        "approvedTCPs": { "type": "array", "items": { "type": "string" } },
+        "approvedLOCs": { "type": "array", "items": { "type": "string" } },
+        "currentTCP": { "type": "string" },
+        "tcpRev": { "type": "string" },
+        "currentLOC": { "type": "string" },
+        "locRev": { "type": "string" },
+        "authorId": { "type": "string" },
+        "isCriticalPath": { "type": "boolean" }
+      },
+      "required": ["id", "type", "scope", "stage"]
+    },
+    "LogEntry": {
+      "title": "LogEntry",
+      "description": "An entry in the plan activity log.",
+      "type": "object",
+      "properties": {
+        "uniqueId": { "type": "string" },
+        "date": { "type": "string" },
+        "action": { "type": "string" },
+        "user": { "type": "string" },
+        "userId": { "type": "string" },
+        "field": { "type": "string" },
+        "previousValue": { "type": "string" },
+        "newValue": { "type": "string" }
+      },
+      "required": ["uniqueId", "date", "action", "user"]
+    },
+    "ReportTemplate": {
+      "title": "ReportTemplate",
+      "description": "Settings for the PDF report template.",
+      "type": "object",
+      "properties": {
+        "logo": { "type": "string" },
+        "companyName": { "type": "string" },
+        "address": { "type": "string" },
+        "cityStateZip": { "type": "string" },
+        "projectInfo": { "type": "array", "items": { "type": "string" } },
+        "showMetricCharts": { "type": "boolean" },
+        "needByThresholds": {
+          "type": "object",
+          "properties": {
+            "WATCH": { "type": "integer" },
+            "Standard": { "type": "integer" },
+            "Engineered": { "type": "integer" }
+          },
+          "required": ["WATCH", "Standard", "Engineered"]
+        }
+      },
+      "required": ["companyName", "address", "cityStateZip", "projectInfo", "showMetricCharts", "needByThresholds"]
+    },
+    "AppRequest": {
+      "title": "AppRequest",
+      "description": "A request for a change to the application.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "files": { "type": "array", "items": { "type": "string" } },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "completed", "rejected"] }
+      },
+      "required": ["id", "description", "userId", "createdAt", "status"]
+    },
+    "AppTodo": {
+      "title": "AppTodo",
+      "description": "A personal to-do item for app progression.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "text": { "type": "string" },
+        "completed": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "text", "completed", "createdAt"]
+    },
+    "LOC": {
+      "title": "LOC",
+      "description": "A Letter of Concurrence.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "locNumber": { "type": "string" },
+        "revision": { "type": "integer" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "planIds": { "type": "array", "items": { "type": "string" } },
+        "fileUrl": { "type": "string" },
+        "fileName": { "type": "string" },
+        "uploadedBy": { "type": "string" },
+        "uploadedAt": { "type": "string" },
+        "notes": { "type": "string" },
+        "dotSubmittalDate": { "type": "string" }
+      },
+      "required": ["id", "locNumber", "revision", "startDate", "endDate", "planIds"]
+    },
+    "FieldPermissions": {
+      "title": "FieldPermissions",
+      "description": "Field-level access control settings.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "field": { "type": "string" },
+        "editRoles": { "type": "array", "items": { "type": "string" } },
+        "viewRoles": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "field", "editRoles", "viewRoles"]
+    }
+  },
+  "firestore": {
+    "users_public/{userId}": {
+      "schema": { "$ref": "#/entities/UserPublic" },
+      "description": "Public user profiles."
+    },
+    "users_private/{userId}": {
+      "schema": { "$ref": "#/entities/UserPrivate" },
+      "description": "Private user roles."
+    },
+    "plans/{planId}": {
+      "schema": { "$ref": "#/entities/Plan" },
+      "description": "TCP/LOC plans."
+    },
+    "plans/{planId}/logs/{logId}": {
+      "schema": { "$ref": "#/entities/LogEntry" },
+      "description": "Activity logs for a plan."
+    },
+    "settings/reportTemplate": {
+      "schema": { "$ref": "#/entities/ReportTemplate" },
+      "description": "Global report template settings."
+    },
+    "app_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/AppRequest" },
+      "description": "Application change requests."
+    },
+    "app_todos/{todoId}": {
+      "schema": { "$ref": "#/entities/AppTodo" },
+      "description": "Personal to-do items for app progression."
+    },
+    "locs/{locId}": {
+      "schema": { "$ref": "#/entities/LOC" },
+      "description": "Letters of Concurrence."
+    },
+    "field_permissions/{permissionId}": {
+      "schema": { "$ref": "#/entities/FieldPermissions" },
+      "description": "Field-level access control settings."
+    }
+  }
+}
