@@ -10,7 +10,7 @@ export const ActivityLog: React.FC = React.memo(() => {
   const { canEditPlan, canView, currentUser } = usePlanPermissions();
   const [newLogEntry, setNewLogEntry] = useState('');
   const { getLocalDateString } = usePlanUtils();
-  const [confirmDelete, setConfirmDelete] = useState<{isOpen: boolean, index: string | null}>({isOpen: false, index: null});
+  const [confirmDelete, setConfirmDelete] = useState<{isOpen: boolean, index: number | null}>({isOpen: false, index: null});
 
   if (!plan) return null;
 
@@ -66,7 +66,7 @@ export const ActivityLog: React.FC = React.memo(() => {
                 )}
                 {isPrivileged && (
                   <button
-                    onClick={() => setConfirmDelete({isOpen: true, index: entry.uniqueId})}
+                    onClick={() => setConfirmDelete({isOpen: true, index: actualIndex})}
                     className="text-[10px] text-red-600 hover:text-red-800 font-bold"
                   >
                     Delete
@@ -83,7 +83,7 @@ export const ActivityLog: React.FC = React.memo(() => {
         onClose={() => setConfirmDelete({isOpen: false, index: null})}
         onConfirm={() => {
           if (confirmDelete.index !== null) {
-            deleteLogEntry(plan.id, confirmDelete.index as string);
+            deleteLogEntry(plan.id, String(confirmDelete.index));
           }
         }}
         title="Delete Log Entry"

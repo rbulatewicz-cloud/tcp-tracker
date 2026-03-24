@@ -108,10 +108,11 @@ export const usePlanActions = ({
     await revertLogEntry(pid, logEntryId, getUserLabel, td);
   };
 
-  const deleteLogEntryHandler = async (pid: string, logEntryId: string) => {
+  const deleteLogEntryHandler = async (pid: string, logEntryIndex: string) => {
     const plan = plansById.get(pid) ?? selectedPlan;
     if (!plan) return;
-    const updatedLog = (plan.log || []).filter((e: LogEntry) => e.uniqueId !== logEntryId);
+    const idx = parseInt(logEntryIndex, 10);
+    const updatedLog = (plan.log || []).filter((_: LogEntry, i: number) => i !== idx);
     await updateDoc(doc(db, 'plans', pid), { log: updatedLog });
     if (selectedPlan?.id === pid) {
       setSelectedPlan({ ...plan, log: updatedLog });
