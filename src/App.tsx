@@ -857,81 +857,12 @@ function AppContent() {
         )}
 
         {view==="users" && canManageUsers && (
-          <div style={{background:"#fff", borderRadius:12, border:"1px solid #E2E8F0", overflow:"hidden"}}>
-            <div style={{padding:20, borderBottom:"1px solid #F1F5F9", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-              <div>
-                <div style={{fontSize:14, fontWeight:700, color:"#0F172A"}}>Team Management</div>
-                <div style={{fontSize:11, color:"#94A3B8"}}>Manage access for SFTC and MOT members</div>
-              </div>
-              <button onClick={()=>{setEditingUser(null); setUserForm({name:"", email:"", role:UserRole.SFTC}); setShowUserForm(true);}} style={{background:"#0F172A", color:"#fff", border:"none", padding:"8px 16px", borderRadius:8, fontSize:11, fontWeight:600, cursor:"pointer"}}>+ Invite Member</button>
-            </div>
-            <table style={{width:"100%", borderCollapse:"collapse"}}>
-              <thead><tr style={{background:"#F8FAFC", borderBottom:"1px solid #E2E8F0"}}>
-                {teamCols.map(col=>(
-                  <th 
-                    key={col.id} 
-                    onClick={() => requestTeamSort(col.id)}
-                    style={{
-                      padding:"12px 20px", 
-                      textAlign:"left", 
-                      fontSize:10, 
-                      fontWeight:700, 
-                      color:"#64748B", 
-                      textTransform:"uppercase", 
-                      letterSpacing:0.5,
-                      cursor: "pointer",
-                      userSelect: "none"
-                    }}
-                  >
-                    {col.label}
-                    <span style={{fontSize: 8, marginLeft: 4, color: teamSortConfig?.key === col.id ? "#F59E0B" : "#CBD5E1"}}>
-                      {teamSortConfig?.key === col.id ? (teamSortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
-                    </span>
-                  </th>
-                ))}
-              </tr></thead>
-              <tbody>
-                {sortedTeam.filter(u => !searchQuery || u.name.toLowerCase().includes(searchQuery.toLowerCase()) || u.email.toLowerCase().includes(searchQuery.toLowerCase())).map(u => (
-                  <tr key={u.id || u.uid} style={{borderBottom:"1px solid #F1F5F9"}}>
-                    {teamCols.map(col => {
-                      switch(col.id) {
-                        case "name": return <td key={col.id} style={{padding:"12px 20px", fontSize:13, fontWeight:600, color:"#1E293B"}}>{u.name}</td>;
-                        case "email": return <td key={col.id} style={{padding:"12px 20px", fontSize:12, color:"#64748B"}}>{u.email}</td>;
-                        case "role": return (
-                          <td key={col.id} style={{padding:"12px 20px"}}>
-                            <span style={{
-                              padding:"4px 10px", 
-                              borderRadius:6, 
-                              fontSize:10, 
-                              fontWeight:700, 
-                              background: u.role === UserRole.ADMIN ? "#FEE2E2" : u.role === UserRole.MOT ? "#FEF3C7" : u.role === UserRole.SFTC ? "#DBEAFE" : "#F1F5F9", 
-                              color: u.role === UserRole.ADMIN ? "#991B1B" : u.role === UserRole.MOT ? "#92400E" : u.role === UserRole.SFTC ? "#1E40AF" : "#64748B"
-                            }}>
-                              {u.role}
-                            </span>
-                          </td>
-                        );
-                        case "actions": return (
-                          <td key={col.id} style={{padding:"12px 20px"}}>
-                            <div style={{display:"flex", gap:8}}>
-                              <button onClick={() => handleSendInvite(u.email, u.role)} style={{background:"#10B981", color:"#fff", border:"none", padding:"6px 10px", borderRadius:6, fontSize:10, fontWeight:600, cursor:"pointer"}}>Send Invite</button>
-                              {canManageUsers && (
-                                <>
-                                  <button onClick={()=>{setEditingUser(u); setUserForm({name:u.name, email:u.email, role:u.role}); setShowUserForm(true);}} style={{background:"#F1F5F9", color:"#64748B", border:"none", padding:"6px 10px", borderRadius:6, fontSize:10, fontWeight:600, cursor:"pointer"}}>Edit</button>
-                                  <button onClick={()=>deleteUser(u.email, u.role)} style={{background:"#FEF2F2", color:"#EF4444", border:"none", padding:"6px 10px", borderRadius:6, fontSize:10, fontWeight:600, cursor:"pointer"}}>Delete</button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        );
-                        default: return null;
-                      }
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <UserManagementView
+            users={users}
+            currentUser={currentUser}
+            role={role}
+            plans={plans}
+          />
         )}
 
         {/* CALENDAR VIEW */}

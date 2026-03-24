@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { User, UserRole } from '../types';
+import React, { useState, useMemo } from 'react';
+import { User, UserRole, Plan } from '../types';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { showToast } from '../lib/toast';
@@ -8,123 +8,298 @@ interface UserManagementViewProps {
   users: User[];
   currentUser: User | null;
   role: UserRole;
+  plans: Plan[];
 }
 
-export const UserManagementView: React.FC<UserManagementViewProps> = ({ users, currentUser, role }) => {
-  const [showUserForm, setShowUserForm] = useState(false);
+const ROLE_META: Record<string, { label: string; bg: string; text: string; border: string }> = {
+  [UserRole.ADMIN]: { label: 'Admin',             bg: 'bg-slate-900',    text: 'text-white',        border: 'border-slate-700' },
+  [UserRole.MOT]:   { label: 'MOT Team',          bg: 'bg-blue-100',     text: 'text-blue-800',     border: 'border-blue-200' },
+  [UserRole.SFTC]:  { label: 'SFTC Team',         bg: 'bg-emerald-100',  text: 'text-emerald-800',  border: 'border-emerald-200' },
+  [UserRole.CR]:    { label: 'Community Rel.',     bg: 'bg-purple-100',   text: 'text-purple-800',   border: 'border-purple-200' },
+  [UserRole.GUEST]: { label: 'Guest / Viewer',     bg: 'bg-slate-100',    text: 'text-slate-500',    border: 'border-slate-200' },
+};
+
+const RoleBadge: React.FC<{ role: string }> = ({ role }) => {
+  const meta = ROLE_META[role] ?? ROLE_META[UserRole.GUEST];
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${meta.bg} ${meta.text} ${meta.border}`}>
+      {meta.label}
+    </span>
+  );
+};
+
+const EMPTY_FORM = { name: '', email: '', role: UserRole.SFTC as UserRole };
+
+export const UserManagementView: React.FC<UserManagementViewProps> = ({ users, currentUser, role, plans }) => {
+  const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [userForm, setUserForm] = useState({ name: "", email: "", role: UserRole.SFTC });
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
 
-  const handleSaveUser = async () => {
-    if (!userForm.email || !userForm.name) return;
-    const emailId = userForm.email.toLowerCase();
-    const uid = editingUser?.uid || Math.random().toString(36).substr(2, 9);
-    const newUser = { ...userForm, uid };
-    
-    if (newUser.role === UserRole.ADMIN && role !== UserRole.ADMIN) {
-      showToast("Only system admins can grant the Tier 0: System Admin role.", "error");
-      return;
+  // Deduplicate by email
+  const dedupedUsers = useMemo(() => {
+    const seen = new Set<string>();
+    return users.filter(u => {
+      const key = (u.email || '').toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [users]);
+
+  const filtered = useMemo(() => {
+    if (!search) return dedupedUsers;
+    const q = search.toLowerCase();
+    return dedupedUsers.filter(u =>
+      u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)
+    );
+  }, [dedupedUsers, search]);
+
+  // Count active LOCs per lead name
+  const locCountByLead = useMemo(() => {
+    const counts: Record<string, number> = {};
+    plans.forEach(p => {
+      if (p.lead && !['plan_approved', 'approved', 'expired', 'closed'].includes(p.stage)) {
+        counts[p.lead] = (counts[p.lead] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [plans]);
+
+  const openAdd = () => {
+    setEditingUser(null);
+    setForm(EMPTY_FORM);
+    setShowForm(true);
+  };
+
+  const openEdit = (u: User) => {
+    setEditingUser(u);
+    setForm({ name: u.name || '', email: u.email || '', role: u.role || UserRole.SFTC });
+    setShowForm(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.email || !form.name) { showToast('Name and email are required.', 'warning'); return; }
+    if (form.role === UserRole.ADMIN && role !== UserRole.ADMIN) {
+      showToast('Only Admins can grant the Admin role.', 'error'); return;
     }
-    
+    setSaving(true);
     try {
-      await setDoc(doc(db, 'users_public', emailId), { uid: newUser.uid, name: newUser.name, email: newUser.email });
-      await setDoc(doc(db, 'users_private', emailId), { uid: newUser.uid, role: newUser.role });
-      setShowUserForm(false);
-      setEditingUser(null);
-      setUserForm({ name: "", email: "", role: UserRole.SFTC });
+      const emailId = form.email.toLowerCase();
+      const uid = editingUser?.uid || Math.random().toString(36).substr(2, 9);
+      await setDoc(doc(db, 'users_public', emailId), { uid, name: form.name, email: form.email });
+      await setDoc(doc(db, 'users_private', emailId), { uid, role: form.role });
+      showToast(editingUser ? 'Member updated.' : 'Member added.', 'success');
+      setShowForm(false);
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `users_public/${emailId}`);
+      handleFirestoreError(error, OperationType.WRITE, 'users_public');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const deleteUser = async (email: string, userRole: string) => {
-    if (email.toLowerCase() === currentUser?.email.toLowerCase()) { showToast("Cannot delete yourself", "error"); return; }
-    
-    if (userRole === UserRole.ADMIN && role !== UserRole.ADMIN) {
-      showToast("Only system admins can delete other Tier 0: System Admin members.", "error");
-      return;
+  const handleDelete = async (u: User) => {
+    if (u.email.toLowerCase() === currentUser?.email.toLowerCase()) {
+      showToast('You cannot delete yourself.', 'error'); return;
     }
-    
+    if (u.role === UserRole.ADMIN && role !== UserRole.ADMIN) {
+      showToast('Only Admins can delete other Admins.', 'error'); return;
+    }
+    if (!window.confirm(`Remove ${u.name} (${u.email}) from the team?`)) return;
     try {
-      await deleteDoc(doc(db, 'users_public', email.toLowerCase()));
-      await deleteDoc(doc(db, 'users_private', email.toLowerCase()));
+      await deleteDoc(doc(db, 'users_public', u.email.toLowerCase()));
+      await deleteDoc(doc(db, 'users_private', u.email.toLowerCase()));
+      showToast(`${u.name} removed.`, 'success');
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `users_public/${email.toLowerCase()}`);
+      handleFirestoreError(error, OperationType.DELETE, `users_public/${u.email}`);
     }
   };
 
-  const handleSendInvite = (email: string, role: string) => {
-    const subject = encodeURIComponent("Invitation to join SFTC Traffic Control Portal");
-    const body = encodeURIComponent(`Hello,\n\nYou have been invited to join the SFTC Traffic Control Portal as a ${role}.\n\nPlease sign in using your Google account at:\n${window.location.origin}\n\nThanks,\nSFTC MOT Team`);
-    window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+  const handleCopyInvite = (u: User) => {
+    const url = window.location.origin;
+    const text = `Hi ${u.name},\n\nYou've been added to the ESFV LRT TCP Tracker as ${ROLE_META[u.role]?.label ?? u.role}.\n\nSign in with your Google account at:\n${url}\n\nThanks,\nSFTC MOT Team`;
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('Invite message copied to clipboard.', 'success');
+    });
   };
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold">User Management</h2>
-        <button 
-          onClick={() => setShowUserForm(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
-          Add User
-        </button>
+    <div className="p-6 max-w-4xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <div className="text-xl font-bold text-slate-900">Team Management</div>
+          <div className="text-xs text-slate-400 mt-0.5">
+            {dedupedUsers.length} member{dedupedUsers.length !== 1 ? 's' : ''} · Manage access and roles
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search members…"
+            className="text-xs border border-slate-200 rounded-lg px-3 py-2 w-48 outline-none focus:border-blue-400"
+          />
+          <button
+            onClick={openAdd}
+            className="px-4 py-2 text-xs font-bold text-white bg-slate-900 rounded-lg hover:bg-slate-700 transition-colors"
+          >
+            + Add Member
+          </button>
+        </div>
       </div>
 
-      {showUserForm && (
-        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:110}} onClick={e=>{if(e.target===e.currentTarget)setShowUserForm(false);}}>
-          <div style={{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:400,boxShadow:"0 25px 50px rgba(0,0,0,0.15)"}}>
-            <div style={{fontSize:18,fontWeight:800,color:"#0F172A",marginBottom:20}}>{editingUser ? "Edit Team Member" : "Add Team Member"}</div>
-            <div style={{display:"grid",gap:14}}>
-              <div><label>Full Name</label><input type="text" value={userForm.name || ""} onChange={e=>setUserForm(f=>({...f,name:e.target.value}))} className="border p-2 rounded w-full" placeholder="John Doe"/></div>
-              <div><label>Email Address</label><input type="email" value={userForm.email || ""} onChange={e=>setUserForm(f=>({...f,email:e.target.value}))} className="border p-2 rounded w-full" placeholder="john@sftc.com"/></div>
+      {/* Role legend */}
+      <div className="flex flex-wrap gap-2 mb-5">
+        {Object.entries(ROLE_META).map(([key, meta]) => (
+          <span key={key} className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${meta.bg} ${meta.text} ${meta.border}`}>
+            {meta.label}
+          </span>
+        ))}
+      </div>
+
+      {/* Member cards */}
+      <div className="flex flex-col gap-3">
+        {filtered.length === 0 && (
+          <div className="text-center py-12 text-sm text-slate-400">
+            {search ? 'No members match your search.' : 'No team members yet. Add one above.'}
+          </div>
+        )}
+        {filtered.map(u => {
+          const activeLOCs = locCountByLead[u.name] ?? 0;
+          const isMe = u.email?.toLowerCase() === currentUser?.email?.toLowerCase();
+          return (
+            <div key={u.email} className="bg-white rounded-xl border border-slate-200 px-5 py-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
+              {/* Avatar */}
+              <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-sm flex-shrink-0">
+                {(u.name || '?')[0].toUpperCase()}
+              </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-sm font-bold text-slate-900 truncate">{u.name}</span>
+                  {isMe && <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">(you)</span>}
+                </div>
+                <div className="text-xs text-slate-400 truncate">{u.email}</div>
+              </div>
+
+              {/* Active LOCs */}
+              {activeLOCs > 0 && (
+                <div className="text-center flex-shrink-0">
+                  <div className="text-lg font-bold text-slate-800">{activeLOCs}</div>
+                  <div className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Active LOCs</div>
+                </div>
+              )}
+
+              {/* Role badge */}
+              <div className="flex-shrink-0">
+                <RoleBadge role={u.role} />
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => handleCopyInvite(u)}
+                  title="Copy invite message"
+                  className="px-3 py-1.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors"
+                >
+                  Copy Invite
+                </button>
+                <button
+                  onClick={() => openEdit(u)}
+                  className="px-3 py-1.5 text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded-lg hover:bg-slate-200 transition-colors"
+                >
+                  Edit
+                </button>
+                {!isMe && (
+                  <button
+                    onClick={() => handleDelete(u)}
+                    className="px-3 py-1.5 text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg hover:bg-red-100 transition-colors"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Add / Edit modal */}
+      {showForm && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-5"
+          onClick={e => { if (e.target === e.currentTarget) setShowForm(false); }}
+        >
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <div className="text-lg font-bold text-slate-900 mb-5">
+              {editingUser ? 'Edit Team Member' : 'Add Team Member'}
+            </div>
+
+            <div className="flex flex-col gap-4">
               <div>
-                <label>Role / Access Tier</label>
-                <select value={userForm.role || UserRole.SFTC} onChange={e=>setUserForm(f=>({...f,role:e.target.value as UserRole}))} className="border p-2 rounded w-full">
-                  <option value={UserRole.GUEST}>Tier 3: Guest / Viewer</option>
-                  <option value={UserRole.SFTC}>Tier 2: SFTC Team</option>
-                  <option value={UserRole.MOT}>Tier 1: MOT Team</option>
-                  <option value={UserRole.CR}>Tier 1.5: Community Relations</option>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Full Name</label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="Jane Smith"
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-400"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Google Email</label>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="jane@gmail.com"
+                  disabled={!!editingUser}
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+                {!editingUser && (
+                  <div className="text-[10px] text-slate-400 mt-1">Must match their Google account — this is how they sign in.</div>
+                )}
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Role</label>
+                <select
+                  value={form.role}
+                  onChange={e => setForm(f => ({ ...f, role: e.target.value as UserRole }))}
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-400"
+                >
+                  <option value={UserRole.GUEST}>Guest / Viewer — read only</option>
+                  <option value={UserRole.SFTC}>SFTC Team — submit requests</option>
+                  <option value={UserRole.MOT}>MOT Team — manage plans</option>
+                  <option value={UserRole.CR}>Community Relations</option>
                   {role === UserRole.ADMIN && (
-                    <option value={UserRole.ADMIN}>Tier 0: System Admin</option>
+                    <option value={UserRole.ADMIN}>Admin — full access</option>
                   )}
                 </select>
               </div>
             </div>
-            <div style={{display:"flex",gap:8,marginTop:24}}>
-              <button onClick={()=>setShowUserForm(false)} style={{flex:1, background:"#F1F5F9", color:"#64748B", border:"none", padding:"10px", borderRadius:8, fontWeight:600, cursor:"pointer"}}>Cancel</button>
-              <button onClick={handleSaveUser} style={{flex:1, background:"#0F172A", color:"#fff", border:"none", padding:"10px", borderRadius:8, fontWeight:700, cursor:"pointer"}}>Save Member</button>
-              {!editingUser && (
-                <button onClick={() => { if (!userForm.email || !userForm.name) return; const email = userForm.email; const role = userForm.role; handleSaveUser(); handleSendInvite(email, role); }} style={{flex:1, background:"#10B981", color:"#fff", border:"none", padding:"10px", borderRadius:8, fontWeight:700, cursor:"pointer"}}>Save & Invite</button>
-              )}
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowForm(false)}
+                className="flex-1 py-2.5 text-sm font-semibold text-slate-500 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 py-2.5 text-sm font-bold text-white bg-slate-900 rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-40"
+              >
+                {saving ? 'Saving…' : editingUser ? 'Save Changes' : 'Add Member'}
+              </button>
             </div>
           </div>
         </div>
       )}
-
-      <table className="w-full bg-white rounded shadow">
-        <thead>
-          <tr className="border-b">
-            <th className="p-3 text-left">Name</th>
-            <th className="p-3 text-left">Email</th>
-            <th className="p-3 text-left">Role</th>
-            <th className="p-3 text-left">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map(user => (
-            <tr key={user.uid} className="border-b">
-              <td className="p-3">{user.name}</td>
-              <td className="p-3">{user.email}</td>
-              <td className="p-3">{user.role}</td>
-              <td className="p-3 flex gap-2">
-                <button onClick={() => handleSendInvite(user.email, user.role)} className="text-blue-600">Invite</button>
-                <button onClick={() => deleteUser(user.email, user.role)} className="text-red-600">Delete</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 };

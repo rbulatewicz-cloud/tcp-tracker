@@ -27,7 +27,8 @@ export const subscribeToUsers = (role: string, callback: (data: any[]) => void) 
       unsubPrivate = onSnapshot(collection(db, 'users_private'), (privateSnapshot) => {
         const usersPrivateData = privateSnapshot.docs.map(doc => ({ ...doc.data(), uid: doc.id } as any));
         const mergedUsers = usersPublicData.map(u => {
-          const privateData = usersPrivateData.find(p => p.uid === u.uid);
+          // users_private doc ID is the email key, same as users_public doc ID
+          const privateData = usersPrivateData.find(p => p.uid === u.id);
           return { ...u, ...privateData };
         });
         callback(mergedUsers);
