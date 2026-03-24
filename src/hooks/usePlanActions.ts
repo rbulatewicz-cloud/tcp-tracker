@@ -2,7 +2,7 @@ import { updatePlanStage, handleClearPlans, uploadTCPRevision, linkNewLOC, delet
 import { addLogEntry, revertLogEntry, deleteLogEntry, clearLog, handleClearLog } from '../services/logService';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Plan, Stage, User, UserRole, LoadingState, LogEntry } from '../types';
+import { Plan, Stage, User, UserRole, LoadingState, LogEntry, ReviewCycle, ImplementationWindow } from '../types';
 import { showToast } from '../lib/toast';
 
 interface UsePlanActionsParams {
@@ -38,11 +38,18 @@ export const usePlanActions = ({
   // O(1) plan lookup — avoids repeated O(n) .find() across every action handler
   const plansById = new Map(plans.map(p => [p.id, p]));
 
-  const updateStage = async (pid: string, ns: string, date: string = td, isDraft: boolean = true) => {
+  const updateStage = async (
+    pid: string,
+    ns: string,
+    date: string = td,
+    reviewCycles?: ReviewCycle[],
+    implementationWindow?: ImplementationWindow | null
+  ) => {
     if (role === _UserRole.SFTC) return;
-    const plan = isDraft ? draftPlan : plansById.get(pid);
+    // Status changes always save immediately to Firestore (not buffered as drafts)
+    const plan = plansById.get(pid) ?? draftPlan;
     if (!plan) return;
-    await updatePlanStage(plan, ns, date, getUserLabel, () => {}, STAGES, selectedPlan, setSelectedPlan, isDraft, draftPlan, setDraftPlan, setIsDirty);
+    await updatePlanStage(plan, ns, date, getUserLabel, () => {}, STAGES, selectedPlan, setSelectedPlan, false, draftPlan, setDraftPlan, setIsDirty, reviewCycles, implementationWindow);
   };
 
   const handleDOTCommentsRec = async (pid: string) => {
@@ -168,22 +175,26 @@ export const usePlanActions = ({
   };
 
   const saveDraft = async () => {
-    const changes: any = {};
+    if (!draftPlan) return;
+    // Diff against the original DB version (plansById), NOT selectedPlan —
+    // because updatePlanField sets both draftPlan and selectedPlan to the same
+    // value, making a selectedPlan diff always return empty.
+    const originalPlan = plansById.get(draftPlan.id);
+    if (!originalPlan) return;
+
+    const changes: Partial<Plan> = {};
     for (const key in draftPlan) {
-      const dv = draftPlan[key];
-      const sv = selectedPlan[key];
-      // Use fast reference/primitive check first; only serialize complex types if needed
-      const changed = dv !== sv && (
-        typeof dv !== 'object' || typeof sv !== 'object'
+      const dv = draftPlan[key as keyof Plan];
+      const sv = originalPlan[key as keyof Plan];
+      const changed =
+        dv !== sv &&
+        (typeof dv !== 'object' || typeof sv !== 'object'
           ? true
-          : JSON.stringify(dv) !== JSON.stringify(sv)
-      );
-      if (changed) changes[key] = dv;
+          : JSON.stringify(dv) !== JSON.stringify(sv));
+      if (changed) (changes as any)[key] = dv;
     }
-    
-    // Update database for all changed fields in one atomic call
-    await updatePlanFieldsService(selectedPlan.id, changes, selectedPlan, setSelectedPlan, getUserLabel, td);
-    
+
+    await updatePlanFieldsService(draftPlan.id, changes, originalPlan, setSelectedPlan, getUserLabel, td);
     setIsDirty(false);
   };
 

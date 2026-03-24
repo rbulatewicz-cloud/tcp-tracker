@@ -9,7 +9,7 @@
  */
 
 import { updatePlanStage, handleClearPlans, bulkUpdate, handleBulkLOCUpload } from './services/planService';
-import { processImportData, confirmImport as confirmImportService } from './services/importService';
+import { ImportWizard } from './components/ImportWizard';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { jsPDF } from "jspdf";
 import { PDFDocument } from "pdf-lib";
@@ -193,31 +193,23 @@ function AppContent() {
     form, setForm,
     handleSubmit: handlePlanSubmit,
     resetForm
-  } = usePlanForm(plans, td, getUserLabel, setShowForm, setSubmissionSuccess, setLoading);
-
-  useEffect(() => {
-    if (showForm && !form.id) {
-      const ids = plans.map(p => {
-        const match = p.id?.match(/SFTC-(\d+)/);
-        return match ? parseInt(match[1], 10) : 0;
-      });
-      const maxId = ids.length > 0 ? Math.max(...ids) : 0;
-      const nextId = `SFTC-${String(maxId + 1).padStart(4, '0')}`;
-      setForm(prev => ({ ...prev, id: nextId }));
-    }
-  }, [showForm, plans, form.id]);
+  } = usePlanForm(plans, td, getUserLabel, setShowForm, setSubmissionSuccess, setLoading, currentUser);
 
   const {
+    showImportWizard,
+    wizardStep,
+    setWizardStep,
     handleMasterUpload,
-    handleReviewImport,
+    handleProceedToValidation,
+    handleProceedToReview,
     confirmImport,
-    showMappingModal, setShowMappingModal,
-    showReviewModal, setShowReviewModal,
-    reviewData, setReviewData,
-    deleteMissingPlans, setDeleteMissingPlans,
-    mappingHeaders, setMappingHeaders,
-    mappingData, setMappingData,
-    columnMapping, setColumnMapping
+    resetImport,
+    mappingHeaders,
+    mappingData,
+    columnMapping,
+    setColumnMapping,
+    importRows,
+    updateImportRow,
   } = useMasterFileImport(plans, role, td, getUserLabel, setLoading);
 
 
@@ -1224,98 +1216,23 @@ function AppContent() {
         </div>
       )}
 
-      {/* MAPPING MODAL */}
-      {showMappingModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:20}}>
-          <div style={{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:600,maxHeight:"90vh",overflow:"auto",boxShadow:"0 25px 50px rgba(0,0,0,0.15)"}}>
-            <div style={{fontSize:20,fontWeight:800,color:"#0F172A",marginBottom:8}}>Map Import Columns</div>
-            <div style={{fontSize:13,color:"#64748B",marginBottom:24}}>Match the columns from your Excel file to the tracker fields.</div>
-            
-            <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:24}}>
-              {IMPORT_TARGET_FIELDS.map(field => (
-                <div key={field.key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px",background:"#F8FAFC",borderRadius:8,border:"1px solid #E2E8F0"}}>
-                  <div style={{fontSize:13,fontWeight:600,color:"#1E293B",width:"40%"}}>
-                    {field.label} {field.required && <span style={{color:"#EF4444"}}>*</span>}
-                  </div>
-                  <div style={{width:"60%"}}>
-                    <select 
-                      value={columnMapping[field.key] || ""}
-                      onChange={(e) => setColumnMapping({...columnMapping, [field.key]: e.target.value})}
-                      style={{width:"100%",padding:"8px 12px",borderRadius:6,border:"1px solid #CBD5E1",fontSize:13,background:"#fff",outline:"none"}}
-                    >
-                      <option value="">-- Ignore this field --</option>
-                      {mappingHeaders.map((h, i) => (
-                        <option key={i} value={h}>{h}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            <div style={{display:"flex",gap:12}}>
-              <button onClick={() => { setShowMappingModal(false); setMappingData([]); setMappingHeaders([]); }} style={{flex:1,background:"#F1F5F9",color:"#475569",border:"none",padding:"10px",borderRadius:8,fontWeight:700,cursor:"pointer"}}>Cancel</button>
-              <button 
-                onClick={handleReviewImport} 
-                disabled={!columnMapping['id']}
-                style={{flex:1,background:columnMapping['id']?"#3B82F6":"#94A3B8",color:"#fff",border:"none",padding:"10px",borderRadius:8,fontWeight:700,cursor:columnMapping['id']?"pointer":"not-allowed"}}
-              >
-                Review Import ({mappingData.length} Rows)
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* REVIEW IMPORT MODAL */}
-      {showReviewModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:20}}>
-          <div style={{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:500,boxShadow:"0 25px 50px rgba(0,0,0,0.15)"}}>
-            <div style={{fontSize:20,fontWeight:800,color:"#0F172A",marginBottom:16}}>Review Import</div>
-            
-            <div style={{background:"#F8FAFC",padding:16,borderRadius:8,marginBottom:20}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                <span style={{color:"#475569",fontWeight:600}}>New Plans to Add:</span>
-                <span style={{color:"#10B981",fontWeight:800}}>{reviewData.newPlans.length}</span>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                <span style={{color:"#475569",fontWeight:600}}>Existing Plans to Update:</span>
-                <span style={{color:"#3B82F6",fontWeight:800}}>{reviewData.updatedPlans.length}</span>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between"}}>
-                <span style={{color:"#475569",fontWeight:600}}>Plans Not in Upload:</span>
-                <span style={{color:"#EF4444",fontWeight:800}}>{reviewData.deletedPlans.length}</span>
-              </div>
-            </div>
-
-            {reviewData.deletedPlans.length > 0 && (
-              <div style={{marginBottom:24,padding:16,background:"#FEF2F2",border:"1px solid #FCA5A5",borderRadius:8}}>
-                <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer"}}>
-                  <input 
-                    type="checkbox" 
-                    checked={deleteMissingPlans} 
-                    onChange={(e) => setDeleteMissingPlans(e.target.checked)}
-                    style={{marginTop:4}}
-                  />
-                  <div style={{fontSize:14,color:"#991B1B",lineHeight:1.4}}>
-                    <strong>Delete the {reviewData.deletedPlans.length} plans not found in this upload?</strong><br/>
-                    Warning: This will permanently delete their attachments, history, and outreach data. If unchecked, they will be kept as-is.
-                  </div>
-                </label>
-              </div>
-            )}
-
-            <div style={{display:"flex",gap:12}}>
-              <button onClick={() => { setShowReviewModal(false); setMappingData([]); setMappingHeaders([]); setReviewData({newPlans:[],updatedPlans:[],deletedPlans:[]}); setDeleteMissingPlans(false); }} style={{flex:1,background:"#F1F5F9",color:"#475569",border:"none",padding:"10px",borderRadius:8,fontWeight:700,cursor:"pointer"}}>Cancel</button>
-              <button 
-                onClick={confirmImport} 
-                style={{flex:1,background:"#3B82F6",color:"#fff",border:"none",padding:"10px",borderRadius:8,fontWeight:700,cursor:"pointer"}}
-              >
-                Confirm & Import
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* IMPORT WIZARD */}
+      {showImportWizard && (
+        <ImportWizard
+          step={wizardStep}
+          setStep={setWizardStep}
+          mappingHeaders={mappingHeaders}
+          mappingData={mappingData}
+          columnMapping={columnMapping}
+          setColumnMapping={setColumnMapping}
+          importRows={importRows}
+          updateImportRow={updateImportRow}
+          onFileChange={handleMasterUpload}
+          onProceedToValidation={handleProceedToValidation}
+          onProceedToReview={handleProceedToReview}
+          onConfirm={confirmImport}
+          onCancel={resetImport}
+        />
       )}
 
       {/* NEW REQUEST MODAL */}

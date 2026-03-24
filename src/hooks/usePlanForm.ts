@@ -1,33 +1,83 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { submitPlan } from '../services/planService';
 import { showToast } from '../lib/toast';
-import { Plan, PlanForm, LoadingState } from '../types';
+import { Plan, PlanForm, LoadingState, User } from '../types';
 
-const EMPTY_FORM = {
+const EMPTY_FORM: PlanForm = {
   id: "",
   rev: 0,
-  loc:"", type:"Standard", scope:"Water", segment:"A1", street1:"", street2:"", lead:"Justin", priority:"Medium", needByDate:"", notes:"",
-  dir_nb: false, dir_sb: false, dir_directional: false,
-  mot_peakHour:null, mot_extDuration:null, mot_noiseVariance:null,
-  impact_driveway: false, impact_fullClosure: false, impact_busStop: false, impact_transit: false,
+  loc: "",
+  requestedBy: "",
+  type: "Standard",
+  scope: "Water",
+  segment: "A1",
+  street1: "",
+  street2: "",
+  lead: "Justin",
+  priority: "Medium",
+  needByDate: "",
+  notes: "",
+  dir_nb: false,
+  dir_sb: false,
+  dir_directional: false,
+  mot_peakHour: null,
+  mot_extDuration: null,
+  mot_noiseVariance: null,
+  impact_driveway: false,
+  impact_fullClosure: false,
+  impact_busStop: false,
+  impact_transit: false,
   attachments: [],
   approvedTCPs: [],
   approvedLOCs: [],
-  isCriticalPath: false
+  isCriticalPath: false,
 };
 
-export const usePlanForm = (plans: Plan[], td: string, getUserLabel: () => string, setShowForm: (show: boolean) => void, setSubmissionSuccess: (success: { show: boolean; pos: number; id: string }) => void, setLoading: React.Dispatch<React.SetStateAction<LoadingState>>) => {
-  const [form, setForm] = useState<PlanForm>({ ...EMPTY_FORM });
+export const usePlanForm = (
+  plans: Plan[],
+  td: string,
+  getUserLabel: () => string,
+  setShowForm: (show: boolean) => void,
+  setSubmissionSuccess: (success: { show: boolean; pos: number; id: string }) => void,
+  setLoading: React.Dispatch<React.SetStateAction<LoadingState>>,
+  currentUser: User | null = null
+) => {
+  const [form, setForm] = useState<PlanForm>({
+    ...EMPTY_FORM,
+    requestedBy: currentUser?.name || "",
+  });
+
+  // Re-sync requestedBy if user logs in after the form was first rendered
+  useEffect(() => {
+    if (currentUser?.name) {
+      setForm(prev => ({
+        ...prev,
+        requestedBy: prev.requestedBy || currentUser.name,
+      }));
+    }
+  }, [currentUser?.name]);
 
   const handleSubmit = async (motAllAnswered: boolean) => {
+    if (!form.loc) {
+      showToast("LOC # is required.", "warning");
+      return;
+    }
     if (!form.street1 || !form.needByDate || !motAllAnswered) return;
 
     setLoading(prev => ({ ...prev, submit: true }));
 
     try {
-      const { queuePos, id } = await submitPlan(form as unknown as Partial<Plan> & { attachments: File[] }, plans, td, getUserLabel);
+      const { queuePos, id } = await submitPlan(
+        form as unknown as Partial<Plan> & { attachments: File[] },
+        plans,
+        td,
+        getUserLabel
+      );
 
-      setForm({ ...EMPTY_FORM });
+      setForm({
+        ...EMPTY_FORM,
+        requestedBy: currentUser?.name || "",
+      });
       setShowForm(false);
       setSubmissionSuccess({ show: true, pos: queuePos, id });
     } catch (error: unknown) {
@@ -39,14 +89,12 @@ export const usePlanForm = (plans: Plan[], td: string, getUserLabel: () => strin
   };
 
   const resetForm = () => {
-    setForm({ ...EMPTY_FORM });
+    setForm({
+      ...EMPTY_FORM,
+      requestedBy: currentUser?.name || "",
+    });
     setShowForm(false);
   };
 
-  return {
-    form,
-    setForm,
-    handleSubmit,
-    resetForm
-  };
+  return { form, setForm, handleSubmit, resetForm };
 };

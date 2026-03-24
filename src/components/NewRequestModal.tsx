@@ -46,6 +46,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
 
   const getMissingItems = (): string[] => {
     const missing: string[] = [];
+    if (!form.loc) missing.push('LOC # is required — this is your primary record identifier');
     if (!form.street1) missing.push('Street 1 is required');
     if (!form.needByDate) missing.push('Need By Date is required');
     if (!atLeastOneDirChecked) missing.push('Select at least one direction (NB, SB, DIR, or Side Street)');
@@ -77,13 +78,15 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
         className="bg-white rounded-2xl w-full max-w-[580px] max-h-[90vh] shadow-2xl flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header — matches PlanHeader style */}
+        {/* Header */}
         <div className="p-5 pb-0 flex-shrink-0">
           <div className="pb-3 mb-1">
-            <div className="flex justify-between items-start mb-1.5">
+            <div className="flex justify-between items-start mb-1">
               <div>
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">New TCP Request</div>
-                <div className="text-[22px] font-bold text-slate-900">{form.id || <span className="text-slate-300">SFTC-—</span>}</div>
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">New LOC Request</div>
+                <div className="text-[22px] font-bold text-slate-900 font-mono">
+                  {form.loc || <span className="text-slate-300">LOC-—</span>}
+                </div>
               </div>
               <div className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 mt-1">
                 <div className="w-2 h-2 rounded-full bg-slate-400" />
@@ -95,8 +98,12 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
               <span className="text-slate-300 mx-1">/</span>
               {street2 ? street2 : <span className="text-slate-300 italic text-xs">Street 2</span>}
             </div>
+            {form.requestedBy && (
+              <div className="text-[11px] text-slate-400 mt-0.5">
+                Requested by <span className="font-semibold text-slate-600">{form.requestedBy}</span>
+              </div>
+            )}
           </div>
-
         </div>
 
         {/* Scrollable body */}

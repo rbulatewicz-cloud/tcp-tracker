@@ -1,8 +1,8 @@
 import { doc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db, storage, handleFirestoreError, OperationType } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Plan, Stage, LogEntry, PlanDocument, User, UserRole, LoadingState } from '../types';
-import { FIELD_REGISTRY } from '../constants';
+import { Plan, Stage, LogEntry, PlanDocument, User, UserRole, LoadingState, ReviewCycle, ImplementationWindow } from '../types';
+import { FIELD_REGISTRY, ALL_STAGES } from '../constants';
 import { showToast } from '../lib/toast';
 
 export const updatePlanStage = async (
@@ -11,70 +11,56 @@ export const updatePlanStage = async (
   date: string,
   getUserLabel: () => string,
   setStatusDate: (date: string) => void,
-  STAGES: Stage[],
+  _STAGES: Stage[],   // kept for call-site compat, superseded by ALL_STAGES lookup
   selectedPlan: Plan | null,
   setSelectedPlan: (plan: Plan | null) => void,
   isDraft: boolean = true,
   draftPlan: Plan | null = null,
   setDraftPlan: (plan: Plan | null) => void = () => {},
-  setIsDirty: (dirty: boolean) => void = () => {}
+  setIsDirty: (dirty: boolean) => void = () => {},
+  reviewCycles?: ReviewCycle[],
+  implementationWindow?: ImplementationWindow | null
 ) => {
   try {
-    // Pre-build O(1) lookup maps — avoids O(n) find/findIndex inside loops
-    const stageKeyToIndex = new Map(STAGES.map((s, i) => [s.key, i]));
-    const stageLabelToIndex = new Map(STAGES.map((s, i) => [s.label, i]));
+    // Use ALL_STAGES for comprehensive lookup — the old 4-stage STAGES array
+    // causes new status keys (submitted_to_dot, plan_approved, etc.) to get
+    // index -1, breaking rewind detection and incorrectly clearing dates.
+    const stageLabel = ALL_STAGES.find(s => s.key === ns)?.label ?? ns;
 
-    const newStageIndex = stageKeyToIndex.get(ns) ?? -1;
-    const currentStageIndex = stageKeyToIndex.get(plan.stage) ?? -1;
-    const sl = STAGES[newStageIndex]?.label || ns;
-    const isRewind = newStageIndex < currentStageIndex;
+    // Always append new status history entry — the old rewind/filter logic
+    // deleted earlier entries when new keys weren't found in STAGES.
+    const newLog = [...(plan.log || [])];
+    const newStatusHistory = [...(plan.statusHistory || [])];
 
-    // Keep full log history
-    let newLog = [...(plan.log || [])];
-    let newStatusHistory = (plan.statusHistory || []).filter((entry: LogEntry) => {
-      const stageLabel = entry.action.replace("Status → ", "");
-      const stageIndex = stageLabelToIndex.get(stageLabel);
-      return stageIndex === undefined || stageIndex <= newStageIndex;
-    });
+    const previousStage = plan.stage;
+    const uniqueId = Date.now().toString();
+    const newStageEntry = {
+      uniqueId,
+      date,
+      action: `Status → ${stageLabel}`,
+      user: getUserLabel(),
+      field: 'stage',
+      previousValue: previousStage,
+      newValue: ns,
+    };
+    newLog.push(newStageEntry);
+    newStatusHistory.push({ ...newStageEntry, uniqueId });
 
-    if (!isRewind) {
-      const previousStage = plan.stage;
-      const uniqueId = Date.now().toString();
-      const newStageEntry = { 
-        uniqueId,
-        date: date, 
-        action: `Status → ${sl}`, 
-        user: getUserLabel(),
-        field: 'stage',
-        previousValue: previousStage,
-        newValue: ns
-      };
-      newLog.push(newStageEntry);
-      newStatusHistory.push({ ...newStageEntry, uniqueId });
-    }
-    
     setStatusDate(date);
-    
+
     const updateData: Partial<Plan> & { stage: string; log: LogEntry[] } = {
       ...plan,
       stage: ns,
       log: newLog,
-      statusHistory: newStatusHistory
+      statusHistory: newStatusHistory,
+      ...(reviewCycles !== undefined ? { reviewCycles } : {}),
+      ...(implementationWindow !== undefined ? { implementationWindow } : {}),
     };
+
+    // Set relevant date fields based on new status
     if (ns === 'requested') updateData.dateRequested = date;
-    if (ns === 'submitted') updateData.submitDate = date;
-    if (ns === 'approved') updateData.approvedDate = date;
-    
-    if (newStageIndex < 0) {
-      updateData.dateRequested = null;
-      updateData.submitDate = null;
-      updateData.approvedDate = null;
-    } else if (newStageIndex < 1) {
-      updateData.submitDate = null;
-      updateData.approvedDate = null;
-    } else if (newStageIndex < 2) {
-      updateData.approvedDate = null;
-    }
+    if (ns === 'submitted' || ns === 'submitted_to_dot') updateData.submitDate = date;
+    if (ns === 'approved' || ns === 'plan_approved' || ns === 'tcp_approved_final') updateData.approvedDate = date;
 
     if (isDraft) {
       setDraftPlan(updateData as Plan);
@@ -97,54 +83,114 @@ export const submitPlan = async (
   td: string,
   getUserLabel: () => string
 ) => {
-  // Validate ID format and uniqueness
-  const idRegex = /^SFTC-\d{4}$/;
-  if (!idRegex.test(form.id)) {
-    throw new Error("Invalid Plan ID format. Must be SFTC-xxxx (e.g. SFTC-0001)");
+  // LOC # is the primary identifier — validate it is provided and unique
+  const locNumber = (form.loc || form.id || '').trim();
+  if (!locNumber) {
+    throw new Error("LOC # is required.");
   }
-  if (plans.some(p => p.id === form.id)) {
-    throw new Error("Plan ID already exists. Please use a unique ID.");
+  if (plans.some(p => p.id === locNumber || p.loc === locNumber)) {
+    throw new Error(`LOC # "${locNumber}" already exists. Please use a unique LOC number.`);
   }
 
   const existingRequested = plans.filter(p => p.stage === "requested");
-  const queuePos = form.isCriticalPath 
-    ? (existingRequested.filter(p => p.isCriticalPath).length + 1) 
+  const queuePos = form.isCriticalPath
+    ? (existingRequested.filter(p => p.isCriticalPath).length + 1)
     : (existingRequested.length + 1);
-  const id = form.id;
 
   try {
     const uploadedAttachments = await Promise.all(
       form.attachments.map(async (file: File) => {
-        const fileRef = ref(storage, `plans/${id}/${Date.now()}_${file.name}`);
-        
-        // Add a timeout to the upload
+        const fileRef = ref(storage, `plans/${locNumber}/${Date.now()}_${file.name}`);
         const uploadPromise = uploadBytes(fileRef, file);
-        const timeoutPromise = new Promise((_, reject) => 
+        const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error("Upload timed out. Firebase Storage might not be initialized.")), 15000)
         );
-        
         await Promise.race([uploadPromise, timeoutPromise]);
         const url = await getDownloadURL(fileRef);
         return { name: file.name, data: url };
       })
     );
 
-    const np = {
-      ...form, 
+    const np: Partial<Plan> = {
+      ...form,
       attachments: uploadedAttachments,
-      id,
-      stage: "requested", 
-      requestDate: td, 
+      id: locNumber,
+      loc: locNumber,
+      stage: "requested",
+      requestDate: td,
       dateRequested: td,
+      isHistorical: false,
+      pendingDocuments: false,
       log: [
         { uniqueId: Date.now().toString(), date: td, action: "New request submitted", user: getUserLabel(), dateRequested: td },
-        ...(form.isCriticalPath ? [{ uniqueId: (Date.now() + 1).toString(), date: td, action: "Submitted as Critical Path Item", user: getUserLabel() }] : [])
-      ]
-    }; 
-    await setDoc(doc(db, 'plans', id), np as Plan);
-    return { queuePos, id };
+        ...(form.isCriticalPath
+          ? [{ uniqueId: (Date.now() + 1).toString(), date: td, action: "Submitted as Critical Path Item", user: getUserLabel() }]
+          : [])
+      ],
+    };
+
+    await setDoc(doc(db, 'plans', locNumber), np as Plan);
+    return { queuePos, id: locNumber };
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `plans/${id}`);
+    handleFirestoreError(error, OperationType.WRITE, `plans/${locNumber}`);
+    throw error;
+  }
+};
+
+// Upload a document attached to a specific stage transition
+export const uploadStageAttachment = async (
+  pid: string,
+  file: File,
+  stage: string,
+  documentType: import('../types').StageAttachment['documentType'],
+  isPrimary: boolean,
+  plan: Plan,
+  getUserLabel: () => string,
+  td: string,
+  setSelectedPlan: (plan: Plan | null) => void,
+  currentUser: User | null
+) => {
+  try {
+    const fileRef = ref(storage, `plans/${pid}/stage_attachments/${stage}/${Date.now()}_${file.name}`);
+    await uploadBytes(fileRef, file);
+    const url = await getDownloadURL(fileRef);
+
+    const newAttachment: import('../types').StageAttachment = {
+      id: Date.now().toString(),
+      name: file.name,
+      url,
+      uploadedAt: new Date().toISOString(),
+      uploadedBy: currentUser?.name || currentUser?.email || 'Unknown',
+      stage,
+      documentType,
+      isPrimary,
+    };
+
+    const existingAttachments = plan.stageAttachments || [];
+    // If this is marked as primary (signed LOC), demote any existing primary for this stage
+    const updatedAttachments = isPrimary
+      ? existingAttachments.map(a => a.stage === stage && a.isPrimary ? { ...a, isPrimary: false } : a)
+      : [...existingAttachments];
+    updatedAttachments.push(newAttachment);
+
+    const updateData: Partial<Plan> = {
+      stageAttachments: updatedAttachments,
+      log: [
+        ...(plan.log || []),
+        {
+          uniqueId: Date.now().toString(),
+          date: td,
+          action: `Attached document: ${file.name} (${stage})${isPrimary ? ' — Primary' : ''}`,
+          user: getUserLabel(),
+        },
+      ],
+    };
+
+    await updateDoc(doc(db, 'plans', pid), updateData);
+    setSelectedPlan({ ...plan, ...updateData } as Plan);
+    return newAttachment;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `plans/${pid}`);
     throw error;
   }
 };
@@ -186,9 +232,9 @@ export const updatePlanField = async (
   if (!currentPlan) return;
 
   try {
-    const updateData: any = { 
+    const updateData: Partial<Plan> & Record<string, unknown> = {
       ...currentPlan,
-      [field]: value 
+      [field]: value,
     };
 
     const fieldsToLog = ["rev", "loc", "dateRequested", "isCriticalPath", "submitDate", "approvedDate", "needByDate", "type"];
@@ -268,9 +314,9 @@ export const updatePlanFields = async (
   td: string
 ) => {
   try {
-    const updateData: any = { 
+    const updateData: Partial<Plan> & Record<string, unknown> = {
       ...plan,
-      ...updates 
+      ...updates,
     };
 
     const fieldsToLog = [...Object.keys(FIELD_REGISTRY), "rev", "isCriticalPath"];

@@ -18,7 +18,7 @@ export interface PlanActions {
   updatePlanField: (pid: string, field: string, value: any) => void;
   saveDraft: () => void;
   discardDraft: () => void;
-  updateStage: (pid: string, ns: string, date: string) => void;
+  updateStage: (pid: string, ns: string, date: string, reviewCycles?: import('../types').ReviewCycle[], implementationWindow?: import('../types').ImplementationWindow | null) => Promise<void>;
   handleDOTCommentsRec: (pid: string) => void;
   handleExportPlanToPDF: (plan: Plan) => void;
   setStatusDate: (date: string) => void;
