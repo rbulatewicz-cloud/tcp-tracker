@@ -29,6 +29,7 @@ export interface PlanActions {
   clearLog: (pid: string, plan: any, setSelectedPlan: (plan: any) => void, getUserLabel: () => string, td: string, isDraft?: boolean) => void;
   uploadTCPRevision: (pid: string, file: File) => void;
   linkNewLOC: (pid: string, file: File) => void;
+  uploadStageAttachment: (pid: string, file: File, stage: string, documentType: import('../types').StageAttachment['documentType'], isPrimary: boolean) => Promise<void>;
 }
 
 export interface PlanPermissions {

@@ -15,7 +15,7 @@ export const usePlanCardContext = (
   isPermissionEditingMode: boolean = false
 ): PlanCardContextType => {
   const { selectedPlan, isDirty, draftPlan } = planManagement;
-  const { handleClosePlanCard, updatePlanField, saveDraft, discardDraft, updateStage, handleDOTCommentsRec, addLogEntry, revertLogEntry, deleteLogEntry, deleteDocument, clearLog, uploadTCPRevision, linkNewLOC, deletePlan } = planActions;
+  const { handleClosePlanCard, updatePlanField, saveDraft, discardDraft, updateStage, handleDOTCommentsRec, addLogEntry, revertLogEntry, deleteLogEntry, deleteDocument, clearLog, uploadTCPRevision, linkNewLOC, deletePlan, uploadStageAttachment } = planActions;
 
   return React.useMemo(() => ({
     data: {
@@ -43,7 +43,8 @@ export const usePlanCardContext = (
       deleteDocument,
       clearLog,
       uploadTCPRevision,
-      linkNewLOC
+      linkNewLOC,
+      uploadStageAttachment,
     },
     permissions: {
       ...permissions,
@@ -69,6 +70,6 @@ export const usePlanCardContext = (
   }), [
     selectedPlan, isDirty, statusDate, handleClosePlanCard, deletePlan, updatePlanField, saveDraft, discardDraft, updateStage,
     handleDOTCommentsRec, setStatusDate, addLogEntry, revertLogEntry, deleteLogEntry, deleteDocument, clearLog, uploadTCPRevision,
-    linkNewLOC, permissions, auth.currentUser, auth.role, firestoreData.reportTemplate, isPermissionEditingMode
+    linkNewLOC, uploadStageAttachment, permissions, auth.currentUser, auth.role, firestoreData.reportTemplate, isPermissionEditingMode
   ]);
 };
