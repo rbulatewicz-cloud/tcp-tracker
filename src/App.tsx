@@ -352,7 +352,7 @@ function AppContent() {
     return 0;
   }), [filtered, sortConfig, td, PRIORITY_MAP, SORT_KEY_MAP]);
 
-  const metrics = useMemo(() => calcMetrics(filtered, LEADS, td, TODAY), [filtered, td]);
+  const metrics = useMemo(() => calcMetrics(filtered.filter(p => !p.isHistorical), LEADS, td, TODAY), [filtered, td]);
 
   const requestLocSort = useCallback((key: string) => {
     setLocSortConfig(prev => ({
