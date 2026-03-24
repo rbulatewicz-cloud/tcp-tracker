@@ -109,7 +109,13 @@ export const usePlanActions = ({
   };
 
   const deleteLogEntryHandler = async (pid: string, logEntryId: string) => {
-    await deleteLogEntry(pid, logEntryId);
+    const plan = plansById.get(pid) ?? selectedPlan;
+    if (!plan) return;
+    const updatedLog = (plan.log || []).filter((e: LogEntry) => e.uniqueId !== logEntryId);
+    await updateDoc(doc(db, 'plans', pid), { log: updatedLog });
+    if (selectedPlan?.id === pid) {
+      setSelectedPlan({ ...plan, log: updatedLog });
+    }
   };
 
   const deleteDocumentHandler = async (pid: string, docId: string, type: 'tcp' | 'loc', plan: Plan, isDraft: boolean = true) => {

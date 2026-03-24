@@ -73,7 +73,7 @@ const PlanCardComponent: React.FC = () => {
             </CollapsibleSection>
 
             <CollapsibleSection title="ActivityLog">
-              <ActivityLog setSelectedPlan={planManagement.setSelectedPlan} />
+              <ActivityLog />
             </CollapsibleSection>
           </div>
 
