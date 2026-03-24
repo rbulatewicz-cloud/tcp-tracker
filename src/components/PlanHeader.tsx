@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { usePlanCard } from './PlanCardContext';
 import { Plan } from '../types';
+import { showToast } from '../lib/toast';
 
 export const PlanHeader: React.FC = () => {
   const {
@@ -11,7 +12,11 @@ export const PlanHeader: React.FC = () => {
     UserRole,
     updatePlanField,
     handleExportPlanToPDF,
+    renewLoc,
   } = usePlanCard();
+
+  const [confirmRenew, setConfirmRenew] = useState(false);
+  const [renewing, setRenewing] = useState(false);
 
   const calculateDaysOpen = (plan: Plan) => {
     const requestDate = plan.dateRequested || plan.requestDate;
@@ -25,6 +30,20 @@ export const PlanHeader: React.FC = () => {
 
   const daysOpen = calculateDaysOpen(selectedPlan);
   const canDelete = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.MOT;
+  const canRenew = canDelete && ['plan_approved', 'approved', 'expired'].includes(selectedPlan.stage || '');
+
+  const handleRenew = async () => {
+    setRenewing(true);
+    try {
+      const newId = await renewLoc(selectedPlan.id);
+      if (newId) showToast(`Renewed — ${newId} created and opened.`, 'success');
+    } catch {
+      showToast('Failed to create renewal. Please try again.', 'error');
+    } finally {
+      setRenewing(false);
+      setConfirmRenew(false);
+    }
+  };
 
   return (
     <div className="pb-2 mb-2">
@@ -87,6 +106,14 @@ export const PlanHeader: React.FC = () => {
               Delete
             </button>
           )}
+          {canRenew && !confirmRenew && (
+            <button
+              onClick={() => setConfirmRenew(true)}
+              className="text-[11px] px-3 py-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-200 font-bold hover:bg-indigo-100"
+            >
+              Renew LOC
+            </button>
+          )}
           <button
             onClick={() => handleExportPlanToPDF(selectedPlan)}
             className="text-[11px] px-3 py-1 border border-slate-300 rounded-md bg-white text-slate-700 font-bold hover:bg-slate-50"
@@ -95,6 +122,32 @@ export const PlanHeader: React.FC = () => {
           </button>
         </div>
       </div>
+      {/* LOC Renewal confirm banner */}
+      {confirmRenew && (
+        <div className="mt-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2.5">
+          <div className="text-[11px] font-bold text-indigo-800 mb-1">
+            Create a renewal of {selectedPlan.loc || selectedPlan.id}?
+          </div>
+          <div className="text-[10px] text-indigo-600 mb-2">
+            A new record will open at <span className="font-mono font-bold">{(selectedPlan.parentLocId || selectedPlan.id)}.{((selectedPlan.id || '').split('.').length)}</span> — same location &amp; team, reset to Requested. The original record stays unchanged.
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleRenew}
+              disabled={renewing}
+              className="px-3 py-1 text-[11px] font-bold text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {renewing ? 'Creating…' : 'Yes, Renew'}
+            </button>
+            <button
+              onClick={() => setConfirmRenew(false)}
+              className="px-3 py-1 text-[11px] font-bold text-indigo-600 bg-white border border-indigo-200 rounded-md hover:bg-indigo-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

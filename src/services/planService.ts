@@ -195,6 +195,104 @@ export const uploadStageAttachment = async (
   }
 };
 
+export const renewLoc = async (
+  plan: Plan,
+  existingPlans: Plan[],
+  td: string,
+  getUserLabel: () => string,
+  setSelectedPlan: (plan: Plan | null) => void
+): Promise<string> => {
+  // Find root LOC id — if this plan is itself a renewal, walk to the parent
+  const rootId = plan.parentLocId || plan.id;
+
+  // Count how many renewals already exist for this root
+  const existingRenewals = existingPlans.filter(
+    p => p.parentLocId === rootId || (p.id !== rootId && p.id.startsWith(rootId + '.'))
+  );
+  const nextSuffix = `.${existingRenewals.length + 1}`;
+  const newId = `${rootId}${nextSuffix}`;
+
+  const today = td;
+  const newPlan: Plan = {
+    // Identity
+    id: newId,
+    loc: newId,
+    rev: 0,
+    revisionSuffix: nextSuffix,
+    parentLocId: rootId,
+    // Carry over key descriptive fields
+    type: plan.type,
+    scope: plan.scope,
+    segment: plan.segment,
+    street1: plan.street1,
+    street2: plan.street2 || '',
+    lead: plan.lead,
+    requestedBy: plan.requestedBy || '',
+    priority: plan.priority,
+    notes: plan.notes || '',
+    // Carry over direction & MOT fields
+    dir_nb: plan.dir_nb ?? false,
+    dir_sb: plan.dir_sb ?? false,
+    dir_directional: plan.dir_directional ?? false,
+    side_street: plan.side_street ?? false,
+    mot_peakHour: plan.mot_peakHour ?? null,
+    mot_extDuration: plan.mot_extDuration ?? null,
+    mot_noiseVariance: plan.mot_noiseVariance ?? null,
+    impact_driveway: plan.impact_driveway ?? false,
+    impact_fullClosure: plan.impact_fullClosure ?? false,
+    impact_busStop: plan.impact_busStop ?? false,
+    impact_transit: plan.impact_transit ?? false,
+    // Reset workflow fields
+    stage: 'requested',
+    needByDate: '',
+    dateRequested: today,
+    requestDate: today,
+    submitDate: null,
+    approvedDate: null,
+    isHistorical: false,
+    pendingDocuments: false,
+    isCriticalPath: false,
+    // Empty history
+    attachments: [],
+    approvedTCPs: [],
+    approvedLOCs: [],
+    stageAttachments: [],
+    reviewCycles: [],
+    implementationWindow: null,
+    log: [{
+      uniqueId: Date.now().toString(),
+      date: today,
+      action: `Renewed from ${plan.id}`,
+      user: getUserLabel(),
+    }],
+    statusHistory: [{
+      uniqueId: `renew_req_${Date.now()}`,
+      date: today,
+      action: 'Status → Requested',
+      user: getUserLabel(),
+    }],
+  };
+
+  // Write new plan
+  await setDoc(doc(db, 'plans', newId), newPlan);
+
+  // Log the renewal on the original plan
+  const updatedLog = [
+    ...(plan.log || []),
+    {
+      uniqueId: `renew_log_${Date.now()}`,
+      date: today,
+      action: `Renewed — new record created as ${newId}`,
+      user: getUserLabel(),
+    },
+  ];
+  await updateDoc(doc(db, 'plans', plan.id), { log: updatedLog });
+
+  // Open the new plan in the panel
+  setSelectedPlan(newPlan);
+  return newId;
+};
+
 export const deletePlan = async (
   pid: string,
   setSelectedPlan: (plan: Plan | null) => void

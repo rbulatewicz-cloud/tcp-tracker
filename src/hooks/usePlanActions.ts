@@ -1,4 +1,4 @@
-import { updatePlanStage, handleClearPlans, uploadTCPRevision, linkNewLOC, deleteDocument, updatePlanField as updatePlanFieldService, updatePlanFields as updatePlanFieldsService, deletePlan as deletePlanService, uploadStageAttachment as uploadStageAttachmentService } from '../services/planService';
+import { updatePlanStage, handleClearPlans, uploadTCPRevision, linkNewLOC, deleteDocument, updatePlanField as updatePlanFieldService, updatePlanFields as updatePlanFieldsService, deletePlan as deletePlanService, uploadStageAttachment as uploadStageAttachmentService, renewLoc as renewLocService } from '../services/planService';
 import { addLogEntry, revertLogEntry, deleteLogEntry, clearLog, handleClearLog } from '../services/logService';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -232,6 +232,12 @@ export const usePlanActions = ({
     await deletePlanService(pid, setSelectedPlan);
   };
 
+  const renewLoc = async (pid: string): Promise<string | null> => {
+    const plan = plansById.get(pid) ?? selectedPlan;
+    if (!plan) return null;
+    return renewLocService(plan, plans, td, getUserLabel, setSelectedPlan);
+  };
+
   const uploadStageAttachmentHandler = async (
     pid: string,
     file: File,
@@ -264,5 +270,6 @@ export const usePlanActions = ({
     saveDraft,
     updateLogEntry,
     uploadStageAttachment: uploadStageAttachmentHandler,
+    renewLoc,
   };
 };
