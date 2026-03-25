@@ -25,6 +25,11 @@ export const initializeUser = async (user: any, email: string, role: UserRole) =
     if (userPublicSnap.exists()) {
       // Update uid and name if needed
       await setDoc(userPublicRef, { uid: user.uid, name: user.displayName || userPublicSnap.data().name, email: email }, { merge: true });
+      // Ensure users_private exists — it may be missing for legacy/imported users
+      const userPrivateSnap = await getDoc(userPrivateRef);
+      if (!userPrivateSnap.exists()) {
+        await setDoc(userPrivateRef, { uid: user.uid, role });
+      }
     } else {
       await setDoc(userPublicRef, {
         uid: user.uid,

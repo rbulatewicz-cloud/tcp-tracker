@@ -60,6 +60,9 @@ export function useAuth() {
             if (isBootstrapAdmin) liveRole = UserRole.ADMIN;
             setCurrentUser(prev => prev ? { ...prev, role: liveRole } : prev);
             setIsRealAdmin(liveRole === UserRole.ADMIN);
+          },
+          (error) => {
+            console.error(`[Auth] role listener error for ${userEmail}:`, error);
           }
         );
       } else {

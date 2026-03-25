@@ -1,12 +1,9 @@
 import React from 'react';
-import { UserRole, User } from '../types';
 
 interface GlobalActivityLogViewProps {
   canViewLogs: boolean;
-  currentUser: User | null;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  setClearLogConfirm: React.Dispatch<React.SetStateAction<{ isOpen: boolean; type: 'global' | 'plan'; planId?: string; }>>;
   logCols: any[];
   plans: any[];
   setSelectedPlan: (plan: any) => void;
@@ -16,10 +13,8 @@ interface GlobalActivityLogViewProps {
 
 export function GlobalActivityLogView({
   canViewLogs,
-  currentUser,
   searchQuery,
   setSearchQuery,
-  setClearLogConfirm,
   logCols,
   plans,
   setSelectedPlan,
@@ -62,14 +57,6 @@ export function GlobalActivityLogView({
               </button>
             ))}
           </div>
-          {(currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN) && (
-            <button 
-              onClick={() => setClearLogConfirm({isOpen: true, type: 'global'})}
-              style={{background:"#FEF2F2", color:"#EF4444", border:"1px solid #FECACA", padding:"6px 12px", borderRadius:6, fontSize:11, fontWeight:700, cursor:"pointer"}}
-            >
-              Clear All Logs
-            </button>
-          )}
         </div>
       </div>
       <div style={{maxHeight:"70vh", overflow:"auto"}}>
