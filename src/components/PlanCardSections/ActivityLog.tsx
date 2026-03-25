@@ -56,7 +56,7 @@ export const ActivityLog: React.FC = React.memo(() => {
                 <div className="text-slate-800">{entry.action}</div>
               </div>
               <div className="flex flex-col items-end gap-1">
-                {canRevert && (
+                {canRevert && canEditPlan && (
                   <button
                     onClick={() => revertLogEntry(plan.id, entry.uniqueId)}
                     className="text-[10px] text-amber-600 hover:text-amber-800 font-bold"

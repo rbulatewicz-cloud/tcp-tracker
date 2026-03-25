@@ -150,7 +150,7 @@ function AppContent() {
   const [newTodoText, setNewTodoText] = useState("");
   const [appRequestTab, setAppRequestTab] = useState<"pending" | "completed">("pending");
 
-  const { plans, setPlans, locs, setLocs, users, setUsers, appRequests, setAppRequests, appTodos, setAppTodos, reportTemplate, setReportTemplate } = firestoreData;
+  const { plans, setPlans, locs, setLocs, users, setUsers, appRequests, setAppRequests, appTodos, setAppTodos, reportTemplate, setReportTemplate, appConfig, setAppConfig } = firestoreData;
   const { fieldPermissions, setFieldPermissions, toggleSectionPermission } = permissions;
 
   const getUserLabel = () => {
@@ -197,6 +197,7 @@ function AppContent() {
 
   const {
     showImportWizard,
+    setShowImportWizard,
     wizardStep,
     setWizardStep,
     handleMasterUpload,
@@ -584,6 +585,10 @@ function AppContent() {
     }
   }, [role, view, canManageApp]);
 
+  useEffect(() => {
+    document.title = appConfig.pageTitle || appConfig.appName || 'TCP Tracker';
+  }, [appConfig.pageTitle, appConfig.appName]);
+
   if(!loaded) return <div style={{fontFamily:font,padding:60,textAlign:"center",color:"#94A3B8"}}>Loading...</div>;
 
 
@@ -630,6 +635,7 @@ function AppContent() {
         setShowForm={setShowForm}
         setShowAppRequestModal={setShowAppRequestModal}
         setShowAppRequestSidebar={setShowAppRequestSidebar}
+        appConfig={appConfig}
       />
 
       {/* SUMMARY STATS BAR */}
@@ -639,10 +645,11 @@ function AppContent() {
           hoveredMetricIndex={hoveredMetricIndex}
           setHoveredMetricIndex={setHoveredMetricIndex}
           currentUser={currentUser}
-          reportTemplate={reportTemplate}
           plans={plans}
           td={td}
           TODAY={TODAY}
+          filter={filter}
+          setFilter={setFilter}
         />
       )}
 
@@ -651,13 +658,12 @@ function AppContent() {
         {/* REPORT SETTINGS VIEW */}
         {view === "settings" && currentUser?.role === UserRole.ADMIN && (
           <SettingsView
-            reportTemplate={reportTemplate}
-            setReportTemplate={setReportTemplate}
+            appConfig={appConfig}
+            setAppConfig={setAppConfig}
             role={role}
             setClearPlansConfirm={setClearPlansConfirm}
-            setView={setView}
-            inp={inp}
-            lbl={lbl}
+            onOpenImport={() => setShowImportWizard(true)}
+            onExportCSV={exportToCSV}
           />
         )}
 

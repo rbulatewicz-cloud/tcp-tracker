@@ -26,7 +26,7 @@ const DOC_TYPES: { value: StageAttachment['documentType']; label: string; primar
 export const Documents: React.FC = React.memo(() => {
   const { selectedPlan } = usePlanData();
   const { uploadTCPRevision, linkNewLOC, deleteDocument, uploadStageAttachment } = usePlanActions();
-  const { currentUser, UserRole } = usePlanPermissions();
+  const { currentUser, UserRole, canEditPlan } = usePlanPermissions();
   const canDelete = currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN;
   const canUpload = currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN;
   const tcpInputRef = useRef<HTMLInputElement>(null);
@@ -146,7 +146,7 @@ export const Documents: React.FC = React.memo(() => {
       {/* Draft Plans — attachments from the original request */}
       {selectedPlan.attachments && selectedPlan.attachments.length > 0 && (
         <div>
-          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Draft Plans</div>
+          <div className="text-xs font-extrabold text-slate-800 uppercase tracking-wide mb-2 pb-1.5 border-b border-slate-200">Draft Plans</div>
           <div className="flex flex-col gap-1">
             {selectedPlan.attachments.map((att, i) => (
               <div key={i} className="text-xs text-slate-700 flex items-center gap-2">
@@ -164,9 +164,9 @@ export const Documents: React.FC = React.memo(() => {
       )}
 
       {/* Stage Attachments — documents attached at each workflow step */}
-      <div>
+      <div className="pt-3 mt-1 border-t border-slate-100">
         <div className="flex items-center justify-between mb-2">
-          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Submission Documents</div>
+          <div className="text-xs font-extrabold text-slate-800 uppercase tracking-wide pb-1.5 border-b border-slate-200">Submission Documents</div>
           {canUpload && (
             <button
               onClick={() => { setShowAddDoc(v => !v); setAddDocStage(selectedPlan.stage || 'requested'); }}
@@ -288,16 +288,18 @@ export const Documents: React.FC = React.memo(() => {
       </div>
 
       {/* Approved documents & revisions */}
-      <div>
-        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Approved Documents & Revisions</div>
+      <div className="pt-3 mt-1 border-t border-slate-100">
+        <div className="text-xs font-extrabold text-slate-800 uppercase tracking-wide mb-3 pb-1.5 border-b border-slate-200">Approved Documents & Revisions</div>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
             <div className="flex justify-between items-center">
               <span className="font-bold text-slate-800 text-xs">Approved TCPs</span>
               <input type="file" ref={tcpInputRef} onChange={handleTCPUpload} className="hidden" />
-              <button onClick={() => tcpInputRef.current?.click()} className="text-teal-600 text-[10px] font-bold hover:underline">
-                Upload Revision
-              </button>
+              {canEditPlan && (
+                <button onClick={() => tcpInputRef.current?.click()} className="text-teal-600 text-[10px] font-bold hover:underline">
+                  Upload Revision
+                </button>
+              )}
             </div>
             {renderDocHistory(selectedPlan.approvedTCPs || [], 'tcp')}
           </div>
@@ -306,9 +308,11 @@ export const Documents: React.FC = React.memo(() => {
             <div className="flex justify-between items-center">
               <span className="font-bold text-slate-800 text-xs">Approved LOCs</span>
               <input type="file" ref={locInputRef} onChange={handleLOCLink} className="hidden" />
-              <button onClick={() => locInputRef.current?.click()} className="text-teal-600 text-[10px] font-bold hover:underline">
-                + Link New LOC
-              </button>
+              {canEditPlan && (
+                <button onClick={() => locInputRef.current?.click()} className="text-teal-600 text-[10px] font-bold hover:underline">
+                  + Link New LOC
+                </button>
+              )}
             </div>
             {renderDocHistory(selectedPlan.approvedLOCs || [], 'loc')}
           </div>

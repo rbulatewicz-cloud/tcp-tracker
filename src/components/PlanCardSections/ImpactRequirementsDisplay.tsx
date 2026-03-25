@@ -1,11 +1,12 @@
 import React from 'react';
 import { MOT_FIELDS, IMPACT_FIELDS } from '../../constants';
-import { usePlanData, usePlanActions } from '../PlanCardContext';
+import { usePlanData, usePlanActions, usePlanPermissions } from '../PlanCardContext';
 import { Plan } from '../../types';
 
 export const ImpactRequirementsDisplay: React.FC = React.memo(() => {
   const { selectedPlan } = usePlanData();
   const { updatePlanField } = usePlanActions();
+  const { canEditPlan } = usePlanPermissions();
 
   return (
     <div className="mt-5">
@@ -17,15 +18,17 @@ export const ImpactRequirementsDisplay: React.FC = React.memo(() => {
           <div key={field.key} className="flex items-center justify-between py-2 border-b border-slate-200 last:border-0 text-xs">
             <span className="text-slate-700">{field.label}</span>
             <div className="flex bg-white rounded-md border border-slate-200 overflow-hidden">
-              <button 
-                onClick={() => updatePlanField(selectedPlan.id, field.key, true)}
-                className={`px-3 py-1 text-[10px] font-bold border-r border-slate-200 ${selectedPlan[field.key as keyof Plan] === true ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+              <button
+                onClick={() => canEditPlan && updatePlanField(selectedPlan.id, field.key, true)}
+                disabled={!canEditPlan}
+                className={`px-3 py-1 text-[10px] font-bold border-r border-slate-200 ${selectedPlan[field.key as keyof Plan] === true ? 'bg-slate-900 text-white' : 'text-slate-500'} ${canEditPlan ? 'hover:bg-slate-50' : 'cursor-not-allowed opacity-60'}`}
               >
                 Yes
               </button>
-              <button 
-                onClick={() => updatePlanField(selectedPlan.id, field.key, false)}
-                className={`px-3 py-1 text-[10px] font-bold ${selectedPlan[field.key as keyof Plan] === false ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+              <button
+                onClick={() => canEditPlan && updatePlanField(selectedPlan.id, field.key, false)}
+                disabled={!canEditPlan}
+                className={`px-3 py-1 text-[10px] font-bold ${selectedPlan[field.key as keyof Plan] === false ? 'bg-slate-900 text-white' : 'text-slate-500'} ${canEditPlan ? 'hover:bg-slate-50' : 'cursor-not-allowed opacity-60'}`}
               >
                 No
               </button>
@@ -37,12 +40,13 @@ export const ImpactRequirementsDisplay: React.FC = React.memo(() => {
       {/* Checkboxes */}
       <div className="grid grid-cols-2 gap-2">
         {IMPACT_FIELDS.map((field) => (
-          <label key={field.key} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-            <input 
+          <label key={field.key} className={`flex items-center gap-2 text-xs text-slate-700 ${canEditPlan ? 'cursor-pointer' : 'cursor-default opacity-60'}`}>
+            <input
               type="checkbox"
               checked={!!selectedPlan[field.key as keyof Plan]}
-              onChange={(e) => updatePlanField(selectedPlan.id, field.key, e.target.checked)}
-              className="rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+              onChange={(e) => canEditPlan && updatePlanField(selectedPlan.id, field.key, e.target.checked)}
+              disabled={!canEditPlan}
+              className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 disabled:cursor-not-allowed"
             />
             {field.label}
           </label>

@@ -75,6 +75,7 @@ function TableView({
   setSelectedPlan,
 }: TableViewProps) {
   const [statusDateModal, setStatusDateModal] = React.useState<{ status: string; date: string } | null>(null);
+  const [showLegend, setShowLegend] = React.useState(false);
 
   // Normalize plan stage for display — handle legacy keys
   const getStage = (stageKey: string) =>
@@ -98,24 +99,6 @@ function TableView({
         </div>
       )}
 
-      {/* Stage summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${CARD_STAGES.length}, 1fr)`, gap: 8, marginBottom: 16 }}>
-        {CARD_STAGES.map(s => {
-          // Count plans matching this stage (including legacy aliases)
-          const count = plans.filter(p => {
-            const norm = p.stage === 'submitted' ? 'submitted_to_dot' : p.stage === 'approved' ? 'plan_approved' : p.stage;
-            return norm === s.key;
-          }).length;
-          const active = filter.stage === s.key;
-          return (
-            <div key={s.key} onClick={() => setFilter(f => ({ ...f, stage: active ? 'all' : s.key }))} style={{ background: '#fff', border: `1.5px solid ${active ? s.color : '#E2E8F0'}`, borderRadius: 10, padding: '12px 10px', cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s', boxShadow: active ? `0 0 0 3px ${s.color}22` : 'none' }}>
-              <div style={{ fontSize: 24, fontWeight: 800, color: s.color, fontFamily: monoFont, lineHeight: 1 }}>{count}</div>
-              <div style={{ fontSize: 9, fontWeight: 600, color: '#94A3B8', letterSpacing: 0.3, marginTop: 4, textTransform: 'uppercase' }}>{s.label}</div>
-            </div>
-          );
-        })}
-      </div>
-
       {/* Filters */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         <select value={filter.stage} onChange={e => setFilter(pr => ({ ...pr, stage: e.target.value }))} style={{ ...inp, width: 'auto', padding: '7px 12px', fontSize: 11, cursor: 'pointer', background: '#fff' }}>
@@ -130,7 +113,7 @@ function TableView({
           { key: 'priority', options: PRIORITIES, label: 'Priority' },
         ] as { key: keyof FilterState; options: string[]; label: string }[]).map(f => (
           <select key={f.key} value={filter[f.key] || 'all'} onChange={e => setFilter(pr => ({ ...pr, [f.key]: e.target.value }))} style={{ ...inp, width: 'auto', padding: '7px 12px', fontSize: 11, cursor: 'pointer', background: '#fff' }}>
-            <option value="all">All {f.label}s</option>
+            <option value="all">All {f.label === 'Priority' ? 'Priorities' : f.label + 's'}</option>
             {f.options.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         ))}
@@ -145,6 +128,14 @@ function TableView({
             {loading.export ? 'Exporting...' : 'Export CSV'}
           </button>
         )}
+        <button
+          onClick={() => setShowLegend(p => !p)}
+          title="Toggle legend"
+          style={{ background: showLegend ? '#F1F5F9' : 'transparent', border: '1px solid #E2E8F0', borderRadius: 6, padding: '7px 10px', fontSize: 11, cursor: 'pointer', color: '#64748B', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          ⓘ Legend
+        </button>
+
         <div style={{ flex: 1 }} />
 
         {canEditPlan && selectedPlanIds.length > 0 && (
@@ -170,36 +161,36 @@ function TableView({
         <div style={{ fontSize: 11, color: '#94A3B8', alignSelf: 'center' }}>{filtered.length} of {plans.length}</div>
       </div>
 
-      {/* Legend */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 12, padding: '10px 16px', background: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', fontSize: 11 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontWeight: 700, color: '#475569', marginRight: 4 }}>Row:</span>
-          <div style={{ width: 12, height: 12, borderRadius: 3, background: '#FFFBEB', border: '1px solid #FDE68A' }} />
-          <span style={{ color: '#64748B' }}>At Risk (Due ≤ 14d)</span>
+      {/* Legend popover */}
+      {showLegend && (
+        <div style={{ marginBottom: 10, padding: '12px 16px', background: '#fff', borderRadius: 10, border: '1px solid #E2E8F0', fontSize: 11, display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ width: 12, height: 12, borderRadius: 3, background: '#FFFBEB', border: '1px solid #FDE68A' }} />
+            <span style={{ color: '#64748B' }}>Row highlight = At Risk (due ≤ 14d)</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 700, color: '#475569' }}>Priority:</span>
+            <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700, background: '#FEE2E2', color: '#DC2626' }}>CRITICAL</span>
+            <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700, background: '#FEF3C7', color: '#D97706' }}>HIGH</span>
+            <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700, background: '#DBEAFE', color: '#2563EB' }}>MEDIUM</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 700, color: '#475569' }}>Wait:</span>
+            <span style={{ color: '#10B981', fontWeight: 700 }}>✓ Approved</span>
+            <span style={{ color: '#DC2626', fontWeight: 700 }}>&gt;20d</span>
+            <span style={{ color: '#D97706', fontWeight: 700 }}>&gt;10d</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 700, color: '#475569' }}>Due:</span>
+            <span style={{ color: '#DC2626', fontWeight: 700 }}>Overdue</span>
+            <span style={{ color: '#D97706', fontWeight: 700 }}>≤ 7d</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: '#6366F1' }}>📋 Historical</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: '#D97706' }}>⚠ Pending Docs</span>
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontWeight: 700, color: '#475569', marginRight: 4 }}>Priority:</span>
-          <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700, background: '#FEE2E2', color: '#DC2626' }}>CRITICAL</span>
-          <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700, background: '#FEF3C7', color: '#D97706' }}>HIGH</span>
-          <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700, background: '#DBEAFE', color: '#2563EB' }}>MEDIUM</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontWeight: 700, color: '#475569', marginRight: 4 }}>Wait Time:</span>
-          <span style={{ color: '#10B981', fontWeight: 700 }}>✓ Approved</span>
-          <span style={{ color: '#DC2626', fontWeight: 700 }}>&gt; 20d</span>
-          <span style={{ color: '#D97706', fontWeight: 700 }}>&gt; 10d</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontWeight: 700, color: '#475569', marginRight: 4 }}>Due Date:</span>
-          <span style={{ color: '#DC2626', fontWeight: 700 }}>Overdue</span>
-          <span style={{ color: '#D97706', fontWeight: 700 }}>≤ 7d</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontWeight: 700, color: '#475569', marginRight: 4 }}>Flags:</span>
-          <span style={{ fontSize: 9, fontWeight: 700, color: '#6366F1' }}>📋 Historical</span>
-          <span style={{ fontSize: 9, fontWeight: 700, color: '#D97706' }}>⚠ Pending Docs</span>
-        </div>
-      </div>
+      )}
 
       {/* Table */}
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', overflow: 'hidden' }}>

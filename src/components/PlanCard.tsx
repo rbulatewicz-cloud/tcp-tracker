@@ -3,7 +3,6 @@ import { PlanHeader } from './PlanHeader';
 import { StatusSection } from './PlanCardSections/StatusSection';
 import { ProgressionHistory } from './PlanCardSections/ProgressionHistory';
 import { FieldsGrid } from './PlanCardSections/FieldsGrid';
-import { KeyDatesDisplay } from './PlanCardSections/KeyDatesDisplay';
 import { ImpactRequirementsDisplay } from './PlanCardSections/ImpactRequirementsDisplay';
 import { PlanNotes } from './PlanCardSections/PlanNotes';
 import { Documents } from './PlanCardSections/Documents';
@@ -45,10 +44,6 @@ const PlanCardComponent: React.FC = () => {
             
             <CollapsibleSection title="Plan Details">
               <FieldsGrid />
-            </CollapsibleSection>
-
-            <CollapsibleSection title="Key Dates">
-              <KeyDatesDisplay />
             </CollapsibleSection>
 
             <CollapsibleSection title="Impacts & Requirements">

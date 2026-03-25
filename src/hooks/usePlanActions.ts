@@ -105,7 +105,8 @@ export const usePlanActions = ({
   };
 
   const revertLogEntryHandler = async (pid: string, logEntryId: string) => {
-    await revertLogEntry(pid, logEntryId, getUserLabel, td);
+    const plan = plansById.get(pid) ?? selectedPlan;
+    await revertLogEntry(pid, logEntryId, getUserLabel, td, plan?.log);
   };
 
   const deleteLogEntryHandler = async (pid: string, logEntryIndex: string) => {

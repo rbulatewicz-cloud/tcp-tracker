@@ -66,3 +66,11 @@ export const subscribeToReportTemplate = (callback: (data: any) => void) => {
     }
   }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/reportTemplate'));
 };
+
+export const subscribeToAppConfig = (callback: (data: any) => void) => {
+  return onSnapshot(doc(db, 'settings', 'appConfig'), (docSnap) => {
+    if (docSnap.exists()) {
+      callback(docSnap.data());
+    }
+  }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/appConfig'));
+};

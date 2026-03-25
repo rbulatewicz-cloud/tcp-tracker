@@ -51,29 +51,32 @@ export const revertLogEntry = async (
   pid: string,
   logEntryUniqueId: string,
   getUserLabel: () => string,
-  td: string
+  td: string,
+  planLog?: any[]
 ) => {
   try {
-    const logSnapshot = await getDocs(query(collection(db, 'plans', pid, 'logs')));
-    const logDoc = logSnapshot.docs.find(d => d.data().uniqueId === logEntryUniqueId);
-    const logEntry = logDoc?.data();
-    
+    const logEntry = planLog?.find((e: any) => e.uniqueId === logEntryUniqueId);
+
     if (!logEntry || !logEntry.field) {
       throw new Error("Log entry cannot be reverted.");
     }
 
-    await updateDoc(doc(db, 'plans', pid), {
-      [logEntry.field]: logEntry.previousValue
-    });
+    const newLog = [
+      ...(planLog || []),
+      {
+        uniqueId: Date.now().toString(),
+        date: td,
+        action: `Reverted ${logEntry.field} from "${logEntry.newValue}" to "${logEntry.previousValue}"`,
+        user: getUserLabel(),
+        field: logEntry.field,
+        previousValue: logEntry.newValue,
+        newValue: logEntry.previousValue,
+      }
+    ];
 
-    await addDoc(collection(db, 'plans', pid, 'logs'), {
-      uniqueId: Date.now().toString(),
-      date: td,
-      action: `Reverted ${logEntry.field} from ${logEntry.newValue} to ${logEntry.previousValue}`,
-      user: getUserLabel(),
-      field: logEntry.field,
-      previousValue: logEntry.newValue,
-      newValue: logEntry.previousValue
+    await updateDoc(doc(db, 'plans', pid), {
+      [logEntry.field]: logEntry.previousValue,
+      log: newLog,
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `plans/${pid}`);

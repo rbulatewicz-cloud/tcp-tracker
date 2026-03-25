@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { User, UserRole, ReportTemplate } from '../types';
+import { User, UserRole, ReportTemplate, AppConfig } from '../types';
 import { generateDefaultLogo } from '../utils/logo';
 import * as firestoreService from '../services/firestoreService';
-import { DEFAULT_REPORT_TEMPLATE } from '../constants';
+import { DEFAULT_REPORT_TEMPLATE, DEFAULT_APP_CONFIG } from '../constants';
 
 const DEFAULT_LOGO = generateDefaultLogo();
 
@@ -16,6 +16,7 @@ export function useFirestoreData(currentUser: User | null, role: UserRole, canMa
     ...DEFAULT_REPORT_TEMPLATE,
     logo: DEFAULT_LOGO
   });
+  const [appConfig, setAppConfig] = useState<AppConfig>({ ...DEFAULT_APP_CONFIG });
 
   useEffect(() => {
     let unsubUsers = () => {};
@@ -36,6 +37,7 @@ export function useFirestoreData(currentUser: User | null, role: UserRole, canMa
       }
 
       unsubSettings = firestoreService.subscribeToReportTemplate(setReportTemplate);
+      firestoreService.subscribeToAppConfig((data) => setAppConfig(prev => ({ ...DEFAULT_APP_CONFIG, ...prev, ...data })));
     }
 
     return () => {
@@ -54,6 +56,7 @@ export function useFirestoreData(currentUser: User | null, role: UserRole, canMa
     users, setUsers,
     appRequests, setAppRequests,
     appTodos, setAppTodos,
-    reportTemplate, setReportTemplate
+    reportTemplate, setReportTemplate,
+    appConfig, setAppConfig,
   };
 }

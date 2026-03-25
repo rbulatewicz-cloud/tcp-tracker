@@ -1,3 +1,14 @@
+export interface AppConfig {
+  logoUrl: string | null;
+  appName: string;
+  appSubtitle: string;
+  pageTitle: string;
+  primaryColor: string;
+  atRiskDays: number;
+  overdueDays: number;
+  clockTargets: Record<string, Record<string, { target: number; warning: number }>>;
+}
+
 export interface Stage {
   key: string;
   label: string;

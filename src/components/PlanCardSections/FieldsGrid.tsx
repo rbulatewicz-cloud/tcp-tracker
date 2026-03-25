@@ -107,12 +107,13 @@ export const FieldsGrid: React.FC = React.memo(() => {
       
       <div className="flex gap-4 mt-2 pt-4 border-t border-slate-100">
         {Object.entries(FIELD_REGISTRY).filter(([k, v]) => ['dir_nb', 'dir_sb', 'dir_directional', 'side_street'].includes(k) && canView(k)).map(([k, v]) => (
-          <label key={k} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-            <input 
+          <label key={k} className={`flex items-center gap-2 text-xs text-slate-700 ${canEditPlan ? 'cursor-pointer' : 'cursor-default opacity-60'}`}>
+            <input
               type="checkbox"
               checked={!!selectedPlan[k as keyof Plan]}
-              onChange={(e) => updatePlanField(selectedPlan.id, k, e.target.checked)}
-              className="rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+              onChange={(e) => canEditPlan && updatePlanField(selectedPlan.id, k, e.target.checked)}
+              disabled={!canEditPlan}
+              className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 disabled:cursor-not-allowed"
             />
             {v.label}
           </label>

@@ -97,6 +97,17 @@ export const CLOCK_TARGETS: Record<string, Record<string, { target: number; warn
   },
 };
 
+export const DEFAULT_APP_CONFIG = {
+  logoUrl: null as string | null,
+  appName: 'ESFV LRT — TCP Tracker',
+  appSubtitle: 'San Fernando Transit Constructors',
+  pageTitle: 'ESFV LRT — TCP Tracker',
+  primaryColor: '#F59E0B',
+  atRiskDays: 14,
+  overdueDays: 7,
+  clockTargets: CLOCK_TARGETS,
+};
+
 export const PLAN_TYPES = ["WATCH", "Standard", "Engineered"];
 export const SCOPES = ["Water", "Sewer", "Storm", "Telecom", "Systems", "UA2/3", "Tree Planting", "Other"];
 export const SEGMENTS = ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"];
