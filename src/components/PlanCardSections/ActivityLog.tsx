@@ -46,6 +46,10 @@ export const ActivityLog: React.FC = React.memo(() => {
         {[...plan.log].reverse().map((entry, index) => {
           const actualIndex = plan.log.length - 1 - index;
           const canRevert = entry.field && entry.previousValue !== undefined;
+          // Show paperclip if this is a status change that has attachments in that stage
+          const attachmentCount = entry.field === 'stage' && entry.newValue
+            ? (plan.stageAttachments || []).filter(a => a.stage === entry.newValue).length
+            : 0;
           return (
             <div key={index} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-md border border-slate-100 dark:border-slate-700 text-xs flex justify-between items-start">
               <div className="flex-1">
@@ -53,7 +57,14 @@ export const ActivityLog: React.FC = React.memo(() => {
                   <span>{entry.user}</span>
                   <span>{entry.date}</span>
                 </div>
-                <div className="text-slate-800 dark:text-slate-200">{entry.action}</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-800 dark:text-slate-200">{entry.action}</span>
+                  {attachmentCount > 0 && (
+                    <span title={`${attachmentCount} document${attachmentCount !== 1 ? 's' : ''} attached`} className="text-slate-400 text-[11px]">
+                      📎{attachmentCount > 1 ? <span className="text-[9px]">{attachmentCount}</span> : null}
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="flex flex-col items-end gap-1">
                 {canRevert && canEditPlan && (

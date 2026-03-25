@@ -1,4 +1,4 @@
-import { updatePlanStage, handleClearPlans, uploadTCPRevision, linkNewLOC, deleteDocument, updatePlanField as updatePlanFieldService, updatePlanFields as updatePlanFieldsService, deletePlan as deletePlanService, uploadStageAttachment as uploadStageAttachmentService, renewLoc as renewLocService } from '../services/planService';
+import { updatePlanStage, handleClearPlans, uploadTCPRevision, linkNewLOC, deleteDocument, updatePlanField as updatePlanFieldService, updatePlanFields as updatePlanFieldsService, deletePlan as deletePlanService, uploadStageAttachment as uploadStageAttachmentService, batchUploadStageAttachments as batchUploadStageAttachmentsService, renewLoc as renewLocService } from '../services/planService';
 import { addLogEntry, revertLogEntry, deleteLogEntry, clearLog, handleClearLog } from '../services/logService';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -258,6 +258,17 @@ export const usePlanActions = ({
     await uploadStageAttachmentService(pid, file, stage, documentType, isPrimary, plan, getUserLabel, td, setSelectedPlan, currentUser);
   };
 
+  const batchUploadStageAttachmentsHandler = async (
+    pid: string,
+    files: File[],
+    stage: string,
+    documentType: import('../types').StageAttachment['documentType']
+  ) => {
+    const plan = plansById.get(pid) ?? selectedPlan;
+    if (!plan) return;
+    await batchUploadStageAttachmentsService(pid, files, stage, documentType, plan, currentUser, setSelectedPlan);
+  };
+
   return {
     updateStage,
     handleDOTCommentsRec,
@@ -278,6 +289,7 @@ export const usePlanActions = ({
     saveDraft,
     updateLogEntry,
     uploadStageAttachment: uploadStageAttachmentHandler,
+    batchUploadStageAttachments: batchUploadStageAttachmentsHandler,
     renewLoc,
   };
 };

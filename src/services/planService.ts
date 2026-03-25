@@ -195,6 +195,43 @@ export const uploadStageAttachment = async (
   }
 };
 
+/** Upload multiple files for a single stage transition — single Firestore write, no extra log entries */
+export const batchUploadStageAttachments = async (
+  pid: string,
+  files: File[],
+  stage: string,
+  documentType: import('../types').StageAttachment['documentType'],
+  plan: Plan,
+  currentUser: User | null,
+  setSelectedPlan: (plan: Plan | null) => void
+): Promise<void> => {
+  try {
+    const uploads = await Promise.all(
+      files.map(async (file) => {
+        const fileRef = ref(storage, `plans/${pid}/stage_attachments/${stage}/${Date.now()}_${file.name}`);
+        await uploadBytes(fileRef, file);
+        const url = await getDownloadURL(fileRef);
+        return {
+          id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
+          name: file.name,
+          url,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: currentUser?.name || currentUser?.email || 'Unknown',
+          stage,
+          documentType,
+          isPrimary: false,
+        } as import('../types').StageAttachment;
+      })
+    );
+    const updatedAttachments = [...(plan.stageAttachments || []), ...uploads];
+    await updateDoc(doc(db, 'plans', pid), { stageAttachments: updatedAttachments });
+    setSelectedPlan({ ...plan, stageAttachments: updatedAttachments } as Plan);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `plans/${pid}`);
+    throw error;
+  }
+};
+
 export const renewLoc = async (
   plan: Plan,
   existingPlans: Plan[],

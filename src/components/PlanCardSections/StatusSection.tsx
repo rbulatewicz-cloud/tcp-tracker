@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { usePlanData, usePlanActions, usePlanPermissions, usePlanUtils } from '../PlanCardContext';
 import { PermissionToggle } from '../../permissions/PermissionToggle';
 import { showToast } from '../../lib/toast';
@@ -22,7 +22,7 @@ function getStatusColor(statusKey: string): string {
 
 export const StatusSection: React.FC = React.memo(() => {
   const { selectedPlan } = usePlanData();
-  const { updateStage } = usePlanActions();
+  const { updateStage, batchUploadStageAttachments } = usePlanActions();
   const { getLocalDateString } = usePlanUtils();
   const {
     canEditPlan,
@@ -40,6 +40,9 @@ export const StatusSection: React.FC = React.memo(() => {
   const [windowStart, setWindowStart] = useState('');
   const [windowEnd, setWindowEnd] = useState('');
   const [locRevision, setLocRevision] = useState('');
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const autoExpiredRef = useRef<string | null>(null);
 
   if (!selectedPlan) return null;
@@ -83,13 +86,29 @@ export const StatusSection: React.FC = React.memo(() => {
     setWindowStart('');
     setWindowEnd('');
     setLocRevision('');
+    setPendingFiles([]);
   };
+
+  const addFiles = useCallback((files: FileList | File[]) => {
+    const arr = Array.from(files).filter(f =>
+      /\.(pdf|jpg|jpeg|png|doc|docx)$/i.test(f.name)
+    );
+    setPendingFiles(prev => {
+      const existing = new Set(prev.map(f => f.name + f.size));
+      return [...prev, ...arr.filter(f => !existing.has(f.name + f.size))];
+    });
+  }, []);
 
   const handleConfirm = async () => {
     if (!pendingAction) return;
     // Validate mandatory implementation window dates
     if (pendingAction.collectWindow && (!windowStart || !windowEnd)) {
       showToast('Please enter both start and end dates for the implementation window.', 'warning');
+      return;
+    }
+    // Validate mandatory attachment
+    if (pendingAction.requiresAttachment && pendingFiles.length === 0) {
+      showToast(`Please attach the required documents before proceeding.`, 'warning');
       return;
     }
     setLoadingStage(pendingAction.nextStatus);
@@ -154,12 +173,23 @@ export const StatusSection: React.FC = React.memo(() => {
         newReviewCycles,
         implementationWindow ?? null
       );
+
+      // Upload attachments after status change (silent — no extra log entries)
+      if (pendingFiles.length > 0 && pendingAction.defaultDocType) {
+        await batchUploadStageAttachments(
+          selectedPlan.id,
+          pendingFiles,
+          pendingAction.nextStatus,
+          pendingAction.defaultDocType
+        );
+      }
     } catch (error) {
       console.error('Failed to update stage:', error);
       showToast('Failed to update status. Please try again.', 'error');
     } finally {
       setLoadingStage(null);
       setPendingAction(null);
+      setPendingFiles([]);
     }
   };
 
@@ -257,6 +287,57 @@ export const StatusSection: React.FC = React.memo(() => {
               </div>
             )}
 
+            {/* File attachments */}
+            {pendingAction.requiresAttachment && (
+              <div className="mb-4">
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                  {pendingAction.attachmentLabel || 'Attachments'}
+                  <span className="ml-1 text-red-500">*</span>
+                </label>
+
+                {/* Drop zone */}
+                <div
+                  onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={e => { e.preventDefault(); setIsDragOver(false); addFiles(e.dataTransfer.files); }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors mb-2
+                    ${isDragOver ? 'border-blue-400 bg-blue-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
+                >
+                  <div className="text-xs text-slate-400">
+                    Drop files here or <span className="text-blue-500 font-semibold">browse</span>
+                  </div>
+                  <div className="text-[10px] text-slate-300 mt-0.5">PDF, JPG, PNG, DOC accepted</div>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                  className="hidden"
+                  onChange={e => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }}
+                />
+
+                {/* File list */}
+                {pendingFiles.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    {pendingFiles.map((f, i) => (
+                      <div key={i} className="flex items-center gap-2 bg-slate-50 rounded-md px-2 py-1">
+                        <span className="text-[10px]">📄</span>
+                        <span className="text-xs text-slate-700 flex-1 truncate">{f.name}</span>
+                        <button
+                          onClick={e => { e.stopPropagation(); setPendingFiles(prev => prev.filter((_, idx) => idx !== i)); }}
+                          className="text-[10px] text-red-400 hover:text-red-600 font-bold shrink-0"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Implementation window */}
             {pendingAction.collectWindow && (
               <div className="mb-4 p-3 bg-emerald-50 rounded-lg border border-emerald-100">
@@ -308,7 +389,7 @@ export const StatusSection: React.FC = React.memo(() => {
                 disabled={!!loadingStage}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
               >
-                {loadingStage ? 'Saving…' : 'Confirm'}
+                {loadingStage ? 'Saving…' : pendingFiles.length > 0 ? `Confirm & Upload (${pendingFiles.length})` : 'Confirm'}
               </button>
             </div>
           </div>

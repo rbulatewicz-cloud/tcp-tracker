@@ -15,7 +15,7 @@ export const usePlanCardContext = (
   isPermissionEditingMode: boolean = false
 ): PlanCardContextType => {
   const { selectedPlan, isDirty, draftPlan } = planManagement;
-  const { handleClosePlanCard, updatePlanField, saveDraft, discardDraft, updateStage, handleDOTCommentsRec, addLogEntry, revertLogEntry, deleteLogEntry, deleteDocument, clearLog, uploadTCPRevision, linkNewLOC, deletePlan, uploadStageAttachment, renewLoc } = planActions;
+  const { handleClosePlanCard, updatePlanField, saveDraft, discardDraft, updateStage, handleDOTCommentsRec, addLogEntry, revertLogEntry, deleteLogEntry, deleteDocument, clearLog, uploadTCPRevision, linkNewLOC, deletePlan, uploadStageAttachment, batchUploadStageAttachments, renewLoc } = planActions;
 
   return React.useMemo(() => ({
     data: {
@@ -45,6 +45,7 @@ export const usePlanCardContext = (
       uploadTCPRevision,
       linkNewLOC,
       uploadStageAttachment,
+      batchUploadStageAttachments,
       renewLoc,
     },
     permissions: {
@@ -71,6 +72,6 @@ export const usePlanCardContext = (
   }), [
     selectedPlan, isDirty, statusDate, handleClosePlanCard, deletePlan, updatePlanField, saveDraft, discardDraft, updateStage,
     handleDOTCommentsRec, setStatusDate, addLogEntry, revertLogEntry, deleteLogEntry, deleteDocument, clearLog, uploadTCPRevision,
-    linkNewLOC, uploadStageAttachment, renewLoc, permissions, auth.currentUser, auth.role, firestoreData.reportTemplate, isPermissionEditingMode
+    linkNewLOC, uploadStageAttachment, batchUploadStageAttachments, renewLoc, permissions, auth.currentUser, auth.role, firestoreData.reportTemplate, isPermissionEditingMode
   ]);
 };

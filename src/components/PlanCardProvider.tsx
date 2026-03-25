@@ -30,6 +30,7 @@ export interface PlanActions {
   uploadTCPRevision: (pid: string, file: File) => void;
   linkNewLOC: (pid: string, file: File) => void;
   uploadStageAttachment: (pid: string, file: File, stage: string, documentType: import('../types').StageAttachment['documentType'], isPrimary: boolean) => Promise<void>;
+  batchUploadStageAttachments: (pid: string, files: File[], stage: string, documentType: import('../types').StageAttachment['documentType']) => Promise<void>;
   renewLoc: (pid: string) => Promise<string | null>;
 }
 

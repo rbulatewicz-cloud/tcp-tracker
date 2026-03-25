@@ -11,6 +11,7 @@ const DOC_TYPE_LABELS: Record<StageAttachment['documentType'], string> = {
   loc_signed:        'Signed LOC ★',
   dot_comments:      'DOT Comments',
   revision_package:  'Revision Package',
+  approval_letter:   'Approval Letter',
   other:             'Other',
 };
 
@@ -20,6 +21,7 @@ const DOC_TYPES: { value: StageAttachment['documentType']; label: string; primar
   { value: 'loc_signed',       label: 'Signed LOC ★', primaryEligible: true },
   { value: 'dot_comments',     label: 'DOT Comments' },
   { value: 'revision_package', label: 'Revision Package' },
+  { value: 'approval_letter',  label: 'Approval Letter' },
   { value: 'other',            label: 'Other' },
 ];
 
@@ -33,6 +35,7 @@ export const Documents: React.FC = React.memo(() => {
   const locInputRef = useRef<HTMLInputElement>(null);
   const stageFileRef = useRef<HTMLInputElement>(null);
   const [expanded, setExpanded] = useState<{ tcp: boolean; loc: boolean }>({ tcp: false, loc: false });
+  const [expandedStages, setExpandedStages] = useState<Record<string, boolean>>({});
   const [viewingDoc, setViewingDoc] = useState<{ url: string; name: string } | null>(null);
   const [showAddDoc, setShowAddDoc] = useState(false);
   const [addDocStage, setAddDocStage] = useState(selectedPlan.stage || 'requested');
@@ -253,34 +256,50 @@ export const Documents: React.FC = React.memo(() => {
         )}
 
         {stageKeys.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            {stageKeys.map(stageKey => (
-              <div key={stageKey}>
-                <div className="text-[10px] font-semibold text-slate-500 mb-1 flex items-center gap-1">
-                  <div
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ background: ALL_STAGES.find(s => s.key === stageKey)?.color ?? '#94A3B8' }}
-                  />
-                  {getStageLabelForKey(stageKey)}
-                </div>
-                <div className="flex flex-col gap-1 pl-3">
-                  {attachmentsByStage[stageKey].map(att => (
-                    <div key={att.id} className="flex items-center gap-2">
-                      {att.isPrimary && (
-                        <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1 rounded">PRIMARY</span>
-                      )}
-                      <span className="text-[10px] text-slate-500">{DOC_TYPE_LABELS[att.documentType]}</span>
-                      <button
-                        onClick={() => setViewingDoc({ url: att.url, name: att.name })}
-                        className="text-teal-600 hover:underline text-[11px] truncate max-w-[180px]"
-                      >
-                        {att.name}
-                      </button>
+          <div className="flex flex-col gap-1">
+            {stageKeys.map(stageKey => {
+              const isOpen = expandedStages[stageKey] ?? false;
+              const stageColor = ALL_STAGES.find(s => s.key === stageKey)?.color ?? '#94A3B8';
+              const count = attachmentsByStage[stageKey].length;
+              return (
+                <div key={stageKey} className="rounded-lg border border-slate-100 overflow-hidden">
+                  {/* Collapsible header */}
+                  <button
+                    onClick={() => setExpandedStages(prev => ({ ...prev, [stageKey]: !isOpen }))}
+                    className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ background: stageColor }} />
+                      <span className="text-[11px] font-semibold text-slate-700">{getStageLabelForKey(stageKey)}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">({count} file{count !== 1 ? 's' : ''})</span>
                     </div>
-                  ))}
+                    <span className="text-slate-400 text-xs">{isOpen ? '▲' : '▼'}</span>
+                  </button>
+
+                  {/* File list */}
+                  {isOpen && (
+                    <div className="flex flex-col divide-y divide-slate-100">
+                      {attachmentsByStage[stageKey].map(att => (
+                        <div key={att.id} className="flex items-center gap-2 px-3 py-2">
+                          <span className="text-[10px]">📄</span>
+                          {att.isPrimary && (
+                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1 rounded shrink-0">PRIMARY</span>
+                          )}
+                          <span className="text-[10px] text-slate-400 shrink-0">{DOC_TYPE_LABELS[att.documentType]}</span>
+                          <button
+                            onClick={() => setViewingDoc({ url: att.url, name: att.name })}
+                            className="text-teal-600 hover:underline text-[11px] truncate flex-1 text-left"
+                          >
+                            {att.name}
+                          </button>
+                          <span className="text-[9px] text-slate-300 shrink-0">{att.uploadedAt.slice(0, 10)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           !showAddDoc && <span className="text-[11px] italic text-slate-400">No submission documents yet.</span>

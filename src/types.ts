@@ -50,6 +50,7 @@ export interface StageAttachment {
     | 'loc_signed'
     | 'dot_comments'
     | 'revision_package'
+    | 'approval_letter'
     | 'other';
   isPrimary: boolean; // signed LOC = true
 }
