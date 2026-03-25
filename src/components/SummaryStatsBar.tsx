@@ -45,7 +45,7 @@ const SummaryStatsBarComponent: React.FC<SummaryStatsBarProps> = ({
   ) : null;
 
   return (
-    <div style={{ background: '#fff', borderBottom: '1px solid #E2E8F0', padding: '12px 28px 0' }}>
+    <div style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)', padding: '12px 28px 0' }}>
 
       {/* Pipeline */}
       <div style={{ display: 'flex', alignItems: 'stretch', marginBottom: 12 }}>
@@ -66,8 +66,8 @@ const SummaryStatsBarComponent: React.FC<SummaryStatsBarProps> = ({
                   cursor: 'pointer',
                   textAlign: 'center',
                   borderRadius: 10,
-                  border: `1.5px solid ${active ? s.color : '#E2E8F0'}`,
-                  background: active ? `${s.color}10` : '#FAFAFA',
+                  border: `1.5px solid ${active ? s.color : 'var(--border)'}`,
+                  background: active ? `${s.color}10` : 'var(--bg-surface-2)',
                   boxShadow: active ? `0 0 0 3px ${s.color}22` : 'none',
                   transition: 'all 0.15s',
                 }}
@@ -84,9 +84,9 @@ const SummaryStatsBarComponent: React.FC<SummaryStatsBarProps> = ({
       </div>
 
       {/* Metrics strip */}
-      <div style={{ display: 'flex', borderTop: '1px solid #F1F5F9', paddingTop: 8, paddingBottom: 10, gap: 0 }}>
+      <div style={{ display: 'flex', borderTop: '1px solid var(--border-subtle)', paddingTop: 8, paddingBottom: 10, gap: 0 }}>
         {metricStats.map((s, i) => (
-          <div key={i} style={{ flex: 1, textAlign: 'center', borderRight: i < metricStats.length - 1 ? '1px solid #F1F5F9' : 'none', padding: '2px 0' }}>
+          <div key={i} style={{ flex: 1, textAlign: 'center', borderRight: i < metricStats.length - 1 ? '1px solid var(--border-subtle)' : 'none', padding: '2px 0' }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: s.color, fontFamily: monoFont, lineHeight: 1 }}>
               {typeof s.value === 'number' && isNaN(s.value as number) ? 0 : s.value}
             </div>
@@ -96,7 +96,7 @@ const SummaryStatsBarComponent: React.FC<SummaryStatsBarProps> = ({
           </div>
         ))}
         {canSeeMetrics && turnaroundEl && (
-          <div style={{ flex: 1.5, borderLeft: '1px solid #F1F5F9', padding: '2px 12px' }}>
+          <div style={{ flex: 1.5, borderLeft: '1px solid var(--border-subtle)', padding: '2px 12px' }}>
             {turnaroundEl}
             <div style={{ fontSize: 9, fontWeight: 600, color: '#94A3B8', letterSpacing: 0.4, marginTop: 3, textTransform: 'uppercase', display: 'flex', alignItems: 'center' }}>
               Avg Turnaround<InfoTooltip formula="Avg days from DOT submission to approval." />
@@ -104,7 +104,7 @@ const SummaryStatsBarComponent: React.FC<SummaryStatsBarProps> = ({
           </div>
         )}
         {canSeeMetrics && overallEl && (
-          <div style={{ flex: 1.5, borderLeft: '1px solid #F1F5F9', padding: '2px 12px' }}>
+          <div style={{ flex: 1.5, borderLeft: '1px solid var(--border-subtle)', padding: '2px 12px' }}>
             {overallEl}
             <div style={{ fontSize: 9, fontWeight: 600, color: '#94A3B8', letterSpacing: 0.4, marginTop: 3, textTransform: 'uppercase', display: 'flex', alignItems: 'center' }}>
               Overall Avg<InfoTooltip formula="Avg days from request date to approval." />

@@ -42,7 +42,7 @@ const HeaderComponent: React.FC<HeaderProps> = ({
 }) => {
 
   return (
-    <div style={{background:"#fff",borderBottom:"1px solid #E2E8F0",padding:"10px 28px",position:"sticky",top:0,zIndex:50}}>
+    <div style={{background:"var(--bg-surface)",borderBottom:"1px solid var(--border)",padding:"10px 28px",position:"sticky",top:0,zIndex:50}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <div style={{display:"flex",alignItems:"center",gap:14}}>
           {appConfig?.logoUrl ? (
@@ -51,7 +51,7 @@ const HeaderComponent: React.FC<HeaderProps> = ({
             <div style={{width:36,height:36,background:`linear-gradient(135deg,${appConfig?.primaryColor || '#F59E0B'},${appConfig?.primaryColor || '#D97706'})`,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:800,color:"#fff"}}>T</div>
           )}
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:"#0F172A",letterSpacing:-0.3}}>{appConfig?.appName || 'ESFV LRT — TCP Tracker'}</div>
+            <div style={{fontSize:15,fontWeight:700,color:"var(--text-primary)",letterSpacing:-0.3}}>{appConfig?.appName || 'ESFV LRT — TCP Tracker'}</div>
             <div style={{fontSize:10,color:"#94A3B8",fontWeight:500,letterSpacing:0.5}}>{appConfig?.appSubtitle || 'San Fernando Transit Constructors'}</div>
           </div>
         </div>

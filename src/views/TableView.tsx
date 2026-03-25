@@ -42,6 +42,7 @@ interface TableViewProps {
   td: string;
   toggleSelectPlan: (id: string) => void;
   setSelectedPlan: (plan: Plan | null) => void;
+  isDark?: boolean;
 }
 
 function TableView({
@@ -73,6 +74,7 @@ function TableView({
   td,
   toggleSelectPlan,
   setSelectedPlan,
+  isDark,
 }: TableViewProps) {
   const [statusDateModal, setStatusDateModal] = React.useState<{ status: string; date: string } | null>(null);
   const [showLegend, setShowLegend] = React.useState(false);
@@ -85,7 +87,7 @@ function TableView({
     <>
       {statusDateModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
-          <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 300, padding: 24, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+          <div style={{ background: 'var(--bg-surface)', borderRadius: 12, width: '100%', maxWidth: 300, padding: 24, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
             <h3 style={{ fontSize: 16, fontWeight: 800, color: '#0F172A', margin: '0 0 16px 0' }}>Confirm Status Change</h3>
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: 4 }}>Select Date</div>
@@ -101,7 +103,7 @@ function TableView({
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select value={filter.stage} onChange={e => setFilter(pr => ({ ...pr, stage: e.target.value }))} style={{ ...inp, width: 'auto', padding: '7px 12px', fontSize: 11, cursor: 'pointer', background: '#fff' }}>
+        <select value={filter.stage} onChange={e => setFilter(pr => ({ ...pr, stage: e.target.value }))} style={{ ...inp, width: 'auto', padding: '7px 12px', fontSize: 11, cursor: 'pointer' }}>
           <option value="all">All Statuses</option>
           {ALL_STAGES.filter(s => !['submitted', 'approved'].includes(s.key)).map(s => (
             <option key={s.key} value={s.key}>{s.label}</option>
@@ -112,7 +114,7 @@ function TableView({
           { key: 'lead', options: LEADS, label: 'Lead' },
           { key: 'priority', options: PRIORITIES, label: 'Priority' },
         ] as { key: keyof FilterState; options: string[]; label: string }[]).map(f => (
-          <select key={f.key} value={filter[f.key] || 'all'} onChange={e => setFilter(pr => ({ ...pr, [f.key]: e.target.value }))} style={{ ...inp, width: 'auto', padding: '7px 12px', fontSize: 11, cursor: 'pointer', background: '#fff' }}>
+          <select key={f.key} value={filter[f.key] || 'all'} onChange={e => setFilter(pr => ({ ...pr, [f.key]: e.target.value }))} style={{ ...inp, width: 'auto', padding: '7px 12px', fontSize: 11, cursor: 'pointer' }}>
             <option value="all">All {f.label === 'Priority' ? 'Priorities' : f.label + 's'}</option>
             {f.options.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
@@ -121,7 +123,7 @@ function TableView({
           <button onClick={() => setFilter({ stage: 'all', type: 'all', lead: 'all', priority: 'all' })} style={{ background: 'transparent', color: '#F59E0B', border: '1px solid #FDE68A', borderRadius: 6, padding: '7px 12px', fontSize: 11, cursor: 'pointer', fontFamily: font, fontWeight: 600 }}>Clear</button>
         )}
         {canExport && (
-          <button onClick={exportToCSV} disabled={loading.export} style={{ background: '#fff', color: '#64748B', border: '1px solid #E2E8F0', padding: '7px 12px', borderRadius: 6, fontSize: 11, cursor: loading.export ? 'not-allowed' : 'pointer', fontFamily: font, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, opacity: loading.export ? 0.7 : 1 }}>
+          <button onClick={exportToCSV} disabled={loading.export} style={{ background: 'var(--bg-surface)', color: '#64748B', border: '1px solid var(--border)', padding: '7px 12px', borderRadius: 6, fontSize: 11, cursor: loading.export ? 'not-allowed' : 'pointer', fontFamily: font, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, opacity: loading.export ? 0.7 : 1 }}>
             {loading.export ? <Spinner size={12} /> : (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
             )}
@@ -163,7 +165,7 @@ function TableView({
 
       {/* Legend popover */}
       {showLegend && (
-        <div style={{ marginBottom: 10, padding: '12px 16px', background: '#fff', borderRadius: 10, border: '1px solid #E2E8F0', fontSize: 11, display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+        <div style={{ marginBottom: 10, padding: '12px 16px', background: 'var(--bg-surface)', borderRadius: 10, border: '1px solid var(--border)', fontSize: 11, display: 'flex', flexWrap: 'wrap', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <div style={{ width: 12, height: 12, borderRadius: 3, background: '#FFFBEB', border: '1px solid #FDE68A' }} />
             <span style={{ color: '#64748B' }}>Row highlight = At Risk (due ≤ 14d)</span>
@@ -193,10 +195,10 @@ function TableView({
       )}
 
       {/* Table */}
-      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', overflow: 'hidden' }}>
+      <div style={{ background: 'var(--bg-surface)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
-            <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
+            <tr style={{ background: 'var(--bg-surface-2)', borderBottom: '2px solid var(--border)' }}>
               {canEditPlan && (
                 <th style={{ padding: '10px 8px', width: 30, textAlign: 'center' }}>
                   <input type="checkbox" checked={selectedPlanIds.length === filtered.length && filtered.length > 0} onChange={toggleSelectAll} style={{ cursor: 'pointer' }} />
@@ -225,13 +227,15 @@ function TableView({
                   ? daysBetween(plan.submitDate, plan.approvedDate)
                   : null;
               const isSelected = selectedPlanIds.includes(plan.id);
-              const rowBg = isSelected ? '#F0F9FF' : isRisk ? '#FFFBEB' : idx % 2 === 0 ? '#fff' : '#FAFBFC';
+              const rowBg = isSelected ? (isDark ? '#1C3B5A' : '#F0F9FF')
+                : isRisk ? (isDark ? '#3D2B0A' : '#FFFBEB')
+                : idx % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-3)';
 
               return (
                 <tr
                   key={plan.id}
-                  style={{ borderBottom: '1px solid #F1F5F9', cursor: 'pointer', background: rowBg, transition: 'background 0.1s' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#F0F9FF')}
+                  style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', background: rowBg, transition: 'background 0.1s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = isDark ? '#1C3B5A' : '#F0F9FF')}
                   onMouseLeave={e => (e.currentTarget.style.background = rowBg)}
                 >
                   {canEditPlan && (

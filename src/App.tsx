@@ -83,7 +83,7 @@ const td = getLocalDateString();
 
 const DEFAULT_LOGO = generateDefaultLogo();
 
-const inp: React.CSSProperties = { background: "#F8FAFC", color: "#1E293B", border: "1px solid #CBD5E1", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontFamily: font, width: "100%", boxSizing: "border-box", outline: "none" };
+const inp: React.CSSProperties = { background: "var(--bg-surface-2)", color: "var(--text-secondary)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontFamily: font, width: "100%", boxSizing: "border-box", outline: "none" };
 const lbl: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 1, textTransform: "uppercase", marginBottom: 4, display: "block" };
 
 export default function App() {
@@ -597,7 +597,7 @@ function AppContent() {
 
   return (
     <>
-      <div style={{fontFamily:font,background:"#F1F5F9",color:"#1E293B",minHeight:"100vh"}}>
+      <div style={{fontFamily:font,background:"var(--bg-page)",color:"var(--text-secondary)",minHeight:"100vh"}}>
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 
       <datalist id="street-names">
@@ -993,6 +993,7 @@ function AppContent() {
             td={td}
             toggleSelectPlan={toggleSelectPlan}
             setSelectedPlan={setSelectedPlan}
+            isDark={isDark}
           />
         )}
 
