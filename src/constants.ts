@@ -148,7 +148,6 @@ export const IMPORT_TARGET_FIELDS = [
 
 export const DEFAULT_MAIN_COLUMNS = [
   { id: "loc", label: "LOC #" },          // Primary identifier — LOC number
-  { id: "rev", label: "Rev" },
   { id: "type", label: "Type" },
   { id: "scope", label: "Scope" },
   { id: "segment", label: "Seg" },

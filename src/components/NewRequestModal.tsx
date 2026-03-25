@@ -46,7 +46,6 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
 
   const getMissingItems = (): string[] => {
     const missing: string[] = [];
-    if (!form.loc) missing.push('LOC # is required — this is your primary record identifier');
     if (!form.street1) missing.push('Street 1 is required');
     if (!form.needByDate) missing.push('Need By Date is required');
     if (!atLeastOneDirChecked) missing.push('Select at least one direction (NB, SB, DIR, or Side Street)');

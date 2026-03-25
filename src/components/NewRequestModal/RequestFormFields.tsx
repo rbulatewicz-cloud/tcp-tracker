@@ -89,21 +89,31 @@ export const RequestFormFields: React.FC<RequestFormFieldsProps> = ({
     <div className="flex flex-col gap-3">
 
       {/* LOC # — primary identifier, always at top */}
-      <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
-        <div className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest mb-2">
-          LOC # — Primary Identifier <span className="text-red-500">*</span>
+      {currentUser?.role === UserRole.SFTC ? (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+          <div className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest mb-2">LOC # — Primary Identifier</div>
+          <div className="text-sm font-bold text-slate-400 font-mono p-2">Auto-assigned on submit</div>
+          <div className="text-[10px] text-indigo-400 mt-1">
+            Your LOC number will be automatically assigned when you submit this request.
+          </div>
         </div>
-        <input
-          type="text"
-          value={form.loc || ""}
-          onChange={e => update('loc', e.target.value)}
-          placeholder="e.g. LOC-366"
-          className="text-sm font-bold text-slate-900 bg-white border border-indigo-200 rounded-md p-2 w-full focus:outline-none focus:border-indigo-400 font-mono"
-        />
-        <div className="text-[10px] text-indigo-400 mt-1">
-          This is your team-assigned LOC number. It becomes the record's permanent identifier.
+      ) : (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+          <div className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest mb-2">
+            LOC # — Primary Identifier
+          </div>
+          <input
+            type="text"
+            value={form.loc || ""}
+            onChange={e => update('loc', e.target.value)}
+            placeholder="e.g. LOC-366"
+            className="text-sm font-bold text-slate-900 bg-white border border-indigo-200 rounded-md p-2 w-full focus:outline-none focus:border-indigo-400 font-mono"
+          />
+          <div className="text-[10px] text-indigo-400 mt-1">
+            Pre-filled with the next available number. Edit only if a specific LOC is required.
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Requested By — auto-filled from current user, editable */}
       <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">

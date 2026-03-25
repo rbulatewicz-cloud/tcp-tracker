@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { submitPlan } from '../services/planService';
+import { submitPlan, getNextLocNumber, peekNextLocNumber } from '../services/planService';
 import { showToast } from '../lib/toast';
-import { Plan, PlanForm, LoadingState, User } from '../types';
+import { Plan, PlanForm, LoadingState, User, UserRole } from '../types';
 
 const EMPTY_FORM: PlanForm = {
   id: "",
@@ -57,18 +57,32 @@ export const usePlanForm = (
     }
   }, [currentUser?.name]);
 
-  const handleSubmit = async (motAllAnswered: boolean) => {
-    if (!form.loc) {
-      showToast("LOC # is required.", "warning");
-      return;
+  // Pre-fill LOC for ADMIN/MOT with a non-reserving peek at the next number
+  useEffect(() => {
+    const role = currentUser?.role;
+    if (role === UserRole.ADMIN || role === UserRole.MOT) {
+      peekNextLocNumber().then(loc => {
+        setForm(prev => ({ ...prev, loc: prev.loc || loc }));
+      }).catch(() => {});
     }
+  }, [currentUser?.role]);
+
+  const handleSubmit = async (motAllAnswered: boolean) => {
     if (!form.street1 || !form.needByDate || !motAllAnswered) return;
 
     setLoading(prev => ({ ...prev, submit: true }));
 
     try {
+      // SFTC has no LOC input — auto-assign via transaction at submit time.
+      // ADMIN/MOT have an editable field; if left blank (shouldn't happen), also auto-assign.
+      let locToUse = form.loc?.trim();
+      if (!locToUse) {
+        locToUse = await getNextLocNumber();
+        setForm(prev => ({ ...prev, loc: locToUse! }));
+      }
+
       const { queuePos, id } = await submitPlan(
-        form as unknown as Partial<Plan> & { attachments: File[] },
+        { ...(form as unknown as Partial<Plan> & { attachments: File[] }), loc: locToUse },
         plans,
         td,
         getUserLabel
@@ -89,10 +103,15 @@ export const usePlanForm = (
   };
 
   const resetForm = () => {
-    setForm({
-      ...EMPTY_FORM,
-      requestedBy: currentUser?.name || "",
-    });
+    const role = currentUser?.role;
+    const baseForm = { ...EMPTY_FORM, requestedBy: currentUser?.name || "" };
+    if (role === UserRole.ADMIN || role === UserRole.MOT) {
+      peekNextLocNumber().then(loc => {
+        setForm({ ...baseForm, loc });
+      }).catch(() => setForm(baseForm));
+    } else {
+      setForm(baseForm);
+    }
     setShowForm(false);
   };
 

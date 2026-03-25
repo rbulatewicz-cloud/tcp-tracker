@@ -1,4 +1,4 @@
-import { doc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, deleteDoc, getDoc, runTransaction } from 'firebase/firestore';
 import { db, storage, handleFirestoreError, OperationType } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Plan, Stage, LogEntry, PlanDocument, User, UserRole, LoadingState, ReviewCycle, ImplementationWindow } from '../types';
@@ -75,6 +75,26 @@ export const updatePlanStage = async (
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `plans/${plan.id}`);
   }
+};
+
+// Returns the next LOC string (e.g. "LOC-367") using a Firestore transaction
+// to prevent concurrent submissions from receiving the same number.
+export const getNextLocNumber = async (): Promise<string> => {
+  const counterRef = doc(db, 'settings', 'locCounter');
+  let nextNum = 1;
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(counterRef);
+    nextNum = (snap.exists() ? (snap.data().count as number) : 0) + 1;
+    transaction.set(counterRef, { count: nextNum });
+  });
+  return `LOC-${nextNum}`;
+};
+
+// Read-only preview of the next LOC number (no reservation — for display only).
+export const peekNextLocNumber = async (): Promise<string> => {
+  const snap = await getDoc(doc(db, 'settings', 'locCounter'));
+  const current = snap.exists() ? (snap.data().count as number) : 0;
+  return `LOC-${current + 1}`;
 };
 
 export const submitPlan = async (
