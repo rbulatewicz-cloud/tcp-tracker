@@ -22,7 +22,7 @@ function getStatusColor(statusKey: string): string {
 
 export const StatusSection: React.FC = React.memo(() => {
   const { selectedPlan } = usePlanData();
-  const { updateStage, batchUploadStageAttachments } = usePlanActions();
+  const { updateStage, batchUploadStageAttachments, addLogEntry } = usePlanActions();
   const { getLocalDateString } = usePlanUtils();
   const {
     canEditPlan,
@@ -42,6 +42,7 @@ export const StatusSection: React.FC = React.memo(() => {
   const [locRevision, setLocRevision] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [transitionNotes, setTransitionNotes] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const autoExpiredRef = useRef<string | null>(null);
 
@@ -87,6 +88,7 @@ export const StatusSection: React.FC = React.memo(() => {
     setWindowEnd('');
     setLocRevision('');
     setPendingFiles([]);
+    setTransitionNotes('');
   };
 
   const addFiles = useCallback((files: FileList | File[]) => {
@@ -106,8 +108,9 @@ export const StatusSection: React.FC = React.memo(() => {
       showToast('Please enter both start and end dates for the implementation window.', 'warning');
       return;
     }
-    // Validate mandatory attachment
-    if (pendingAction.requiresAttachment && pendingFiles.length === 0) {
+    // Validate mandatory attachment (admins can bypass)
+    const isAdmin = currentUser?.role === UserRole.ADMIN;
+    if (pendingAction.requiresAttachment && pendingFiles.length === 0 && !isAdmin) {
       showToast(`Please attach the required documents before proceeding.`, 'warning');
       return;
     }
@@ -174,6 +177,11 @@ export const StatusSection: React.FC = React.memo(() => {
         implementationWindow ?? null
       );
 
+      // Save transition notes as a log entry
+      if (transitionNotes.trim()) {
+        addLogEntry(selectedPlan.id, transitionNotes.trim(), []);
+      }
+
       // Upload attachments after status change (silent — no extra log entries)
       if (pendingFiles.length > 0 && pendingAction.defaultDocType) {
         await batchUploadStageAttachments(
@@ -190,6 +198,7 @@ export const StatusSection: React.FC = React.memo(() => {
       setLoadingStage(null);
       setPendingAction(null);
       setPendingFiles([]);
+      setTransitionNotes('');
     }
   };
 
@@ -286,6 +295,20 @@ export const StatusSection: React.FC = React.memo(() => {
                 />
               </div>
             )}
+
+            {/* Transition notes */}
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                Notes <span className="text-slate-300 font-normal normal-case">(optional)</span>
+              </label>
+              <textarea
+                value={transitionNotes}
+                onChange={e => setTransitionNotes(e.target.value)}
+                placeholder={`Add any relevant context for this transition — submitter, scope changes, special instructions, etc.`}
+                rows={3}
+                className="w-full rounded-lg border border-slate-200 p-2 text-sm resize-none text-slate-700 placeholder:text-slate-300"
+              />
+            </div>
 
             {/* File attachments */}
             {pendingAction.requiresAttachment && (
