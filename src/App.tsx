@@ -75,6 +75,7 @@ import { usePlanForm } from './hooks/usePlanForm';
 import { PlanCard } from './components/PlanCard';
 import { AppProvider } from './context/AppProvider';
 import { useApp } from './hooks/useApp';
+import { useDarkMode } from './hooks/useDarkMode';
 
 const TODAY = new Date();
 const getLocalDateString = () => new Date().toLocaleDateString('en-CA');
@@ -97,6 +98,7 @@ function AppContent() {
   const [statusDate, setStatusDate] = useState(getLocalDateString());
   
   const { uiState, planManagement, tableState, auth, firestoreData, permissions, planActions, userManagement, locManagement } = useApp();
+  const { isDark, toggle: toggleDark } = useDarkMode();
   const { 
     view, setView,
     showAdminMenu, setShowAdminMenu,
@@ -636,6 +638,8 @@ function AppContent() {
         setShowAppRequestModal={setShowAppRequestModal}
         setShowAppRequestSidebar={setShowAppRequestSidebar}
         appConfig={appConfig}
+        isDark={isDark}
+        toggleDark={toggleDark}
       />
 
       {/* SUMMARY STATS BAR */}
@@ -661,6 +665,7 @@ function AppContent() {
             appConfig={appConfig}
             setAppConfig={setAppConfig}
             role={role}
+            users={users}
             setClearPlansConfirm={setClearPlansConfirm}
             onOpenImport={() => setShowImportWizard(true)}
             onExportCSV={exportToCSV}

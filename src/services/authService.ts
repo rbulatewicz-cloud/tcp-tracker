@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { User, UserRole } from '../types';
 
@@ -22,24 +22,18 @@ export const initializeUser = async (user: any, email: string, role: UserRole) =
   try {
     const userPublicSnap = await getDoc(userPublicRef);
     
+    const now = new Date().toISOString();
     if (userPublicSnap.exists()) {
-      // Update uid and name if needed
       await setDoc(userPublicRef, { uid: user.uid, name: user.displayName || userPublicSnap.data().name, email: email }, { merge: true });
-      // Ensure users_private exists — it may be missing for legacy/imported users
       const userPrivateSnap = await getDoc(userPrivateRef);
       if (!userPrivateSnap.exists()) {
-        await setDoc(userPrivateRef, { uid: user.uid, role });
+        await setDoc(userPrivateRef, { uid: user.uid, role, lastLogin: now, loginCount: 1 });
+      } else {
+        await updateDoc(userPrivateRef, { lastLogin: now, loginCount: increment(1) });
       }
     } else {
-      await setDoc(userPublicRef, {
-        uid: user.uid,
-        name: user.displayName || 'Unknown User',
-        email: email
-      });
-      await setDoc(userPrivateRef, {
-        uid: user.uid,
-        role
-      });
+      await setDoc(userPublicRef, { uid: user.uid, name: user.displayName || 'Unknown User', email: email });
+      await setDoc(userPrivateRef, { uid: user.uid, role, lastLogin: now, loginCount: 1 });
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `users_public/${email}`);

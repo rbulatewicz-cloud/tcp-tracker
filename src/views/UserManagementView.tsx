@@ -28,6 +28,26 @@ const RoleBadge: React.FC<{ role: string }> = ({ role }) => {
   );
 };
 
+const formatLastActive = (lastLogin?: string): string => {
+  if (!lastLogin) return 'Never';
+  const diff = Math.floor((Date.now() - new Date(lastLogin).getTime()) / 1000);
+  if (diff < 60) return 'Just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}d ago`;
+  if (diff < 86400 * 30) return `${Math.floor(diff / 86400 / 7)}w ago`;
+  return `${Math.floor(diff / 86400 / 30)}mo ago`;
+};
+
+const getActivityColor = (lastLogin?: string): string => {
+  if (!lastLogin) return 'text-slate-300';
+  const days = (Date.now() - new Date(lastLogin).getTime()) / 86400000;
+  if (days < 1) return 'text-emerald-500';
+  if (days < 7) return 'text-blue-500';
+  if (days < 30) return 'text-amber-500';
+  return 'text-red-400';
+};
+
 const EMPTY_FORM = { name: '', email: '', role: UserRole.SFTC as UserRole };
 
 export const UserManagementView: React.FC<UserManagementViewProps> = ({ users, currentUser, role, plans }) => {
@@ -129,8 +149,8 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({ users, c
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <div className="text-xl font-bold text-slate-900">Team Management</div>
-          <div className="text-xs text-slate-400 mt-0.5">
+          <div className="text-xl font-bold text-slate-900 dark:text-slate-100">Team Management</div>
+          <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
             {dedupedUsers.length} member{dedupedUsers.length !== 1 ? 's' : ''} · Manage access and roles
           </div>
         </div>
@@ -140,7 +160,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({ users, c
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search members…"
-            className="text-xs border border-slate-200 rounded-lg px-3 py-2 w-48 outline-none focus:border-blue-400"
+            className="text-xs border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 w-48 outline-none focus:border-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
           />
           <button
             onClick={openAdd}
@@ -163,7 +183,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({ users, c
       {/* Member cards */}
       <div className="flex flex-col gap-3">
         {filtered.length === 0 && (
-          <div className="text-center py-12 text-sm text-slate-400">
+          <div className="text-center py-12 text-sm text-slate-400 dark:text-slate-500">
             {search ? 'No members match your search.' : 'No team members yet. Add one above.'}
           </div>
         )}
@@ -171,26 +191,42 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({ users, c
           const activeLOCs = locCountByLead[u.name] ?? 0;
           const isMe = u.email?.toLowerCase() === currentUser?.email?.toLowerCase();
           return (
-            <div key={u.email} className="bg-white rounded-xl border border-slate-200 px-5 py-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
+            <div key={u.email} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-5 py-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
               {/* Avatar */}
-              <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-sm flex-shrink-0">
+              <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 font-bold text-sm flex-shrink-0">
                 {(u.name || '?')[0].toUpperCase()}
               </div>
 
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-sm font-bold text-slate-900 truncate">{u.name}</span>
-                  {isMe && <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">(you)</span>}
+                  <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{u.name}</span>
+                  {isMe && <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">(you)</span>}
                 </div>
-                <div className="text-xs text-slate-400 truncate">{u.email}</div>
+                <div className="text-xs text-slate-400 dark:text-slate-500 truncate">{u.email}</div>
               </div>
+
+              {/* Last Active */}
+              <div className="text-center flex-shrink-0 hidden sm:block">
+                <div className={`text-sm font-bold ${getActivityColor((u as any).lastLogin)}`}>
+                  {formatLastActive((u as any).lastLogin)}
+                </div>
+                <div className="text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-bold">Last Active</div>
+              </div>
+
+              {/* Login Count */}
+              {(u as any).loginCount > 0 && (
+                <div className="text-center flex-shrink-0 hidden sm:block">
+                  <div className="text-sm font-bold text-slate-700 dark:text-slate-300">{(u as any).loginCount}</div>
+                  <div className="text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-bold">Logins</div>
+                </div>
+              )}
 
               {/* Active LOCs */}
               {activeLOCs > 0 && (
                 <div className="text-center flex-shrink-0">
-                  <div className="text-lg font-bold text-slate-800">{activeLOCs}</div>
-                  <div className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Active LOCs</div>
+                  <div className="text-lg font-bold text-slate-800 dark:text-slate-200">{activeLOCs}</div>
+                  <div className="text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-bold">Active LOCs</div>
                 </div>
               )}
 
@@ -210,7 +246,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({ users, c
                 </button>
                 <button
                   onClick={() => openEdit(u)}
-                  className="px-3 py-1.5 text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded-lg hover:bg-slate-200 transition-colors"
+                  className="px-3 py-1.5 text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                 >
                   Edit
                 </button>
@@ -234,42 +270,42 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({ users, c
           className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-5"
           onClick={e => { if (e.target === e.currentTarget) setShowForm(false); }}
         >
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6" onClick={e => e.stopPropagation()}>
-            <div className="text-lg font-bold text-slate-900 mb-5">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <div className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-5">
               {editingUser ? 'Edit Team Member' : 'Add Team Member'}
             </div>
 
             <div className="flex flex-col gap-4">
               <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Full Name</label>
+                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">Full Name</label>
                 <input
                   type="text"
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="Jane Smith"
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-400"
+                  className="w-full text-sm border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none focus:border-blue-400 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
                 />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Google Email</label>
+                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">Google Email</label>
                 <input
                   type="email"
                   value={form.email}
                   onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                   placeholder="jane@gmail.com"
                   disabled={!!editingUser}
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full text-sm border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none focus:border-blue-400 disabled:opacity-50 disabled:cursor-not-allowed bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
                 />
                 {!editingUser && (
-                  <div className="text-[10px] text-slate-400 mt-1">Must match their Google account — this is how they sign in.</div>
+                  <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">Must match their Google account — this is how they sign in.</div>
                 )}
               </div>
               <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Role</label>
+                <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">Role</label>
                 <select
                   value={form.role}
                   onChange={e => setForm(f => ({ ...f, role: e.target.value as UserRole }))}
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-blue-400"
+                  className="w-full text-sm border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none focus:border-blue-400 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
                 >
                   <option value={UserRole.GUEST}>Guest / Viewer — read only</option>
                   <option value={UserRole.SFTC}>SFTC Team — submit requests</option>
@@ -285,7 +321,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({ users, c
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => setShowForm(false)}
-                className="flex-1 py-2.5 text-sm font-semibold text-slate-500 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                className="flex-1 py-2.5 text-sm font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
               >
                 Cancel
               </button>

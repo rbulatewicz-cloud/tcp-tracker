@@ -21,11 +21,11 @@ export const ActivityLog: React.FC = React.memo(() => {
       
       {/* Add Log Entry */}
       {canEditPlan && canView('add_log_entry') && (
-        <div className="mb-4 pb-4 border-b border-slate-100 flex gap-2">
-          <textarea 
+        <div className="mb-4 pb-4 border-b border-slate-100 dark:border-slate-700 flex gap-2">
+          <textarea
             value={newLogEntry}
             onChange={(e) => setNewLogEntry(e.target.value)}
-            className="flex-1 p-2 border border-slate-200 rounded-md text-xs"
+            className="flex-1 p-2 border border-slate-200 dark:border-slate-600 rounded-md text-xs bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
             placeholder="Add a log entry..."
           />
           <button 
@@ -47,13 +47,13 @@ export const ActivityLog: React.FC = React.memo(() => {
           const actualIndex = plan.log.length - 1 - index;
           const canRevert = entry.field && entry.previousValue !== undefined;
           return (
-            <div key={index} className="p-2 bg-slate-50 rounded-md border border-slate-100 text-xs flex justify-between items-start">
+            <div key={index} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-md border border-slate-100 dark:border-slate-700 text-xs flex justify-between items-start">
               <div className="flex-1">
-                <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 mb-1">
                   <span>{entry.user}</span>
                   <span>{entry.date}</span>
                 </div>
-                <div className="text-slate-800">{entry.action}</div>
+                <div className="text-slate-800 dark:text-slate-200">{entry.action}</div>
               </div>
               <div className="flex flex-col items-end gap-1">
                 {canRevert && canEditPlan && (
