@@ -1486,59 +1486,59 @@ function AppContent() {
             />
           )}
 
-          {previewImage && (
-            <div 
-              onClick={() => setPreviewImage(null)}
-              style={{
-                position: "fixed",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                background: "rgba(15,23,42,0.8)",
-                backdropFilter: "blur(8px)",
-                zIndex: 2000,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: 40,
-                cursor: "zoom-out"
-              }}
-            >
-              <div style={{position: "relative", maxWidth: "90%", maxHeight: "90%"}}>
-                <img 
-                  src={previewImage} 
-                  alt="Preview" 
-                  style={{maxWidth: "100%", maxHeight: "100%", borderRadius: 16, boxShadow: "0 20px 50px rgba(0,0,0,0.5)", display: "block"}} 
-                  referrerPolicy="no-referrer"
-                />
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setPreviewImage(null); }}
-                  style={{
-                    position: "absolute",
-                    top: -20,
-                    right: -20,
-                    background: "#fff",
-                    border: "none",
-                    borderRadius: "50%",
-                    width: 40,
-                    height: 40,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-                    color: "#0F172A"
-                  }}
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </button>
-              </div>
-            </div>
-          )}
         </>
       )}
       </div>
+      {previewImage && (
+        <div
+          onClick={() => setPreviewImage(null)}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(15,23,42,0.8)",
+            backdropFilter: "blur(8px)",
+            zIndex: 2000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 40,
+            cursor: "zoom-out"
+          }}
+        >
+          <div style={{position: "relative", maxWidth: "90%", maxHeight: "90%"}}>
+            <img
+              src={previewImage}
+              alt="Preview"
+              style={{maxWidth: "100%", maxHeight: "100%", borderRadius: 16, boxShadow: "0 20px 50px rgba(0,0,0,0.5)", display: "block"}}
+              referrerPolicy="no-referrer"
+            />
+            <button
+              onClick={(e) => { e.stopPropagation(); setPreviewImage(null); }}
+              style={{
+                position: "absolute",
+                top: -20,
+                right: -20,
+                background: "#fff",
+                border: "none",
+                borderRadius: "50%",
+                width: 40,
+                height: 40,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+                color: "#0F172A"
+              }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+        </div>
+      )}
       <ToastContainer />
     </>
   )
