@@ -3,6 +3,7 @@ import { Spinner } from '../components/Spinner';
 import { daysFromToday, daysBetween } from '../utils/plans';
 import { COMPLETED_STAGES, ALL_STAGES } from '../constants';
 import { UserRole, Plan, Stage, FilterState, SortConfig, ColumnDef, LoadingState, User } from '../types';
+import { detectComplianceTriggers } from '../utils/compliance';
 
 // Stages shown as summary cards at the top — key milestones only
 const CARD_STAGES = [
@@ -83,6 +84,36 @@ function TableView({
   const getStage = (stageKey: string) =>
     ALL_STAGES.find(s => s.key === stageKey) ?? { key: stageKey, label: stageKey, color: '#94A3B8' };
 
+  // Impact flag pills — only renders flags that are true
+  const ImpactPills = ({ plan }: { plan: Plan }) => {
+    const pills: { label: string; bg: string; color: string; title: string }[] = [];
+    if (plan.dir_nb)              pills.push({ label: '↑NB',  bg: '#EFF6FF', color: '#2563EB', title: 'Northbound' });
+    if (plan.dir_sb)              pills.push({ label: '↓SB',  bg: '#EFF6FF', color: '#2563EB', title: 'Southbound' });
+    if (plan.dir_directional)     pills.push({ label: '↔DIR', bg: '#F0FDF4', color: '#16A34A', title: 'Directional' });
+    if (plan.side_street)         pills.push({ label: '⊥SS',  bg: '#F8FAFC', color: '#64748B', title: 'Side Street' });
+    if (plan.impact_krail)        pills.push({ label: 'K',    bg: '#F5F3FF', color: '#7C3AED', title: 'Krail Required' });
+    if (plan.impact_fullClosure)  pills.push({ label: 'FC',   bg: '#FEF2F2', color: '#DC2626', title: 'Full Street Closure' });
+    if (plan.impact_driveway)     pills.push({ label: 'DW',   bg: '#FFFBEB', color: '#D97706', title: 'Driveway Closures' });
+    if (plan.impact_busStop)      pills.push({ label: 'BS',   bg: '#EFF6FF', color: '#0284C7', title: 'Bus Stop Impacts' });
+    if (plan.impact_transit)      pills.push({ label: 'TN',   bg: '#F0FDFA', color: '#0F766E', title: 'TANSAT Needed' });
+    if (pills.length === 0) return <span style={{ color: '#CBD5E1', fontSize: 10 }}>—</span>;
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+        {pills.map(p => (
+          <span key={p.label} title={p.title} style={{
+            background: p.bg, color: p.color,
+            fontSize: 9, fontWeight: 800, letterSpacing: 0.3,
+            padding: '2px 4px', borderRadius: 3,
+            border: `1px solid ${p.color}30`,
+            lineHeight: 1.4,
+          }}>
+            {p.label}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <>
       {statusDateModal && (
@@ -109,6 +140,11 @@ function TableView({
             <option key={s.key} value={s.key}>{s.label}</option>
           ))}
         </select>
+        <select value={filter.importStatus || 'all'} onChange={e => setFilter(pr => ({ ...pr, importStatus: e.target.value }))} style={{ ...inp, width: 'auto', padding: '7px 12px', fontSize: 11, cursor: 'pointer' }}>
+          <option value="all">All Records</option>
+          <option value="needs_review">⚑ Needs Review</option>
+          <option value="tbd">⏳ Pending LOC</option>
+        </select>
         {([
           { key: 'type', options: PLAN_TYPES, label: 'Type' },
           { key: 'lead', options: LEADS, label: 'Lead' },
@@ -119,8 +155,8 @@ function TableView({
             {f.options.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         ))}
-        {(filter.stage !== 'all' || filter.type !== 'all' || filter.lead !== 'all' || filter.priority !== 'all') && (
-          <button onClick={() => setFilter({ stage: 'all', type: 'all', lead: 'all', priority: 'all' })} style={{ background: 'transparent', color: '#F59E0B', border: '1px solid #FDE68A', borderRadius: 6, padding: '7px 12px', fontSize: 11, cursor: 'pointer', fontFamily: font, fontWeight: 600 }}>Clear</button>
+        {(filter.stage !== 'all' || filter.type !== 'all' || filter.lead !== 'all' || filter.priority !== 'all' || filter.importStatus !== 'all') && (
+          <button onClick={() => setFilter({ stage: 'all', type: 'all', lead: 'all', priority: 'all', importStatus: 'all' })} style={{ background: 'transparent', color: '#F59E0B', border: '1px solid #FDE68A', borderRadius: 6, padding: '7px 12px', fontSize: 11, cursor: 'pointer', fontFamily: font, fontWeight: 600 }}>Clear</button>
         )}
         {canExport && (
           <button onClick={exportToCSV} disabled={loading.export} style={{ background: 'var(--bg-surface)', color: '#64748B', border: '1px solid var(--border)', padding: '7px 12px', borderRadius: 6, fontSize: 11, cursor: loading.export ? 'not-allowed' : 'pointer', fontFamily: font, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, opacity: loading.export ? 0.7 : 1 }}>
@@ -140,7 +176,7 @@ function TableView({
 
         <div style={{ flex: 1 }} />
 
-        {canEditPlan && selectedPlanIds.length > 0 && (
+        {(currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN) && selectedPlanIds.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#0F172A', padding: '4px 12px', borderRadius: 8, color: '#fff', fontSize: 11, fontWeight: 600 }}>
             {loading.bulk ? <Spinner size={12} color="#fff" /> : <span>{selectedPlanIds.length} Selected</span>}
             <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.2)' }} />
@@ -191,21 +227,95 @@ function TableView({
             <span style={{ fontSize: 9, fontWeight: 700, color: '#6366F1' }}>📋 Historical</span>
             <span style={{ fontSize: 9, fontWeight: 700, color: '#D97706' }}>⚠ Pending Docs</span>
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 700, color: '#475569', fontSize: 11 }}>Hours:</span>
+            {[
+              { label: 'DAY',  bg: '#FFFBEB', color: '#D97706', title: 'Daytime only' },
+              { label: 'NGT',  bg: '#EFF6FF', color: '#1D4ED8', title: 'Nighttime only' },
+              { label: 'BOTH', bg: '#FDF4FF', color: '#A21CAF', title: 'Day + Night' },
+              { label: '24/7', bg: '#F5F3FF', color: '#7C3AED', title: '24/7 Continuous' },
+            ].map(h => (
+              <span key={h.label} title={h.title} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ background: h.bg, color: h.color, fontSize: 9, fontWeight: 800, padding: '2px 5px', borderRadius: 3, border: `1px solid ${h.color}30` }}>{h.label}</span>
+                <span style={{ color: '#94A3B8', fontSize: 10 }}>{h.title}</span>
+              </span>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 700, color: '#475569', fontSize: 11 }}>Compliance:</span>
+            {[
+              { label: 'PHE', title: 'Peak Hour Exemption' },
+              { label: 'NV',  title: 'Noise Variance' },
+              { label: 'CD',  title: 'CD Concurrence' },
+            ].map(c => (
+              <span key={c.label} title={c.title} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 9, fontWeight: 800, color: '#94A3B8', background: '#94A3B818', padding: '2px 4px', borderRadius: 3, border: '1px solid #94A3B840' }}>{c.label}</span>
+                <span style={{ color: '#94A3B8', fontSize: 10 }}>{c.title}</span>
+              </span>
+            ))}
+            <span style={{ color: '#94A3B8', fontSize: 10 }}>· color = status: </span>
+            {[
+              { color: '#94A3B8', label: 'Not started' },
+              { color: '#3B82F6', label: 'In progress' },
+              { color: '#F59E0B', label: 'Submitted' },
+              { color: '#10B981', label: 'Approved' },
+              { color: '#DC2626', label: 'Expired' },
+            ].map(s => (
+              <span key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+                <span style={{ color: '#94A3B8', fontSize: 10 }}>{s.label}</span>
+              </span>
+            ))}
+          </div>
+          {/* Impacts column legend */}
+          <div style={{ width: '100%', borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 700, color: '#475569', fontSize: 11, marginRight: 2 }}>Impacts:</span>
+            {[
+              { label: '↑NB',  bg: '#EFF6FF', color: '#2563EB', title: 'Northbound' },
+              { label: '↓SB',  bg: '#EFF6FF', color: '#2563EB', title: 'Southbound' },
+              { label: '↔DIR', bg: '#F0FDF4', color: '#16A34A', title: 'Directional' },
+              { label: '⊥SS',  bg: '#F8FAFC', color: '#64748B', title: 'Side Street' },
+              { label: 'K',    bg: '#F5F3FF', color: '#7C3AED', title: 'Krail Required' },
+              { label: 'FC',   bg: '#FEF2F2', color: '#DC2626', title: 'Full Street Closure' },
+              { label: 'DW',   bg: '#FFFBEB', color: '#D97706', title: 'Driveway Closures' },
+              { label: 'BS',   bg: '#EFF6FF', color: '#0284C7', title: 'Bus Stop Impacts' },
+              { label: 'TN',   bg: '#F0FDFA', color: '#0F766E', title: 'TANSAT Needed' },
+            ].map(p => (
+              <span key={p.label} title={p.title} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ background: p.bg, color: p.color, fontSize: 9, fontWeight: 800, padding: '2px 4px', borderRadius: 3, border: `1px solid ${p.color}30` }}>{p.label}</span>
+                <span style={{ color: '#94A3B8', fontSize: 10 }}>{p.title}</span>
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
       {/* Table */}
       <div style={{ background: 'var(--bg-surface)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, tableLayout: 'fixed' }}>
+          <colgroup>
+            {canEditPlan && <col style={{ width: 32 }} />}
+            {mainCols.map(col => {
+              const w: Record<string, number | string> = {
+                loc: 90, type: 82, location: '22%',
+                hours: 58, impacts: 108, lead: 78,
+                priority: 76, compliance: 86, status: 138,
+                needBy: 80, wait: 48,
+                scope: 100, segment: 80, rev: 48,
+                requestedBy: 100, submittedToDOT: 90, requested: 90,
+              };
+              return <col key={col.id} style={{ width: w[col.id] ?? 90 }} />;
+            })}
+          </colgroup>
           <thead>
             <tr style={{ background: 'var(--bg-surface-2)', borderBottom: '2px solid var(--border)' }}>
               {canEditPlan && (
-                <th style={{ padding: '10px 8px', width: 30, textAlign: 'center' }}>
+                <th style={{ padding: '10px 8px', textAlign: 'center' }}>
                   <input type="checkbox" checked={selectedPlanIds.length === filtered.length && filtered.length > 0} onChange={toggleSelectAll} style={{ cursor: 'pointer' }} />
                 </th>
               )}
               {mainCols.map(col => (
-                <th key={col.id} onClick={() => requestSort(col.label)} style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 700, color: '#64748B', fontSize: 9, letterSpacing: 0.8, textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+                <th key={col.id} onClick={() => requestSort(col.label)} style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 700, color: '#64748B', fontSize: 9, letterSpacing: 0.8, textTransform: 'uppercase', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', overflow: 'hidden' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     {col.label}
                     <span style={{ fontSize: 8, color: sortConfig?.key === col.label ? '#F59E0B' : '#CBD5E1' }}>
@@ -251,24 +361,83 @@ function TableView({
                         return (
                           <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', fontFamily: monoFont, fontWeight: 700, color: '#0F172A', fontSize: 12 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {plan.loc || plan.id}
+                              {plan.locStatus === 'unassigned' ? (
+                                <span style={{ color: '#D97706', fontWeight: 700 }}>TBD</span>
+                              ) : (plan.loc || plan.id)}
                               {plan.isHistorical && <span title="Historical Record" style={{ fontSize: 10 }}>📋</span>}
                               {plan.pendingDocuments && <span title="Pending Documents" style={{ fontSize: 10 }}>⚠️</span>}
+                              {plan.importStatus === 'needs_review' && <span title="Needs Review" style={{ fontSize: 10, color: '#0EA5E9' }}>⚑</span>}
                             </div>
                           </td>
                         );
                       case 'rev':
                         return <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', fontFamily: monoFont, fontWeight: 700, color: '#94A3B8', fontSize: 11 }}>{plan.rev || 0}</td>;
                       case 'type':
-                        return <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', color: '#64748B', fontSize: 11 }}>{plan.type}</td>;
+                        return <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', color: '#64748B', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{plan.type}</td>;
                       case 'scope':
                         return <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', fontSize: 11 }}>{plan.scope}</td>;
                       case 'segment':
                         return <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', fontFamily: monoFont, color: '#94A3B8', fontSize: 11 }}>{plan.segment}</td>;
                       case 'location':
-                        return <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', fontSize: 12, fontWeight: 500 }}>{plan.street1}{plan.street2 ? ` / ${plan.street2}` : ''}</td>;
+                        return (
+                          <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', overflow: 'hidden' }}>
+                            <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{plan.street1}{plan.street2 ? ` / ${plan.street2}` : ''}</div>
+                            <div style={{ display: 'flex', gap: 3, marginTop: 3 }}>
+                              {plan.scope   && <span style={{ fontSize: 9, fontWeight: 700, background: '#F1F5F9', color: '#64748B', padding: '1px 4px', borderRadius: 3, whiteSpace: 'nowrap' }}>{plan.scope}</span>}
+                              {plan.segment && <span style={{ fontSize: 9, fontWeight: 700, background: '#F1F5F9', color: '#64748B', padding: '1px 4px', borderRadius: 3, whiteSpace: 'nowrap' }}>{plan.segment}</span>}
+                            </div>
+                          </td>
+                        );
+                      case 'hours': {
+                        const wh = plan.work_hours;
+                        const hoursMap: Record<string, { label: string; bg: string; color: string }> = {
+                          continuous: { label: '24/7',  bg: '#F5F3FF', color: '#7C3AED' },
+                          both:       { label: 'BOTH',  bg: '#FDF4FF', color: '#A21CAF' },
+                          nighttime:  { label: 'NGT',   bg: '#EFF6FF', color: '#1D4ED8' },
+                          daytime:    { label: 'DAY',   bg: '#FFFBEB', color: '#D97706' },
+                        };
+                        const h = wh ? hoursMap[wh.shift] : null;
+                        return (
+                          <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px' }}>
+                            {h
+                              ? <span style={{ fontSize: 9, fontWeight: 800, background: h.bg, color: h.color, padding: '2px 5px', borderRadius: 3, border: `1px solid ${h.color}30` }}>{h.label}</span>
+                              : <span style={{ color: '#CBD5E1', fontSize: 10 }}>—</span>
+                            }
+                          </td>
+                        );
+                      }
+                      case 'compliance': {
+                        const triggers = detectComplianceTriggers(plan);
+                        const statusColor = (s?: string) => {
+                          if (!s || s === 'not_started') return '#94A3B8';
+                          if (s === 'approved')  return '#10B981';
+                          if (s === 'submitted') return '#F59E0B';
+                          if (s === 'expired')   return '#DC2626';
+                          return '#3B82F6';
+                        };
+                        const dots: { label: string; color: string; title: string }[] = [];
+                        if (triggers.phe)           dots.push({ label: 'PHE', color: statusColor(plan.compliance?.phe?.status),            title: `PHE — ${plan.compliance?.phe?.status ?? 'not started'}` });
+                        if (triggers.noiseVariance) dots.push({ label: 'NV',  color: statusColor(plan.compliance?.noiseVariance?.status),  title: `Noise Variance — ${plan.compliance?.noiseVariance?.status ?? 'not started'}` });
+                        if (triggers.cdConcurrence) dots.push({ label: 'CD',  color: statusColor(plan.compliance?.cdConcurrence?.status),  title: `CD Concurrence — ${plan.compliance?.cdConcurrence?.status ?? 'not started'}` });
+                        return (
+                          <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px' }}>
+                            {dots.length === 0
+                              ? <span style={{ color: '#CBD5E1', fontSize: 10 }}>—</span>
+                              : <div style={{ display: 'flex', gap: 3 }}>
+                                  {dots.map(d => (
+                                    <span key={d.label} title={d.title} style={{ fontSize: 9, fontWeight: 800, color: d.color, background: `${d.color}18`, padding: '2px 4px', borderRadius: 3, border: `1px solid ${d.color}40` }}>
+                                      {d.label}
+                                    </span>
+                                  ))}
+                                </div>
+                            }
+                          </td>
+                        );
+                      }
+                      case 'impacts':
+                        return <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', minWidth: 80 }}><ImpactPills plan={plan} /></td>;
                       case 'lead':
-                        return <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', fontSize: 11 }}>{plan.lead}</td>;
+                        return <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{plan.lead}</td>;
                       case 'requestedBy':
                         return <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', fontSize: 11, color: '#64748B' }}>{plan.requestedBy || '—'}</td>;
                       case 'priority':

@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../firebase';
+import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { User, UserRole } from '../types';
 import * as authService from '../services/authService';
-import { doc, onSnapshot } from 'firebase/firestore';
 
 const DEV_USER: User = {
   uid: 'dev-admin',
@@ -14,60 +14,75 @@ const DEV_USER: User = {
 const IS_DEV_BYPASS = import.meta.env.DEV && window.location.hostname === 'localhost';
 
 export function useAuth() {
-  const [currentUser, setCurrentUser] = useState<User | null>(IS_DEV_BYPASS ? DEV_USER : null);
-  const [isRealAdmin, setIsRealAdmin] = useState(IS_DEV_BYPASS);
-  const [loaded, setLoaded] = useState(IS_DEV_BYPASS);
-  const [showLogin, setShowLogin] = useState(false);
-  // Hold the live-role unsubscribe so we can clean it up on sign-out
+  const [currentUser, setCurrentUser]         = useState<User | null>(IS_DEV_BYPASS ? DEV_USER : null);
+  const [isRealAdmin, setIsRealAdmin]         = useState(IS_DEV_BYPASS);
+  const [loaded, setLoaded]                   = useState(IS_DEV_BYPASS);
+  const [showLogin, setShowLogin]             = useState(false);
+  // profileComplete: null = not yet read, false = new user, true = profile saved
+  const [profileComplete, setProfileComplete] = useState<boolean | null>(IS_DEV_BYPASS ? true : null);
+
   const unsubRoleRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (IS_DEV_BYPASS) return;
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      // Clean up any previous role listener
       if (unsubRoleRef.current) { unsubRoleRef.current(); unsubRoleRef.current = null; }
 
       if (firebaseUser) {
         const userEmail = firebaseUser.email?.toLowerCase();
         if (!userEmail) return;
 
-        // Hardcoded admin override (bootstrap safety net)
         const isBootstrapAdmin = userEmail === 'r.bulatewicz@gmail.com';
 
-        // Get initial role and ensure the user doc exists in Firestore
         let initialRole = await authService.fetchUserRole(userEmail);
         if (isBootstrapAdmin) initialRole = UserRole.ADMIN;
+
         await authService.initializeUser(firebaseUser, userEmail, initialRole);
 
-        const displayName = firebaseUser.displayName || 'Unknown User';
-        const email = firebaseUser.email || '';
+        // Read profileComplete + profile fields before setting loaded
+        const [pubSnap, privSnap] = await Promise.all([
+          getDoc(doc(db, 'users_public',  userEmail)),
+          getDoc(doc(db, 'users_private', userEmail)),
+        ]);
+        const pub  = pubSnap.exists()  ? pubSnap.data()  : {};
+        const priv = privSnap.exists() ? privSnap.data() : {};
+        const pc   = priv.profileComplete === true;
 
-        // Set initial state immediately so the app doesn't wait for the listener
         const resolvedRole = isBootstrapAdmin ? UserRole.ADMIN : initialRole;
-        setCurrentUser({ uid: firebaseUser.uid, name: displayName, email, role: resolvedRole });
+
+        setCurrentUser({
+          uid:               firebaseUser.uid,
+          name:              pub.displayName || firebaseUser.displayName || 'Unknown User',
+          email:             firebaseUser.email || '',
+          role:              resolvedRole,
+          displayName:       pub.displayName,
+          title:             pub.title,
+          notificationEmail: pub.notificationEmail || firebaseUser.email || '',
+        });
         setIsRealAdmin(resolvedRole === UserRole.ADMIN);
+        setProfileComplete(pc);
         setShowLogin(false);
         setLoaded(true);
 
-        // Subscribe to live role changes — if an admin updates this user's role,
-        // the app will reflect it immediately without requiring a sign-out/sign-in.
+        // Live listener for role + profileComplete changes
         unsubRoleRef.current = onSnapshot(
           doc(db, 'users_private', userEmail),
           (snap) => {
             if (!snap.exists()) return;
             let liveRole = (snap.data().role as UserRole) ?? UserRole.GUEST;
             if (isBootstrapAdmin) liveRole = UserRole.ADMIN;
+            const livePC = snap.data().profileComplete === true;
             setCurrentUser(prev => prev ? { ...prev, role: liveRole } : prev);
             setIsRealAdmin(liveRole === UserRole.ADMIN);
+            setProfileComplete(livePC);
           },
-          (error) => {
-            console.error(`[Auth] role listener error for ${userEmail}:`, error);
-          }
+          (error) => { console.error(`[Auth] role listener error for ${userEmail}:`, error); }
         );
       } else {
         setCurrentUser(null);
         setIsRealAdmin(false);
+        setProfileComplete(null);
         setLoaded(true);
       }
     });
@@ -85,7 +100,8 @@ export function useAuth() {
     loaded,
     showLogin,
     setShowLogin,
-    role: currentUser?.role || UserRole.GUEST,
-    canManageApp: (currentUser?.role || UserRole.GUEST) === UserRole.ADMIN
+    profileComplete,
+    role:         currentUser?.role || UserRole.GUEST,
+    canManageApp: (currentUser?.role || UserRole.GUEST) === UserRole.ADMIN,
   };
 }

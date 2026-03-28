@@ -2,6 +2,7 @@ import React from 'react';
 import { PermissionToggle } from '../../permissions/PermissionToggle';
 import { Plan } from '../../types';
 import { FIELD_REGISTRY } from '../../constants';
+import { useAppLists } from '../../context/AppListsContext';
 import { usePlanData, usePlanActions, usePlanPermissions } from '../PlanCardContext';
 import { StreetInput } from '../StreetInput';
 
@@ -18,8 +19,11 @@ export const FieldsGrid: React.FC = React.memo(() => {
     isPermissionEditingMode,
     fieldPermissions,
     setFieldPermissions,
-    canEditPlan
+    canEditFields,
   } = usePlanPermissions();
+
+  const { scopes, leads } = useAppLists();
+  const listOverrides: Record<string, string[]> = { scope: scopes, lead: leads };
 
   const groups = ['Identification', 'Location', 'Schedule', 'Team & Priority'] as const;
 
@@ -42,14 +46,14 @@ export const FieldsGrid: React.FC = React.memo(() => {
           />
         )}
       </div>
-      {canEditPlan && (k !== 'lead' || currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN) ? (
+      {canEditFields && (k !== 'lead' || currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN) ? (
         v.type === 'select' && v.options ? (
           <select
             value={selectedPlan[fieldKey] as string || ""}
             onChange={(e) => updatePlanField(selectedPlan.id, planKey, e.target.value)}
             className="text-xs font-semibold text-slate-900 bg-white border border-slate-200 rounded-md p-2 w-full"
           >
-            {v.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+            {(listOverrides[k] ?? v.options).map(opt => <option key={opt} value={opt}>{opt}</option>)}
           </select>
         ) : v.type === 'checkbox' ? (
           <input
@@ -105,19 +109,37 @@ export const FieldsGrid: React.FC = React.memo(() => {
         ))}
       </div>
       
-      <div className="flex gap-4 mt-2 pt-4 border-t border-slate-100">
-        {Object.entries(FIELD_REGISTRY).filter(([k, v]) => ['dir_nb', 'dir_sb', 'dir_directional', 'side_street'].includes(k) && canView(k)).map(([k, v]) => (
-          <label key={k} className={`flex items-center gap-2 text-xs text-slate-700 ${canEditPlan ? 'cursor-pointer' : 'cursor-default opacity-60'}`}>
+      <div className="flex flex-wrap gap-4 mt-2 pt-4 border-t border-slate-100">
+        {Object.entries(FIELD_REGISTRY).filter(([k]) => ['dir_nb', 'dir_sb', 'dir_directional', 'side_street'].includes(k) && canView(k)).map(([k, v]) => (
+          <label key={k} className={`flex items-center gap-2 text-xs text-slate-700 ${canEditFields ? 'cursor-pointer' : 'cursor-default opacity-60'}`}>
             <input
               type="checkbox"
               checked={!!selectedPlan[k as keyof Plan]}
-              onChange={(e) => canEditPlan && updatePlanField(selectedPlan.id, k, e.target.checked)}
-              disabled={!canEditPlan}
+              onChange={(e) => canEditFields && updatePlanField(selectedPlan.id, k, e.target.checked)}
+              disabled={!canEditFields}
               className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 disabled:cursor-not-allowed"
             />
             {v.label}
           </label>
         ))}
+        <div className="w-px bg-slate-200 self-stretch" />
+        <label className={`flex items-center gap-2 text-xs font-semibold text-violet-700 ${canEditFields ? 'cursor-pointer' : 'cursor-default opacity-60'}`}>
+          <input
+            type="checkbox"
+            checked={!!selectedPlan.impact_krail}
+            onChange={e => {
+              if (!canEditFields) return;
+              const checked = e.target.checked;
+              updatePlanField(selectedPlan.id, 'impact_krail', checked);
+              if (checked && selectedPlan.work_hours?.shift !== 'continuous') {
+                updatePlanField(selectedPlan.id, 'work_hours', { shift: 'continuous', days: [] });
+              }
+            }}
+            disabled={!canEditFields}
+            className="rounded border-slate-300 accent-violet-600 disabled:cursor-not-allowed"
+          />
+          Krail
+        </label>
       </div>
     </div>
   );

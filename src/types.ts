@@ -7,6 +7,112 @@ export interface AppConfig {
   atRiskDays: number;
   overdueDays: number;
   clockTargets: Record<string, Record<string, { target: number; warning: number }>>;
+  // PHE / Compliance pre-fill fields (admin-configured)
+  phe_projectName?: string;
+  phe_businessName?: string;
+  phe_address?: string;
+  phe_contactName?: string;
+  phe_contactPhone?: string;
+  phe_contactEmail?: string;
+  phe_isSubcontractor?: boolean;
+  phe_primeContractorName?: string;
+  phe_primeContactName?: string;
+  phe_primePhone?: string;
+  phe_primeEmail?: string;
+  phe_defaultPermitType?: 'A' | 'B' | 'E' | 'U' | 'S';
+  lists?: {
+    scopes?: string[];
+    leads?: string[];
+    planTypes?: string[];
+  };
+}
+
+// ── Compliance Track types ────────────────────────────────────────────────────
+export type ComplianceStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'linked_existing'
+  | 'submitted'
+  | 'approved'
+  | 'expired';
+
+export type CDStatus =
+  | 'pending'
+  | 'presentation_sent'
+  | 'meeting_scheduled'
+  | 'concurred'
+  | 'declined'
+  | 'na';
+
+export interface ComplianceAttachment {
+  name: string;
+  url: string;
+  uploadedAt: string;
+  uploadedBy: string;
+}
+
+export interface PHEChecklistItem {
+  id: string;
+  label: string;
+  description: string;
+  required: boolean;          // false = conditional (e.g. closure schedule for 24mo+)
+  notApplicable?: boolean;
+  completed: boolean;
+  attachments?: ComplianceAttachment[];
+  completedAt?: string;
+  completedBy?: string;
+  notes?: string;
+}
+
+export interface PHETrack {
+  status: ComplianceStatus;
+  triggeredBy: string[];
+  // Linked-existing path
+  existingPermitNumber?: string;
+  existingPermitDate?: string;
+  // Timeline
+  submittedDate?: string;
+  approvalDate?: string;
+  // Plan-specific form fields
+  permitType?: 'A' | 'B' | 'E' | 'U' | 'S';
+  boePermitNumber?: string;
+  impactedLanes?: string;
+  peakHourJustification?: string;   // captured at request time by SFTC
+  projectDurationMonths?: number;
+  // Checklist
+  checklist: PHEChecklistItem[];
+}
+
+export interface NoiseVarianceTrack {
+  status: ComplianceStatus;
+  triggeredBy: string[];
+  existingPermitNumber?: string;
+  submittedDate?: string;
+  approvalDate?: string;
+  attachments?: ComplianceAttachment[];
+  notes?: string;
+}
+
+export interface CDEntry {
+  cd: 'CD2' | 'CD6' | 'CD7';
+  applicable: boolean;        // false = N/A for this TCP's section
+  status: CDStatus;
+  meetingDate?: string;
+  notes?: string;
+}
+
+export interface CDConcurrenceTrack {
+  status: ComplianceStatus;
+  triggeredBy: string[];
+  presentationAttachment?: ComplianceAttachment;
+  cds: CDEntry[];
+  notes?: string;
+}
+
+export interface PlanCompliance {
+  phe?: PHETrack;
+  noiseVariance?: NoiseVarianceTrack;
+  cdConcurrence?: CDConcurrenceTrack;
 }
 
 export interface Stage {
@@ -72,16 +178,58 @@ export enum UserRole {
   ADMIN = "ADMIN"     // Tier 0: System Admin
 }
 
+// ── Notification / profile types ─────────────────────────────────────────────
+export type NotifyEvent = 'status_change' | 'comment' | 'doc_uploaded' | 'window_expiring' | 'dot_comments' | 'plan_approved' | 'plan_expired';
+
+export interface AppNotification {
+  id: string;
+  userId: string;          // email of recipient
+  type: NotifyEvent;
+  planId: string;
+  planLoc: string;         // e.g. "LOC-366"
+  location: string;        // street1 + street2
+  title: string;           // short headline
+  body: string;            // detail line
+  read: boolean;
+  createdAt: string;       // ISO timestamp
+}
+export type NotifyFrequency = 'immediate' | 'daily_digest' | 'off';
+
+export interface AutoFollowPrefs {
+  myRequests: boolean;
+  myLeads: boolean;
+  onComment: boolean;
+  segments: string[];
+}
+
+export interface NotificationPrefs {
+  displayName: string;
+  title: string;
+  notificationEmail: string;
+  notifyOn: NotifyEvent[];
+  notificationFrequency: NotifyFrequency;
+  autoFollow: AutoFollowPrefs;
+}
+
 export interface UserPublic {
   id?: string;
   uid: string;
   name: string;
   email: string;
+  // Profile fields (set after welcome screen)
+  displayName?: string;
+  title?: string;
+  notificationEmail?: string;
 }
 
 export interface UserPrivate {
   uid: string;
   role: UserRole;
+  // Notification preferences
+  notifyOn?: NotifyEvent[];
+  notificationFrequency?: NotifyFrequency;
+  autoFollow?: AutoFollowPrefs;
+  profileComplete?: boolean;
 }
 
 export type User = UserPublic & UserPrivate;
@@ -105,6 +253,7 @@ export interface FilterState {
   type: string;
   lead: string;
   priority: string;
+  importStatus: string;
 }
 
 export interface SortConfig {
@@ -115,6 +264,21 @@ export interface SortConfig {
 export interface ColumnDef {
   id: string;
   label: string;
+}
+
+// ── Hours of Work ─────────────────────────────────────────────────────────────
+export type WorkShift = 'daytime' | 'nighttime' | 'both' | 'continuous';
+export type WorkDay = 'weekday' | 'saturday' | 'sunday';
+
+export interface WorkHours {
+  shift: WorkShift;
+  days: WorkDay[];
+  weekday_start?: string;   // "HH:MM" 24-hour format
+  weekday_end?: string;
+  saturday_start?: string;
+  saturday_end?: string;
+  sunday_start?: string;
+  sunday_end?: string;
 }
 
 export interface PlanForm {
@@ -135,13 +299,13 @@ export interface PlanForm {
   dir_sb: boolean;
   dir_directional: boolean;
   side_street?: boolean;
-  mot_peakHour: boolean | null;
-  mot_extDuration: boolean | null;
-  mot_noiseVariance: boolean | null;
+  impact_krail: boolean;
   impact_driveway: boolean;
   impact_fullClosure: boolean;
   impact_busStop: boolean;
   impact_transit: boolean;
+  work_hours?: WorkHours;
+  phe_justification?: string;   // "Why is peak hour work required?" — captured at request time
   attachments: File[];
   approvedTCPs: PlanDocument[];
   approvedLOCs: PlanDocument[];
@@ -201,12 +365,8 @@ export interface Plan {
   dir_directional: boolean;
   side_street: boolean;
 
-  // MOT requirements
-  mot_peakHour: boolean | null;
-  mot_extDuration: boolean | null;
-  mot_noiseVariance: boolean | null;
-
   // Impacts
+  impact_krail: boolean;
   impact_driveway: boolean;
   impact_fullClosure: boolean;
   impact_busStop: boolean;
@@ -223,6 +383,9 @@ export interface Plan {
   isCriticalPath: boolean;
   isHistorical: boolean;       // true = imported pre-system record (excluded from perf metrics)
   pendingDocuments: boolean;   // true = imported record missing key documents
+  importStatus?: 'needs_review' | 'active';  // set on imported plans
+  importBatchId?: string;                      // identifies the import batch
+  locStatus?: 'unassigned' | 'assigned';       // 'unassigned' for TBD plans
 
   // Dates
   requestDate: string;
@@ -243,6 +406,15 @@ export interface Plan {
   }[];
   reviewCycles?: ReviewCycle[];
   implementationWindow?: ImplementationWindow | null;
+
+  // Hours of work
+  work_hours?: WorkHours;
+
+  // Compliance tracks (PHE, Noise Variance, CD Concurrence)
+  compliance?: PlanCompliance;
+
+  // Subscribers — list of user emails who follow this plan
+  subscribers?: string[];
 
   // Legacy fields — kept for backward compat with existing data
   outreach?: { status: string; notes?: string };

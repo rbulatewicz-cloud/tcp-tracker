@@ -37,8 +37,8 @@ export function useMasterFileImport(
       setMappingHeaders(headers);
       setMappingData(rows);
       setColumnMapping(initialMapping);
-      setWizardStep(1);
       setShowImportWizard(true);
+      setWizardStep(2); // advance past upload step — file is already parsed
     } catch (error) {
       console.error('Error parsing master file:', error);
       showToast('Failed to process file. Make sure it is a valid Excel (.xlsx) file.', 'error');
@@ -67,7 +67,9 @@ export function useMasterFileImport(
 
     try {
       const result = await confirmImportService(importRows, plans, td, getUserLabel);
-      showToast(`Import complete — ${result.imported} records imported, ${result.skipped} skipped.`, 'success');
+      const tbdMsg = result.tbdCount > 0 ? ` (${result.tbdCount} pending LOC assignment)` : '';
+      const renewalMsg = result.renewalCount > 0 ? `, ${result.renewalCount} renewals linked` : '';
+      showToast(`Import complete — ${result.imported} records imported${tbdMsg}${renewalMsg}, ${result.skipped} skipped.`, 'success');
       resetImport();
     } catch (error) {
       console.error('Error importing data:', error);

@@ -1,20 +1,14 @@
 import React from 'react';
 import { FIELD_REGISTRY } from '../../constants';
+import { useAppLists } from '../../context/AppListsContext';
 import { UserRole, User, ReportTemplate, PlanForm } from '../../types';
 import { Permission } from '../../permissions/PermissionContextDef';
 import { StreetInput } from '../StreetInput';
 
 const FORM_GROUPS = ['Identification', 'Location', 'Schedule', 'Team & Priority'] as const;
 const DIR_FIELDS = ['dir_nb', 'dir_sb', 'dir_directional', 'side_street'];
-// Fields handled separately or retired
+// Fields handled separately at the modal level
 const EXCLUDED_FORM_FIELDS = ['lead', 'id', 'loc', 'requestedBy'];
-
-// Workflow path info based on plan type
-const WORKFLOW_INFO: Record<string, { label: string; color: string; steps: string }> = {
-  WATCH:      { label: 'Watch/Standard Path',  color: '#6366F1', steps: 'Requested → Drafting → Submitted to DOT → Plan Approved' },
-  Standard:   { label: 'Watch/Standard Path',  color: '#6366F1', steps: 'Requested → Drafting → Submitted to DOT → Plan Approved' },
-  Engineered: { label: 'Engineered Path',       color: '#8B5CF6', steps: 'Requested → Drafting → Submitted to DOT → TCP Approved → LOC Submitted → Plan Approved' },
-};
 
 interface RequestFormFieldsProps {
   form: PlanForm;
@@ -33,8 +27,8 @@ export const RequestFormFields: React.FC<RequestFormFieldsProps> = ({
   form, setForm, currentUser, canView, reportTemplate, setWarningMessage, setShowNeedByWarningModal, TODAY,
 }) => {
   const update = (key: string, value: unknown) => setForm(f => ({ ...f, [key]: value }));
-
-  const workflowInfo = WORKFLOW_INFO[form.type] ?? WORKFLOW_INFO['Standard'];
+  const { scopes, leads } = useAppLists();
+  const listOverrides: Record<string, string[]> = { scope: scopes, lead: leads };
 
   const renderField = (k: string, v: typeof FIELD_REGISTRY[string]) => {
     if (!canView(k)) return null;
@@ -51,7 +45,7 @@ export const RequestFormFields: React.FC<RequestFormFieldsProps> = ({
             onChange={e => update(formKey, e.target.value)}
             className={`text-xs font-semibold text-slate-900 bg-white border border-slate-200 rounded-md p-2 w-full ${isLeadDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
           >
-            {v.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+            {(listOverrides[k] ?? v.options).map(opt => <option key={opt} value={opt}>{opt}</option>)}
           </select>
         ) : v.type === 'date' ? (
           <input
@@ -86,109 +80,21 @@ export const RequestFormFields: React.FC<RequestFormFieldsProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-3">
-
-      {/* LOC # — primary identifier, always at top */}
-      {currentUser?.role === UserRole.SFTC ? (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
-          <div className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest mb-2">LOC # — Primary Identifier</div>
-          <div className="text-sm font-bold text-slate-400 font-mono p-2">Auto-assigned on submit</div>
-          <div className="text-[10px] text-indigo-400 mt-1">
-            Your LOC number will be automatically assigned when you submit this request.
-          </div>
-        </div>
-      ) : (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
-          <div className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest mb-2">
-            LOC # — Primary Identifier
-          </div>
-          <input
-            type="text"
-            value={form.loc || ""}
-            onChange={e => update('loc', e.target.value)}
-            placeholder="e.g. LOC-366"
-            className="text-sm font-bold text-slate-900 bg-white border border-indigo-200 rounded-md p-2 w-full focus:outline-none focus:border-indigo-400 font-mono"
-          />
-          <div className="text-[10px] text-indigo-400 mt-1">
-            Pre-filled with the next available number. Edit only if a specific LOC is required.
-          </div>
-        </div>
-      )}
-
-      {/* Requested By — auto-filled from current user, editable */}
-      <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Requested By</div>
-        <input
-          type="text"
-          value={form.requestedBy || ""}
-          onChange={e => update('requestedBy', e.target.value)}
-          placeholder="Your name"
-          className="text-xs font-semibold text-slate-900 bg-white border border-slate-200 rounded-md p-2 w-full focus:outline-none focus:border-blue-400"
-        />
-        <div className="text-[10px] text-slate-400 mt-1">Auto-filled from your account. Edit if submitting on behalf of someone else.</div>
-      </div>
-
-      {/* Workflow path preview — updates live as plan type changes */}
-      <div className="rounded-lg border px-3 py-2" style={{ borderColor: `${workflowInfo.color}44`, background: `${workflowInfo.color}08` }}>
-        <div className="flex items-center gap-2 mb-1">
-          <div className="w-2 h-2 rounded-full" style={{ background: workflowInfo.color }} />
-          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: workflowInfo.color }}>
-            {workflowInfo.label}
-          </span>
-        </div>
-        <div className="text-[10px] text-slate-500 leading-relaxed">{workflowInfo.steps}</div>
-      </div>
-
-      {/* Plan Type — shown prominently since it drives the workflow */}
-      <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Plan Type <span className="text-red-500">*</span></div>
-        <select
-          value={form.type || "Standard"}
-          onChange={e => update('type', e.target.value)}
-          className="text-xs font-semibold text-slate-900 bg-white border border-slate-200 rounded-md p-2 w-full cursor-pointer"
-        >
-          {['WATCH', 'Standard', 'Engineered'].map(opt => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Remaining form groups */}
-      <div className="grid grid-cols-2 gap-3">
-        {FORM_GROUPS.map(group => {
-          const fields = Object.entries(FIELD_REGISTRY).filter(
-            ([k, v]) => v.group === group && v.inForm && !DIR_FIELDS.includes(k) && !EXCLUDED_FORM_FIELDS.includes(k) && k !== 'type'
-          );
-          if (fields.length === 0) return null;
-          return (
-            <div key={group} className="bg-slate-50 border border-slate-100 rounded-lg p-3">
-              <h3 className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">{group}</h3>
-              <div className="flex flex-col gap-2">
-                {fields.map(([k, v]) => renderField(k, v))}
-              </div>
+    <div className="grid grid-cols-2 gap-3">
+      {FORM_GROUPS.map(group => {
+        const fields = Object.entries(FIELD_REGISTRY).filter(
+          ([k, v]) => v.group === group && v.inForm && !DIR_FIELDS.includes(k) && !EXCLUDED_FORM_FIELDS.includes(k) && k !== 'type'
+        );
+        if (fields.length === 0) return null;
+        return (
+          <div key={group} className="bg-slate-50 border border-slate-100 rounded-lg p-3">
+            <h3 className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">{group}</h3>
+            <div className="flex flex-col gap-2">
+              {fields.map(([k, v]) => renderField(k, v))}
             </div>
-          );
-        })}
-      </div>
-
-      {/* Direction checkboxes */}
-      <div className="flex gap-4 pt-2 border-t border-slate-100">
-        {DIR_FIELDS.map(k => {
-          const v = FIELD_REGISTRY[k];
-          if (!v) return null;
-          return (
-            <label key={k} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={!!form[k]}
-                onChange={e => update(k, e.target.checked)}
-                className="rounded border-slate-300"
-              />
-              {v.label}
-            </label>
-          );
-        })}
-      </div>
+          </div>
+        );
+      })}
     </div>
   );
 };

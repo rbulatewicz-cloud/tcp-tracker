@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { usePlanData, usePlanActions, usePlanPermissions, usePlanUtils } from '../PlanCardContext';
 import { PermissionToggle } from '../../permissions/PermissionToggle';
 import { showToast } from '../../lib/toast';
+import { Tooltip } from '../Tooltip';
 import {
   getWorkflowType,
   getNextActions,
@@ -14,6 +15,7 @@ import {
 } from '../../lib/statusMachine';
 import { ReviewCycle } from '../../types';
 import { ALL_STAGES } from '../../constants';
+import { pheProgress, cdProgress } from '../../utils/compliance';
 
 // Look up a status color from the full stage list
 function getStatusColor(statusKey: string): string {
@@ -22,7 +24,7 @@ function getStatusColor(statusKey: string): string {
 
 export const StatusSection: React.FC = React.memo(() => {
   const { selectedPlan } = usePlanData();
-  const { updateStage, batchUploadStageAttachments, addLogEntry } = usePlanActions();
+  const { updateStage, batchUploadStageAttachments, addLogEntry, convertPlanType } = usePlanActions();
   const { getLocalDateString } = usePlanUtils();
   const {
     canEditPlan,
@@ -45,6 +47,11 @@ export const StatusSection: React.FC = React.memo(() => {
   const [transitionNotes, setTransitionNotes] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const autoExpiredRef = useRef<string | null>(null);
+
+  // Convert plan type modal state
+  const [showConvertModal, setShowConvertModal] = useState(false);
+  const [convertTargetType, setConvertTargetType] = useState('');
+  const [convertLoading, setConvertLoading] = useState(false);
 
   if (!selectedPlan) return null;
 
@@ -177,9 +184,9 @@ export const StatusSection: React.FC = React.memo(() => {
         implementationWindow ?? null
       );
 
-      // Save transition notes as a log entry
+      // Save transition notes as a tagged log entry linked to the new stage
       if (transitionNotes.trim()) {
-        addLogEntry(selectedPlan.id, transitionNotes.trim(), []);
+        addLogEntry(selectedPlan.id, transitionNotes.trim(), [], 'transition_note', undefined, pendingAction.nextStatus);
       }
 
       // Upload attachments after status change (silent — no extra log entries)
@@ -205,6 +212,33 @@ export const StatusSection: React.FC = React.memo(() => {
   const needsModal =
     pendingAction &&
     (pendingAction.collectComments || pendingAction.collectWindow || true);
+
+  // --- Convert plan type ---
+  const PLAN_TYPES = ['WATCH', 'Standard', 'Engineered'];
+  const ENGINEERED_ONLY_STAGES = ['tcp_approved', 'loc_submitted', 'loc_review'];
+  const ENGINEERED_ONLY_LABELS: Record<string, string> = {
+    tcp_approved: 'TCP Approved',
+    loc_submitted: 'LOC Submitted',
+    loc_review: 'LOC Review Cycle',
+  };
+  const convertNeedsRemap =
+    convertTargetType !== 'Engineered' &&
+    ENGINEERED_ONLY_STAGES.includes(normalizedStage);
+
+  const handleConvertConfirm = async () => {
+    if (!convertTargetType) return;
+    setConvertLoading(true);
+    try {
+      await convertPlanType(selectedPlan.id, convertTargetType);
+      showToast(`Plan type updated to ${convertTargetType}.`, 'success');
+    } catch {
+      showToast('Failed to convert plan type. Please try again.', 'error');
+    } finally {
+      setConvertLoading(false);
+      setShowConvertModal(false);
+      setConvertTargetType('');
+    }
+  };
 
   // --- Progress bar ---
   const progressBar = (
@@ -259,13 +293,58 @@ export const StatusSection: React.FC = React.memo(() => {
       {/* Confirm modal */}
       {pendingAction && needsModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-5 backdrop-blur-sm">
-          <div className="w-full max-w-[420px] rounded-2xl bg-white p-6 shadow-2xl">
-            <h2 className="text-lg font-bold text-slate-900 mb-1">
-              {pendingAction.label}
-            </h2>
-            <p className="text-xs text-slate-500 mb-4">
-              → <strong>{pendingAction.nextStatus.replace(/_/g, ' ')}</strong>
-            </p>
+          <div className="w-full max-w-[420px] rounded-2xl bg-white shadow-2xl flex flex-col max-h-[90vh]">
+            {/* Fixed header */}
+            <div className="px-6 pt-6 pb-3 flex-shrink-0 border-b border-slate-100">
+              <h2 className="text-lg font-bold text-slate-900 mb-0.5">
+                {pendingAction.label}
+              </h2>
+              <p className="text-xs text-slate-500 mb-1">
+                → <strong>{pendingAction.nextStatus.replace(/_/g, ' ')}</strong>
+              </p>
+              {pendingAction.description && (
+                <p className="text-xs text-slate-500 leading-snug">
+                  {pendingAction.description}
+                </p>
+              )}
+            </div>
+
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+
+            {/* Compliance warning — shown when approving with incomplete tracks */}
+            {pendingAction.nextStatus === 'plan_approved' && (() => {
+              const c = selectedPlan.compliance;
+              if (!c) return null;
+              const warnings: string[] = [];
+              if (c.phe) {
+                const { done, total } = pheProgress(c.phe);
+                if (done < total) warnings.push(`PHE checklist ${done}/${total} items complete`);
+              }
+              if (c.noiseVariance && !['approved', 'submitted'].includes(c.noiseVariance.status)) {
+                warnings.push('Noise Variance not yet submitted/approved');
+              }
+              if (c.cdConcurrence) {
+                const applicable = c.cdConcurrence.cds.filter(cd => cd.applicable);
+                const pending = applicable.filter(cd => cd.status !== 'concurred' && cd.status !== 'na');
+                if (pending.length > 0)
+                  warnings.push(`CD Concurrence pending: ${pending.map(cd => cd.cd).join(', ')}`);
+              }
+              if (warnings.length === 0) return null;
+              return (
+                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                  <p className="text-[11px] font-bold text-amber-800 mb-1.5">⚠ Compliance tracks incomplete</p>
+                  <ul className="flex flex-col gap-0.5">
+                    {warnings.map((w, i) => (
+                      <li key={i} className="text-[10px] text-amber-700 flex items-start gap-1.5">
+                        <span className="mt-0.5 shrink-0">•</span>{w}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-[10px] text-amber-600 mt-1.5">You can still approve — this is a reminder only.</p>
+                </div>
+              );
+            })()}
 
             {/* Date */}
             <div className="mb-4">
@@ -400,19 +479,100 @@ export const StatusSection: React.FC = React.memo(() => {
               </div>
             )}
 
-            <div className="flex justify-end gap-3">
+            </div>{/* end scrollable body */}
+
+            {/* Fixed footer */}
+            <div className="px-6 py-4 flex justify-end gap-3 flex-shrink-0 border-t border-slate-100">
               <button
                 onClick={() => setPendingAction(null)}
-                className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-500"
+                className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-200"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirm}
                 disabled={!!loadingStage}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50 hover:bg-blue-700"
               >
                 {loadingStage ? 'Saving…' : pendingFiles.length > 0 ? `Confirm & Upload (${pendingFiles.length})` : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Convert Plan Type modal */}
+      {showConvertModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-5 backdrop-blur-sm">
+          <div className="w-full max-w-[400px] rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 className="text-lg font-bold text-slate-900 mb-1">Convert Plan Type</h2>
+            <p className="text-xs text-slate-500 mb-4">
+              Changes the approval workflow from this point forward. History is preserved.
+            </p>
+
+            {/* Current type */}
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Current Type</label>
+              <span className="inline-block px-3 py-1 bg-slate-100 rounded-lg text-xs font-bold text-slate-600">
+                {selectedPlan.type || 'WATCH'}
+              </span>
+            </div>
+
+            {/* Target type selector */}
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Convert To</label>
+              <div className="flex gap-2 flex-wrap">
+                {PLAN_TYPES.filter(t => t !== (selectedPlan.type || 'WATCH')).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setConvertTargetType(t)}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold border transition-colors ${
+                      convertTargetType === t
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Stage compatibility warning */}
+            {convertTargetType && convertNeedsRemap && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-xs font-bold text-amber-700 mb-1">⚠️ Stage Reset Required</p>
+                <p className="text-xs text-amber-600">
+                  This plan is at <strong>{ENGINEERED_ONLY_LABELS[normalizedStage]}</strong>, which is an Engineered-only stage.
+                  Converting to <strong>{convertTargetType}</strong> will reset the stage back to{' '}
+                  <strong>Submitted to DOT</strong>.
+                </p>
+              </div>
+            )}
+
+            {/* Current stage (no warning needed) */}
+            {convertTargetType && !convertNeedsRemap && (
+              <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <p className="text-xs text-slate-500">
+                  The plan will continue from its current stage:{' '}
+                  <strong className="text-slate-700">{currentStatusLabel}</strong>
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setShowConvertModal(false); setConvertTargetType(''); }}
+                className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConvertConfirm}
+                disabled={!convertTargetType || convertLoading}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-40 hover:bg-blue-700"
+              >
+                {convertLoading ? 'Converting…' : 'Confirm Conversion'}
               </button>
             </div>
           </div>
@@ -471,33 +631,48 @@ export const StatusSection: React.FC = React.memo(() => {
             {nextActions.map(action => {
               const color = getStatusColor(action.nextStatus);
               return (
-                <button
-                  key={action.nextStatus}
-                  onClick={() => handleActionClick(action)}
-                  disabled={!!loadingStage}
-                  style={action.collectComments ? {} : { backgroundColor: color }}
-                  className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-opacity disabled:opacity-50
-                    ${action.collectComments
-                      ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
-                      : 'text-white hover:opacity-90'
-                    }`}
-                >
-                  {loadingStage === action.nextStatus ? '…' : action.label}
-                </button>
+                <Tooltip key={action.nextStatus} text={action.description ?? action.label} position="top" maxWidth={280}>
+                  <button
+                    onClick={() => handleActionClick(action)}
+                    disabled={!!loadingStage}
+                    style={action.collectComments ? {} : { backgroundColor: color }}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-opacity disabled:opacity-50
+                      ${action.collectComments
+                        ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+                        : 'text-white hover:opacity-90'
+                      }`}
+                  >
+                    {loadingStage === action.nextStatus ? '…' : action.label}
+                  </button>
+                </Tooltip>
               );
             })}
 
             {/* Permanently closed option — only shown when expired */}
             {normalizedStage === 'expired' && (
-              <button
-                onClick={() => handleActionClick({ label: '⚰️ Close Out Plan', nextStatus: 'closed' })}
-                disabled={!!loadingStage}
-                className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-slate-300 bg-slate-100 text-slate-500 hover:bg-slate-200 disabled:opacity-50"
-              >
-                {loadingStage === 'closed' ? '…' : '⚰️ Close Out Plan'}
-              </button>
+              <Tooltip text="Permanently close this plan with no further action. Use when the project is cancelled or no longer moving forward." position="top" maxWidth={280}>
+                <button
+                  onClick={() => handleActionClick({ label: '⚰️ Close Out Plan', nextStatus: 'closed', description: 'Permanently close this plan. Use when the project is cancelled or no longer moving forward.' })}
+                  disabled={!!loadingStage}
+                  className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-slate-300 bg-slate-100 text-slate-500 hover:bg-slate-200 disabled:opacity-50"
+                >
+                  {loadingStage === 'closed' ? '…' : '⚰️ Close Out Plan'}
+                </button>
+              </Tooltip>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Convert Plan Type — MOT/ADMIN only, not shown for closed plans */}
+      {canChangeStatus && normalizedStage !== 'closed' && (
+        <div className="mt-3 pt-3 border-t border-slate-100">
+          <button
+            onClick={() => { setConvertTargetType(''); setShowConvertModal(true); }}
+            className="text-[11px] font-semibold text-slate-400 hover:text-blue-500 transition-colors"
+          >
+            ⇄ Convert Plan Type
+          </button>
         </div>
       )}
     </div>

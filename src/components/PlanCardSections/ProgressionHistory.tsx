@@ -65,6 +65,16 @@ export const ProgressionHistory: React.FC = React.memo(() => {
   const reviewCycles = selectedPlan.reviewCycles || [];
   const today = getLocalDateString().split(' ')[0];
 
+  // Transition notes: log entries tagged with field === 'transition_note', keyed by normalized stage
+  const transitionNotesByStage: Record<string, { action: string; user: string; date: string }[]> = {};
+  (selectedPlan.log || []).forEach((entry: any) => {
+    if (entry.field === 'transition_note' && entry.newValue) {
+      const key = normalizeStatus(entry.newValue);
+      if (!transitionNotesByStage[key]) transitionNotesByStage[key] = [];
+      transitionNotesByStage[key].push(entry);
+    }
+  });
+
   return (
     <div className="pb-4 mb-4">
       <div className="flex flex-col gap-2">
@@ -134,6 +144,16 @@ export const ProgressionHistory: React.FC = React.memo(() => {
                   </div>
                 );
               })}
+
+              {/* Transition notes for this stage */}
+              {(transitionNotesByStage[stage.key] || []).map((note, i) => (
+                <div key={i} className="pl-4 mt-0.5 flex flex-col gap-0.5">
+                  <div className="text-[10px] text-slate-400 italic border-l-2 border-slate-200 pl-2">
+                    "{note.action}"
+                    <span className="not-italic text-slate-300 ml-1">— {note.user}{note.date ? `, ${note.date.split(' ')[0]}` : ''}</span>
+                  </div>
+                </div>
+              ))}
 
               {/* Review cycles with full DOT + team clock breakdown */}
               {stageCycles.map(cycle => {

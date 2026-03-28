@@ -215,9 +215,15 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                       {/* Row header */}
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <span className={`text-xs font-bold font-mono ${row.loc ? 'text-slate-900' : 'text-red-500'}`}>
-                            {row.loc || '⚠ No LOC #'}
+                          <span className={`text-xs font-bold font-mono ${row.loc ? 'text-slate-900' : 'text-amber-600'}`}>
+                            {row.loc || 'TBD'}
                           </span>
+                          {row.isTBD && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">⏳ Pending LOC</span>
+                          )}
+                          {row.isRenewal && row.parentLocId && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold">⇄ Renewal of {row.parentLocId}</span>
+                          )}
                           <span className="text-[10px] text-slate-500">{row.street1}{row.street2 ? ` / ${row.street2}` : ''}</span>
                           <span className="text-[9px] px-1.5 py-0.5 rounded font-bold"
                             style={{ background: ALL_STAGES.find(s => s.key === row.stage)?.color + '22', color: ALL_STAGES.find(s => s.key === row.stage)?.color }}>
@@ -229,7 +235,7 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                           <input
                             type="checkbox"
                             checked={row.approved}
-                            disabled={hasIssues && !row.loc}
+                            disabled={hasIssues && !row.street1}
                             onChange={e => updateImportRow(row._rowIndex, { approved: e.target.checked })}
                             className="cursor-pointer"
                           />
@@ -249,16 +255,16 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
 
                       {/* Inline fixes */}
                       <div className="grid grid-cols-3 gap-2">
-                        {/* LOC # fix if missing */}
-                        {!row.loc && (
+                        {/* LOC # — optional entry for TBD rows */}
+                        {row.isTBD && (
                           <div className="col-span-1">
-                            <div className="text-[9px] font-bold text-red-500 uppercase mb-0.5">LOC # *</div>
+                            <div className="text-[9px] font-bold text-amber-600 uppercase mb-0.5">LOC # (optional)</div>
                             <input
                               type="text"
                               value={row.loc}
-                              placeholder="Enter LOC #"
-                              onChange={e => updateImportRow(row._rowIndex, { loc: e.target.value, issues: e.target.value ? row.issues.filter(i => i !== 'Missing LOC #') : row.issues })}
-                              className="w-full text-[11px] border border-red-200 rounded p-1 bg-white outline-none"
+                              placeholder="Leave blank → TBD"
+                              onChange={e => updateImportRow(row._rowIndex, { loc: e.target.value, isTBD: !e.target.value.trim() })}
+                              className="w-full text-[11px] border border-amber-200 rounded p-1 bg-white outline-none"
                             />
                           </div>
                         )}
@@ -288,7 +294,7 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                             value={row.stage}
                             onChange={e => updateImportRow(row._rowIndex, {
                               stage: e.target.value,
-                              pendingDocuments: ['plan_approved', 'approved', 'expired', 'tcp_approved_final', 'closed'].includes(e.target.value),
+                              pendingDocuments: ['plan_approved', 'approved', 'expired', 'closed'].includes(e.target.value),
                             })}
                             className="w-full text-[11px] border border-slate-200 rounded p-1 bg-white outline-none"
                           >
@@ -347,6 +353,14 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                   <span className="text-sm text-slate-600 font-semibold">Flagged for pending documents</span>
                   <span className="text-xl font-bold text-amber-600">{importRows.filter(r => r.approved && r.pendingDocuments).length}</span>
                 </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-600 font-semibold">Pending LOC assignment</span>
+                  <span className="text-xl font-bold text-amber-500">{importRows.filter(r => r.approved && r.isTBD).length}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-600 font-semibold">Renewal plans linked</span>
+                  <span className="text-xl font-bold text-purple-600">{importRows.filter(r => r.approved && r.isRenewal).length}</span>
+                </div>
               </div>
 
               {/* Preview table */}
@@ -366,7 +380,13 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                   <tbody>
                     {importRows.filter(r => r.approved).map(row => (
                       <tr key={row._rowIndex} className="border-b border-slate-100 hover:bg-slate-50">
-                        <td className="p-2 font-mono font-bold text-slate-900">{row.loc}</td>
+                        <td className="p-2 font-mono font-bold">
+                          {row.loc ? (
+                            <span className="text-slate-900">{row.loc}{row.isRenewal && <span className="ml-1 text-[9px] text-purple-600 font-bold">renewal</span>}</span>
+                          ) : (
+                            <span className="text-amber-600">TBD</span>
+                          )}
+                        </td>
                         <td className="p-2 text-slate-600">{row.street1}{row.street2 ? ` / ${row.street2}` : ''}</td>
                         <td className="p-2 text-slate-600">{row.type}</td>
                         <td className="p-2 text-slate-600">{row.lead || '—'}</td>

@@ -11,6 +11,7 @@
 import { updatePlanStage, handleClearPlans, bulkUpdate, handleBulkLOCUpload } from './services/planService';
 import { ImportWizard } from './components/ImportWizard';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import ReactDOM from "react-dom";
 import { jsPDF } from "jspdf";
 import { PDFDocument } from "pdf-lib";
 import * as XLSX from 'xlsx';
@@ -54,6 +55,7 @@ import { GlobalActivityLogView } from './views/GlobalActivityLogView';
 import { CommunityRelationsView } from './views/CommunityRelationsView';
 import { TicketsView } from './views/TicketsView';
 import { LocManagerPortalView } from './views/LocManagerPortalView';
+import { ComplianceView } from './views/ComplianceView';
 import { generateDefaultLogo } from './utils/logo';
 import { daysBetween, getCycleTime, getStageDurations, daysFromToday, formatFileSize, calcMetrics } from './utils/plans';
 import { TodoSidebar } from './components/TodoSidebar';
@@ -74,8 +76,14 @@ import { useMasterFileImport } from './hooks/useMasterFileImport';
 import { usePlanForm } from './hooks/usePlanForm';
 import { PlanCard } from './components/PlanCard';
 import { AppProvider } from './context/AppProvider';
+import { AppListsProvider } from './context/AppListsContext';
 import { useApp } from './hooks/useApp';
 import { useDarkMode } from './hooks/useDarkMode';
+import { WelcomeScreen } from './components/WelcomeScreen';
+import { ProfileModal } from './components/ProfileModal';
+import { HelpModal } from './components/HelpModal';
+import * as authService from './services/authService';
+import { useNotifications } from './hooks/useNotifications';
 
 const TODAY = new Date();
 const getLocalDateString = () => new Date().toLocaleDateString('en-CA');
@@ -143,7 +151,7 @@ function AppContent() {
     teamSortConfig, setTeamSortConfig,
     searchQuery, setSearchQuery
   } = tableState;
-  const { currentUser, setCurrentUser, isRealAdmin, loaded, showLogin, setShowLogin, role, canManageApp } = auth;
+  const { currentUser, setCurrentUser, isRealAdmin, loaded, showLogin, setShowLogin, profileComplete, role, canManageApp } = auth;
   const {
     appRequestForm, setAppRequestForm,
     handleAppRequestFileUpload,
@@ -151,6 +159,22 @@ function AppContent() {
   } = useAppRequests(currentUser, loading, setLoading, showAppRequestModal, setShowAppRequestModal);
   const [newTodoText, setNewTodoText] = useState("");
   const [appRequestTab, setAppRequestTab] = useState<"pending" | "completed">("pending");
+  // Profile modal state
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [profileModalTab, setProfileModalTab]   = useState<'profile' | 'notifications'>('profile');
+  const [showHelp, setShowHelp] = useState(false);
+
+  const openProfile = (tab: 'profile' | 'notifications') => {
+    setProfileModalTab(tab);
+    setProfileModalOpen(true);
+  };
+
+  // Notifications
+  const [notifOpen, setNotifOpen] = useState(false);
+  const { notifications, unreadCount, markRead, markAllRead } = useNotifications(currentUser?.email);
+
+  // Show welcome screen for new users (profileComplete === false, not null)
+  const showWelcomeScreen = loaded && !!currentUser && profileComplete === false;
 
   const { plans, setPlans, locs, setLocs, users, setUsers, appRequests, setAppRequests, appTodos, setAppTodos, reportTemplate, setReportTemplate, appConfig, setAppConfig } = firestoreData;
   const { fieldPermissions, setFieldPermissions, toggleSectionPermission } = permissions;
@@ -270,10 +294,16 @@ function AppContent() {
   const stageLabelMap = useMemo(() => new Map(STAGES.map(s => [s.key, s.label])), []);
 
   const filtered = useMemo(() => plans.filter(p => {
-    if(filter.stage!=="all"&&p.stage!==filter.stage) return false;
+    // Normalize legacy stage keys so filter matches the pipeline bar counts
+    const normalizedStage = p.stage === 'approved' ? 'plan_approved'
+      : p.stage === 'submitted' ? 'submitted_to_dot'
+      : p.stage;
+    if(filter.stage!=="all"&&normalizedStage!==filter.stage) return false;
     if(filter.type!=="all"&&p.type!==filter.type) return false;
     if(filter.lead!=="all"&&p.lead!==filter.lead) return false;
     if(filter.priority!=="all"&&p.priority!==filter.priority) return false;
+    if(filter.importStatus==="needs_review"&&p.importStatus!=="needs_review") return false;
+    if(filter.importStatus==="tbd"&&p.locStatus!=="unassigned") return false;
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -579,6 +609,7 @@ function AppContent() {
   const canCreateRequest = role === UserRole.SFTC || role === UserRole.MOT || role === UserRole.ADMIN;
   const canManageUsers = role === UserRole.MOT || role === UserRole.ADMIN;
   const canRequestAppChange = role === UserRole.MOT || role === UserRole.ADMIN;
+  const canViewCompliance = role === UserRole.MOT || role === UserRole.ADMIN || role === UserRole.SFTC || role === UserRole.CR;
   const canExport = role === UserRole.SFTC || role === UserRole.MOT || role === UserRole.ADMIN;
 
   useEffect(() => {
@@ -596,6 +627,7 @@ function AppContent() {
 
 
   return (
+    <AppListsProvider appConfig={appConfig}>
     <>
       <div style={{fontFamily:font,background:"var(--bg-page)",color:"var(--text-secondary)",minHeight:"100vh"}}>
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
@@ -608,8 +640,6 @@ function AppContent() {
 
       <AdminToolbar
         role={role}
-        loading={loading}
-        handleMasterUpload={handleMasterUpload}
         currentUser={currentUser}
         setCurrentUser={setCurrentUser}
         isPermissionEditingMode={isPermissionEditingMode}
@@ -632,6 +662,7 @@ function AppContent() {
         canViewLogs={canViewLogs}
         canManageUsers={canManageUsers}
         canManageApp={canManageApp}
+        canViewCompliance={canViewCompliance}
         canCreateRequest={canCreateRequest}
         canRequestAppChange={canRequestAppChange}
         setShowForm={setShowForm}
@@ -640,6 +671,14 @@ function AppContent() {
         appConfig={appConfig}
         isDark={isDark}
         toggleDark={toggleDark}
+        onOpenProfile={openProfile}
+        onOpenHelp={() => setShowHelp(true)}
+        notifications={notifications}
+        unreadCount={unreadCount}
+        markRead={markRead}
+        markAllRead={markAllRead}
+        notifOpen={notifOpen}
+        setNotifOpen={setNotifOpen}
       />
 
       {/* SUMMARY STATS BAR */}
@@ -930,6 +969,15 @@ function AppContent() {
           />
         )}
 
+        {/* COMPLIANCE VIEW */}
+        {view==="compliance" && canViewCompliance && (
+          <ComplianceView
+            plans={plans}
+            setSelectedPlan={setSelectedPlan}
+            setView={setView}
+          />
+        )}
+
         {/* TICKETS VIEW */}
         {view==="plan_requests" && (
           <TicketsView
@@ -943,6 +991,7 @@ function AppContent() {
             setView={setView}
             pushTicket={pushTicket}
             plans={plans}
+            canReorder={role === UserRole.MOT || role === UserRole.ADMIN}
           />
         )}
 
@@ -1489,7 +1538,7 @@ function AppContent() {
         </>
       )}
       </div>
-      {previewImage && (
+      {previewImage && ReactDOM.createPortal(
         <div
           onClick={() => setPreviewImage(null)}
           style={{
@@ -1500,7 +1549,7 @@ function AppContent() {
             bottom: 0,
             background: "rgba(15,23,42,0.8)",
             backdropFilter: "blur(8px)",
-            zIndex: 2000,
+            zIndex: 9999,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -1537,10 +1586,36 @@ function AppContent() {
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
       <ToastContainer />
+      {showWelcomeScreen && currentUser && (
+        <WelcomeScreen
+          user={currentUser}
+          onComplete={async (data) => {
+            await authService.saveUserProfile(currentUser.email, data);
+            setCurrentUser({ ...currentUser, name: data.displayName, displayName: data.displayName, title: data.title, notificationEmail: data.notificationEmail });
+          }}
+        />
+      )}
+      {profileModalOpen && currentUser && (
+        <ProfileModal
+          user={currentUser}
+          initialTab={profileModalTab}
+          onClose={() => setProfileModalOpen(false)}
+          onSaved={(updated) => setCurrentUser({ ...currentUser, ...updated })}
+        />
+      )}
+
+      {showHelp && (
+        <HelpModal
+          currentUser={currentUser}
+          onClose={() => setShowHelp(false)}
+        />
+      )}
     </>
+    </AppListsProvider>
   )
 }
 

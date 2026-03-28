@@ -1,9 +1,25 @@
 import { doc, updateDoc, setDoc, deleteDoc, getDoc, runTransaction } from 'firebase/firestore';
 import { db, storage, handleFirestoreError, OperationType } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Plan, Stage, LogEntry, PlanDocument, User, UserRole, LoadingState, ReviewCycle, ImplementationWindow } from '../types';
+import { Plan, Stage, LogEntry, PlanDocument, User, UserRole, LoadingState, ReviewCycle, ImplementationWindow, PHETrack } from '../types';
+import { detectComplianceTriggers, initializeComplianceTracks } from '../utils/compliance';
 import { FIELD_REGISTRY, ALL_STAGES } from '../constants';
 import { showToast } from '../lib/toast';
+
+/** Recursively remove undefined values — Firestore rejects them in updateDoc */
+function stripUndefined(val: unknown): unknown {
+  if (val === undefined) return null;
+  if (val === null) return null;
+  if (Array.isArray(val)) return val.map(stripUndefined);
+  if (typeof val === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      if (v !== undefined) out[k] = stripUndefined(v);
+    }
+    return out;
+  }
+  return val;
+}
 
 export const updatePlanStage = async (
   plan: Plan,
@@ -19,7 +35,9 @@ export const updatePlanStage = async (
   setDraftPlan: (plan: Plan | null) => void = () => {},
   setIsDirty: (dirty: boolean) => void = () => {},
   reviewCycles?: ReviewCycle[],
-  implementationWindow?: ImplementationWindow | null
+  implementationWindow?: ImplementationWindow | null,
+  onNotify?: (plan: Plan, newStage: string, stageLabel: string, actorEmail: string) => void,
+  actorEmail?: string,
 ) => {
   try {
     // Use ALL_STAGES for comprehensive lookup — the old 4-stage STAGES array
@@ -60,7 +78,7 @@ export const updatePlanStage = async (
     // Set relevant date fields based on new status
     if (ns === 'requested') updateData.dateRequested = date;
     if (ns === 'submitted' || ns === 'submitted_to_dot') updateData.submitDate = date;
-    if (ns === 'approved' || ns === 'plan_approved' || ns === 'tcp_approved_final') updateData.approvedDate = date;
+    if (ns === 'approved' || ns === 'plan_approved') updateData.approvedDate = date;
 
     if (isDraft) {
       setDraftPlan(updateData as Plan);
@@ -71,37 +89,63 @@ export const updatePlanStage = async (
       if (selectedPlan?.id === plan.id) {
         setSelectedPlan({ ...plan, ...updateData } as Plan);
       }
+      // Fire notifications for subscribers (non-blocking)
+      if (onNotify && actorEmail) {
+        onNotify(plan, ns, stageLabel, actorEmail);
+      }
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `plans/${plan.id}`);
   }
 };
 
-// Returns the next LOC string (e.g. "LOC-367") using a Firestore transaction
-// to prevent concurrent submissions from receiving the same number.
-export const getNextLocNumber = async (): Promise<string> => {
+// Extract the base integer from a LOC string like "LOC-373", "373", "366.1"
+function locToInt(loc: unknown): number {
+  const n = parseInt(String(loc || '').replace('LOC-', '').split('.')[0], 10);
+  return isNaN(n) ? 0 : n;
+}
+
+function maxLocFromPlans(plans: Plan[]): number {
+  return plans.reduce((max, p) => Math.max(max, locToInt(p.loc || p.id || '')), 0);
+}
+
+// Returns the next LOC string (e.g. "LOC-374") using a Firestore transaction.
+// Always takes max(counter, highest existing LOC) + 1 — safe even with imported gaps.
+function safeCounterVal(data: Record<string, unknown> | undefined): number {
+  if (!data) return 0;
+  // Support both current 'count' field and legacy 'value' field
+  const raw = data.count ?? data.value ?? 0;
+  const n = Number(raw);
+  return isNaN(n) ? 0 : n;
+}
+
+export const getNextLocNumber = async (plans: Plan[]): Promise<string> => {
   const counterRef = doc(db, 'settings', 'locCounter');
+  const maxFromPlans = maxLocFromPlans(plans);
   let nextNum = 1;
   await runTransaction(db, async (transaction) => {
     const snap = await transaction.get(counterRef);
-    nextNum = (snap.exists() ? (snap.data().count as number) : 0) + 1;
+    const counterVal = safeCounterVal(snap.exists() ? snap.data() : undefined);
+    nextNum = Math.max(counterVal, maxFromPlans) + 1;
     transaction.set(counterRef, { count: nextNum });
   });
   return `LOC-${nextNum}`;
 };
 
 // Read-only preview of the next LOC number (no reservation — for display only).
-export const peekNextLocNumber = async (): Promise<string> => {
+export const peekNextLocNumber = async (plans: Plan[]): Promise<string> => {
   const snap = await getDoc(doc(db, 'settings', 'locCounter'));
-  const current = snap.exists() ? (snap.data().count as number) : 0;
-  return `LOC-${current + 1}`;
+  const counterVal = safeCounterVal(snap.exists() ? snap.data() : undefined);
+  const maxFromPlans = maxLocFromPlans(plans);
+  return `LOC-${Math.max(counterVal, maxFromPlans) + 1}`;
 };
 
 export const submitPlan = async (
   form: Partial<Plan> & { attachments: File[] },
   plans: Plan[],
   td: string,
-  getUserLabel: () => string
+  getUserLabel: () => string,
+  creatorEmail?: string,
 ) => {
   // LOC # is the primary identifier — validate it is provided and unique
   const locNumber = (form.loc || form.id || '').trim();
@@ -131,21 +175,35 @@ export const submitPlan = async (
       })
     );
 
+    // Detect and initialize compliance tracks from form data
+    const triggers = detectComplianceTriggers(form as any);
+    const compliance = initializeComplianceTracks(triggers);
+    // Carry PHE justification from form into the PHE track
+    const formAny = form as Record<string, unknown>;
+    if (compliance.phe && formAny.phe_justification) {
+      (compliance.phe as PHETrack).peakHourJustification = formAny.phe_justification as string;
+    }
+
     const np: Partial<Plan> = {
       ...form,
       attachments: uploadedAttachments,
       id: locNumber,
       loc: locNumber,
       stage: "requested",
+      subscribers: creatorEmail ? [creatorEmail] : [],
       requestDate: td,
       dateRequested: td,
       isHistorical: false,
       pendingDocuments: false,
+      compliance: Object.keys(compliance).length > 0 ? compliance : undefined,
       log: [
         { uniqueId: Date.now().toString(), date: td, action: "New request submitted", user: getUserLabel(), dateRequested: td },
         ...(form.isCriticalPath
           ? [{ uniqueId: (Date.now() + 1).toString(), date: td, action: "Submitted as Critical Path Item", user: getUserLabel() }]
-          : [])
+          : []),
+        ...(triggers.phe || triggers.noiseVariance || triggers.cdConcurrence
+          ? [{ uniqueId: (Date.now() + 2).toString(), date: td, action: `Compliance tracks auto-generated: ${[triggers.phe && 'PHE', triggers.noiseVariance && 'Noise Variance', triggers.cdConcurrence && 'CD Concurrence'].filter(Boolean).join(', ')}`, user: getUserLabel() }]
+          : []),
       ],
     };
 
@@ -215,7 +273,115 @@ export const uploadStageAttachment = async (
   }
 };
 
+/** Delete a single stage attachment by id */
+export const deleteStageAttachment = async (
+  pid: string,
+  attachmentId: string,
+  plan: Plan,
+  setSelectedPlan: (plan: Plan | null) => void,
+  getUserLabel: () => string,
+  td: string
+) => {
+  const updated = (plan.stageAttachments || []).filter(a => a.id !== attachmentId);
+  const removed = (plan.stageAttachments || []).find(a => a.id === attachmentId);
+  const updateData: Partial<Plan> = {
+    stageAttachments: updated,
+    log: [
+      ...(plan.log || []),
+      {
+        uniqueId: Date.now().toString(),
+        date: td,
+        action: `Deleted submission document: ${removed?.name ?? attachmentId}`,
+        user: getUserLabel(),
+      },
+    ],
+  };
+  await updateDoc(doc(db, 'plans', pid), updateData);
+  setSelectedPlan({ ...plan, ...updateData } as Plan);
+};
+
 /** Upload multiple files for a single stage transition — single Firestore write, no extra log entries */
+// Stages that only exist in the Engineered workflow — need remap when converting down
+const ENGINEERED_ONLY_STAGES = ['tcp_approved', 'loc_submitted', 'loc_review'];
+
+export const convertPlanType = async (
+  pid: string,
+  newType: string,
+  plan: Plan,
+  setSelectedPlan: (plan: Plan | null) => void,
+  td: string,
+  getUserLabel: () => string
+): Promise<{ remappedStage: string | null }> => {
+  const currentStage = plan.stage || 'requested';
+  const needsRemap = newType !== 'Engineered' && ENGINEERED_ONLY_STAGES.includes(currentStage);
+  const targetStage = needsRemap ? 'submitted_to_dot' : currentStage;
+
+  const logEntry: LogEntry = {
+    uniqueId: Date.now().toString(),
+    date: td,
+    action: `Plan type converted: ${plan.type} → ${newType}${needsRemap ? ' (stage reset to Submitted to DOT)' : ''}`,
+    user: getUserLabel(),
+    field: 'type_conversion',
+    previousValue: plan.type,
+    newValue: newType,
+  };
+
+  const updates: any = {
+    type: newType,
+    log: [...(plan.log || []), logEntry],
+    ...(needsRemap ? { stage: targetStage } : {}),
+  };
+
+  await updateDoc(doc(db, 'plans', pid), updates);
+  setSelectedPlan({ ...plan, ...updates });
+
+  return { remappedStage: needsRemap ? targetStage : null };
+};
+
+export const assignLocToTBD = async (
+  tbdPlan: Plan,
+  customLoc: string | null,
+  setSelectedPlan: (plan: Plan | null) => void,
+  td: string,
+  getUserLabel: () => string
+): Promise<string> => {
+  let locNumber: string;
+
+  if (customLoc && customLoc.trim()) {
+    locNumber = customLoc.trim();
+  } else {
+    locNumber = await runTransaction(db, async (transaction) => {
+      const counterRef = doc(db, 'settings', 'locCounter');
+      const counterSnap = await transaction.get(counterRef);
+      const current = counterSnap.exists() ? (counterSnap.data().count as number || 0) : 0;
+      const next = current + 1;
+      transaction.set(counterRef, { count: next });
+      return String(next);
+    });
+  }
+
+  const logEntry: LogEntry = {
+    uniqueId: Date.now().toString(),
+    date: td,
+    action: `LOC number assigned: ${locNumber}`,
+    user: getUserLabel(),
+  };
+
+  const newPlanData: any = {
+    ...tbdPlan,
+    id: locNumber,
+    loc: locNumber,
+    locStatus: 'assigned',
+    log: [...(tbdPlan.log || []), logEntry],
+  };
+
+  await setDoc(doc(db, 'plans', locNumber), newPlanData);
+  await deleteDoc(doc(db, 'plans', tbdPlan.id));
+
+  setSelectedPlan(newPlanData as Plan);
+  return locNumber;
+};
+
 export const batchUploadStageAttachments = async (
   pid: string,
   files: File[],
@@ -244,8 +410,51 @@ export const batchUploadStageAttachments = async (
       })
     );
     const updatedAttachments = [...(plan.stageAttachments || []), ...uploads];
-    await updateDoc(doc(db, 'plans', pid), { stageAttachments: updatedAttachments });
-    setSelectedPlan({ ...plan, stageAttachments: updatedAttachments } as Plan);
+
+    // Auto-promote to Approved Documents based on document type
+    const extraUpdates: Partial<Plan> = {};
+
+    const tcpUploads = uploads.filter(u => u.documentType === 'tcp_drawings');
+    if (tcpUploads.length > 0) {
+      const existingTCPs = plan.approvedTCPs || [];
+      const newTCPs = tcpUploads.map((u, i) => ({
+        id: u.id,
+        name: u.name,
+        url: u.url,
+        version: existingTCPs.length + i + 1,
+        uploadedAt: u.uploadedAt,
+        uploadedBy: u.uploadedBy,
+      }));
+      extraUpdates.approvedTCPs = [...existingTCPs, ...newTCPs];
+      extraUpdates.currentTCP = tcpUploads[tcpUploads.length - 1].name;
+      extraUpdates.tcpRev = (plan.tcpRev || 0) + tcpUploads.length;
+    }
+
+    const locUploads = uploads.filter(u => u.documentType === 'loc_signed');
+    if (locUploads.length > 0) {
+      const existingLOCs = plan.approvedLOCs || [];
+      const newLOCs = locUploads.map((u, i) => ({
+        id: u.id,
+        name: u.name,
+        url: u.url,
+        version: existingLOCs.length + i + 1,
+        uploadedAt: u.uploadedAt,
+        uploadedBy: u.uploadedBy,
+      }));
+      extraUpdates.approvedLOCs = [...existingLOCs, ...newLOCs];
+      extraUpdates.currentLOC = locUploads[locUploads.length - 1].name;
+      extraUpdates.locRev = (plan.locRev || 0) + locUploads.length;
+    }
+
+    // Clear pending documents flag when a LOC (primary binding doc) is now present
+    const finalLOCs = extraUpdates.approvedLOCs ?? plan.approvedLOCs ?? [];
+    if (plan.pendingDocuments && finalLOCs.length > 0) {
+      extraUpdates.pendingDocuments = false;
+    }
+
+    const updatePayload = { stageAttachments: updatedAttachments, ...extraUpdates };
+    await updateDoc(doc(db, 'plans', pid), updatePayload);
+    setSelectedPlan({ ...plan, ...updatePayload } as Plan);
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `plans/${pid}`);
     throw error;
@@ -287,18 +496,18 @@ export const renewLoc = async (
     requestedBy: plan.requestedBy || '',
     priority: plan.priority,
     notes: plan.notes || '',
-    // Carry over direction & MOT fields
+    // Carry over direction & impact fields
     dir_nb: plan.dir_nb ?? false,
     dir_sb: plan.dir_sb ?? false,
     dir_directional: plan.dir_directional ?? false,
     side_street: plan.side_street ?? false,
-    mot_peakHour: plan.mot_peakHour ?? null,
-    mot_extDuration: plan.mot_extDuration ?? null,
-    mot_noiseVariance: plan.mot_noiseVariance ?? null,
+    impact_krail: plan.impact_krail ?? false,
     impact_driveway: plan.impact_driveway ?? false,
     impact_fullClosure: plan.impact_fullClosure ?? false,
     impact_busStop: plan.impact_busStop ?? false,
     impact_transit: plan.impact_transit ?? false,
+    // Carry over hours of work
+    work_hours: plan.work_hours,
     // Reset workflow fields
     stage: 'requested',
     needByDate: '',
@@ -366,7 +575,7 @@ export const deletePlan = async (
 export const updatePlanField = async (
   pid: string,
   field: string,
-  value: string | number | boolean | null,
+  value: string | number | boolean | null | object,
   isDraft: boolean,
   plan: Plan | null,
   draftPlan: Plan | null,
@@ -392,11 +601,12 @@ export const updatePlanField = async (
       [field]: value,
     };
 
-    const fieldsToLog = ["rev", "loc", "dateRequested", "isCriticalPath", "submitDate", "approvedDate", "needByDate", "type"];
+    const fieldsToLog = ["rev", "loc", "dateRequested", "isCriticalPath", "submitDate", "approvedDate", "needByDate", "type", "work_hours"];
     if (fieldsToLog.includes(field)) {
       let action = "";
       let logToRemove: string[] = [];
-      if (field === "rev") action = `Updated Revision to ${value}`;
+      if (field === "work_hours") action = "Updated Hours of Work";
+      else if (field === "rev") action = `Updated Revision to ${value}`;
       else if (field === "type") {
         action = `Updated Plan Type to ${value}`;
         logToRemove = ["Updated Plan Type to"];
@@ -451,7 +661,10 @@ export const updatePlanField = async (
       setSelectedPlan(updateData as Plan);
       setIsDirty(true);
     } else {
-      await updateDoc(doc(db, 'plans', pid), updateData);
+      // Write only the changed field (+ log if updated) — not the full plan
+      const toWrite: Record<string, unknown> = { [field]: value };
+      if (updateData.log) toWrite.log = updateData.log;
+      await updateDoc(doc(db, 'plans', pid), stripUndefined(toWrite) as Record<string, unknown>);
       setSelectedPlan({ ...currentPlan, ...updateData } as Plan);
     }
   } catch (error) {
@@ -521,7 +734,9 @@ export const updatePlanFields = async (
     
     updateData.log = newLog;
 
-    await updateDoc(doc(db, 'plans', pid), updateData);
+    // Write only the changed fields + log — not the full plan
+    const toWrite = { ...updates, log: newLog };
+    await updateDoc(doc(db, 'plans', pid), stripUndefined(toWrite) as Record<string, unknown>);
     setSelectedPlan({ ...plan, ...updateData } as Plan);
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `plans/${pid}`);
@@ -542,6 +757,11 @@ export const bulkUpdate = async (
   td: string
 ) => {
   if (selectedPlanIds.length === 0) return;
+  // SFTC and GUEST cannot perform bulk edits
+  if (currentUser?.role === _UserRole.SFTC || currentUser?.role === _UserRole.GUEST) {
+    showToast("Only MOT team can perform bulk updates.", "error");
+    return;
+  }
   if (updates.lead && currentUser?.role !== _UserRole.MOT && currentUser?.role !== _UserRole.ADMIN) {
     showToast("Only MOT team can assign leads.", "error");
     return;
@@ -705,11 +925,13 @@ export const uploadTCPRevision = async (
     };
 
     const newTCPs = [...(plan.approvedTCPs || []), newTCP];
+    const finalLOCs = plan.approvedLOCs || [];
     const updateData = {
       ...plan,
       approvedTCPs: newTCPs,
       currentTCP: file.name,
       tcpRev: version,
+      ...(plan.pendingDocuments && finalLOCs.length > 0 ? { pendingDocuments: false } : {}),
       log: [...(plan.log || []), { date: td, action: `Uploaded TCP Revision: ${file.name}`, user: getUserLabel() }]
     };
 
@@ -751,6 +973,8 @@ export const linkNewLOC = async (
       approvedLOCs: newLOCs,
       currentLOC: file.name,
       locRev: version,
+      // LOC is the primary binding document — uploading it clears the pending flag
+      ...(plan.pendingDocuments ? { pendingDocuments: false } : {}),
       log: [...(plan.log || []), { date: td, action: `Linked New LOC: ${file.name}`, user: getUserLabel() }]
     };
 

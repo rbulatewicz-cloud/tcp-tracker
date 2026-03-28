@@ -1,16 +1,10 @@
 import React from 'react';
-import { UploadMasterFileButton } from '../features/actions/UploadMasterFileButton';
 import { RoleSwitcher } from '../features/roleSwitcher/RoleSwitcher';
-import { ConfirmationModal } from './ConfirmationModal';
 import { UserRole, User } from '../types';
-import { migrateDocuments } from '../services/migrationService';
 import { Settings, AppWindow } from 'lucide-react';
-import { showToast } from '../lib/toast';
 
 interface AdminToolbarProps {
   role: UserRole;
-  loading: { upload?: boolean };
-  handleMasterUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   currentUser: User | null;
   setCurrentUser: (user: User | null) => void;
   isPermissionEditingMode: boolean;
@@ -22,29 +16,15 @@ interface AdminToolbarProps {
 
 export const AdminToolbar: React.FC<AdminToolbarProps> = ({
   role,
-  loading,
-  handleMasterUpload,
   currentUser,
   setCurrentUser,
   isPermissionEditingMode,
   setIsPermissionEditingMode,
   isRealAdmin,
   setView,
-  view
+  view,
 }) => {
   if (!isRealAdmin) return null;
-
-  const [showMigrationModal, setShowMigrationModal] = React.useState(false);
-
-  const handleMigration = async () => {
-    try {
-      await migrateDocuments();
-      showToast("Migration completed successfully.", "success");
-    } catch (error) {
-      console.error("Migration failed:", error);
-      showToast("Migration failed. Check console for details.", "error");
-    }
-  };
 
   return (
     <div className="bg-slate-900 text-white px-7 py-2 text-[11px] flex items-center justify-end gap-4 border-b border-slate-800">
@@ -73,21 +53,6 @@ export const AdminToolbar: React.FC<AdminToolbarProps> = ({
       )}
 
       <button 
-        onClick={() => setShowMigrationModal(true)}
-        className="bg-amber-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold hover:bg-amber-700 transition-all duration-200"
-      >
-        Run Migration
-      </button>
-
-      <ConfirmationModal
-        isOpen={showMigrationModal}
-        onClose={() => setShowMigrationModal(false)}
-        onConfirm={handleMigration}
-        title="Run Data Migration"
-        message="This tool is used to update legacy log entries with unique identifiers. It is only necessary if you are experiencing issues with deleting old log entries. Running this on a large database may take time and consume Firestore quota. Are you sure you want to proceed?"
-      />
-
-      <button 
         onClick={() => setIsPermissionEditingMode(!isPermissionEditingMode)}
         className={`px-3 py-1.5 rounded-md text-[10px] font-bold cursor-pointer transition-all duration-200 ${
           isPermissionEditingMode 
@@ -102,7 +67,6 @@ export const AdminToolbar: React.FC<AdminToolbarProps> = ({
         <RoleSwitcher currentUser={currentUser} setCurrentUser={setCurrentUser} />
       )}
 
-      <UploadMasterFileButton isRealAdmin={isRealAdmin} loading={loading} handleMasterUpload={handleMasterUpload} />
     </div>
   );
 };

@@ -8,7 +8,7 @@ export const useCommunityOutreach = (plan: Plan) => {
     plan.impact_driveway ||
     plan.impact_busStop ||
     plan.impact_fullClosure ||
-    plan.mot_peakHour
+    plan.compliance?.phe
   );
 
   const isOpen = isOutreachTriggered || outreachExpanded;

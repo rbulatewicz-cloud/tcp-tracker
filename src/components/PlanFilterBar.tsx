@@ -1,5 +1,6 @@
 import React from 'react';
-import { STAGES, PLAN_TYPES, LEADS, PRIORITIES } from '../constants';
+import { STAGES, PRIORITIES } from '../constants';
+import { useAppLists } from '../context/AppListsContext';
 
 interface FilterBarProps {
   filter: { stage: string; type: string; lead: string; priority: string };
@@ -9,6 +10,7 @@ interface FilterBarProps {
 }
 
 export const PlanFilterBar: React.FC<FilterBarProps> = ({ filter, setFilter, planSearch, setPlanSearch }) => {
+  const { planTypes, leads } = useAppLists();
   return (
     <div className="flex flex-wrap gap-4 p-4 bg-white rounded-xl shadow-sm border border-slate-200">
       <input
@@ -24,11 +26,11 @@ export const PlanFilterBar: React.FC<FilterBarProps> = ({ filter, setFilter, pla
       </select>
       <select value={filter.type} onChange={(e) => setFilter({ ...filter, type: e.target.value })} className="px-3 py-2 border border-slate-300 rounded-lg">
         <option value="all">All Types</option>
-        {PLAN_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        {planTypes.map(t => <option key={t} value={t}>{t}</option>)}
       </select>
       <select value={filter.lead} onChange={(e) => setFilter({ ...filter, lead: e.target.value })} className="px-3 py-2 border border-slate-300 rounded-lg">
         <option value="all">All Leads</option>
-        {LEADS.map(l => <option key={l} value={l}>{l}</option>)}
+        {leads.map(l => <option key={l} value={l}>{l}</option>)}
       </select>
       <select value={filter.priority} onChange={(e) => setFilter({ ...filter, priority: e.target.value })} className="px-3 py-2 border border-slate-300 rounded-lg">
         <option value="all">All Priorities</option>

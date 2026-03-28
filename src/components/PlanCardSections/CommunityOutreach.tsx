@@ -4,7 +4,7 @@ import { usePlanData, usePlanActions, usePlanPermissions } from '../PlanCardCont
 export const CommunityOutreach: React.FC = React.memo(() => {
   const { selectedPlan } = usePlanData();
   const { updatePlanField } = usePlanActions();
-  const { canEditPlan } = usePlanPermissions();
+  const { canEditFields } = usePlanPermissions();
 
   if (!selectedPlan) return null;
 
@@ -16,7 +16,7 @@ export const CommunityOutreach: React.FC = React.memo(() => {
       <div className="flex flex-col gap-2">
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</label>
-          {canEditPlan ? (
+          {canEditFields ? (
             <select 
               value={outreach.status}
               onChange={(e) => updatePlanField(selectedPlan.id, 'outreach', { ...outreach, status: e.target.value })}
@@ -31,7 +31,7 @@ export const CommunityOutreach: React.FC = React.memo(() => {
 
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Notes</label>
-          {canEditPlan ? (
+          {canEditFields ? (
             <textarea 
               value={outreach.notes || ''}
               onChange={(e) => updatePlanField(selectedPlan.id, 'outreach', { ...outreach, notes: e.target.value })}

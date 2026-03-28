@@ -23,7 +23,7 @@ export const usePlanManagement = (plans: Plan[]) => {
 
   const [minimizedOutreachPlans, setMinimizedOutreachPlans] = useState<Record<string, boolean>>({});
   const [activeImpactFilter, setActiveImpactFilter] = useState<string | null>(null);
-  const [filter, setFilter] = useState<FilterState>({ stage: "all", type: "all", lead: "all", priority: "all" });
+  const [filter, setFilter] = useState<FilterState>({ stage: "all", type: "all", lead: "all", priority: "all", importStatus: "all" });
   const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
   const [planSearch, setPlanSearch] = useState("");
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);

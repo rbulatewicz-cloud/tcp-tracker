@@ -8,7 +8,7 @@ const EMPTY_FORM: PlanForm = {
   rev: 0,
   loc: "",
   requestedBy: "",
-  type: "Standard",
+  type: "",
   scope: "Water",
   segment: "A1",
   street1: "",
@@ -20,13 +20,13 @@ const EMPTY_FORM: PlanForm = {
   dir_nb: false,
   dir_sb: false,
   dir_directional: false,
-  mot_peakHour: null,
-  mot_extDuration: null,
-  mot_noiseVariance: null,
+  impact_krail: false,
   impact_driveway: false,
   impact_fullClosure: false,
   impact_busStop: false,
   impact_transit: false,
+  work_hours: undefined,
+  phe_justification: '',
   attachments: [],
   approvedTCPs: [],
   approvedLOCs: [],
@@ -61,7 +61,7 @@ export const usePlanForm = (
   useEffect(() => {
     const role = currentUser?.role;
     if (role === UserRole.ADMIN || role === UserRole.MOT) {
-      peekNextLocNumber().then(loc => {
+      peekNextLocNumber(plans).then(loc => {
         setForm(prev => ({ ...prev, loc: prev.loc || loc }));
       }).catch(() => {});
     }
@@ -77,7 +77,7 @@ export const usePlanForm = (
       // ADMIN/MOT have an editable field; if left blank (shouldn't happen), also auto-assign.
       let locToUse = form.loc?.trim();
       if (!locToUse) {
-        locToUse = await getNextLocNumber();
+        locToUse = await getNextLocNumber(plans);
         setForm(prev => ({ ...prev, loc: locToUse! }));
       }
 
@@ -106,7 +106,7 @@ export const usePlanForm = (
     const role = currentUser?.role;
     const baseForm = { ...EMPTY_FORM, requestedBy: currentUser?.name || "" };
     if (role === UserRole.ADMIN || role === UserRole.MOT) {
-      peekNextLocNumber().then(loc => {
+      peekNextLocNumber(plans).then(loc => {
         setForm({ ...baseForm, loc });
       }).catch(() => setForm(baseForm));
     } else {

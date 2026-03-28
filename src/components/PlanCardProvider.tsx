@@ -15,7 +15,7 @@ export interface PlanData {
 export interface PlanActions {
   handleClosePlanCard: () => void;
   deletePlan: (pid: string) => Promise<void>;
-  updatePlanField: (pid: string, field: string, value: any) => void;
+  updatePlanField: (pid: string, field: string, value: any, isDraft?: boolean) => void;
   saveDraft: () => void;
   discardDraft: () => void;
   updateStage: (pid: string, ns: string, date: string, reviewCycles?: import('../types').ReviewCycle[], implementationWindow?: import('../types').ImplementationWindow | null) => Promise<void>;
@@ -23,7 +23,6 @@ export interface PlanActions {
   handleExportPlanToPDF: (plan: Plan) => void;
   setStatusDate: (date: string) => void;
   addLogEntry: (pid: string, entry: string, attachments?: File[], field?: string, previousValue?: any, newValue?: any) => void;
-  revertLogEntry: (pid: string, logEntryUniqueId: string) => void;
   deleteLogEntry: (pid: string, logEntryUniqueId: string) => void;
   deleteDocument: (pid: string, docId: string, type: 'tcp' | 'loc', plan: any, isDraft?: boolean) => void;
   clearLog: (pid: string, plan: any, setSelectedPlan: (plan: any) => void, getUserLabel: () => string, td: string, isDraft?: boolean) => void;
@@ -32,6 +31,9 @@ export interface PlanActions {
   uploadStageAttachment: (pid: string, file: File, stage: string, documentType: import('../types').StageAttachment['documentType'], isPrimary: boolean) => Promise<void>;
   batchUploadStageAttachments: (pid: string, files: File[], stage: string, documentType: import('../types').StageAttachment['documentType']) => Promise<void>;
   renewLoc: (pid: string) => Promise<string | null>;
+  convertPlanType: (pid: string, newType: string) => Promise<{ remappedStage: string | null }>;
+  assignLocToTBD: (pid: string, customLoc: string | null) => Promise<string>;
+  deleteStageAttachment: (pid: string, attachmentId: string, plan: any) => Promise<void>;
 }
 
 export interface PlanPermissions {
@@ -43,6 +45,7 @@ export interface PlanPermissions {
   setFieldPermissions: React.Dispatch<React.SetStateAction<any>>;
   toggleSectionPermission: (keys: string[], role: string, type: 'edit' | 'view') => void;
   canEditPlan: boolean;
+  canEditFields: boolean;
 }
 
 export interface PlanUtils {

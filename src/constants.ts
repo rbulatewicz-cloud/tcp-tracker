@@ -61,7 +61,6 @@ export const WATCH_PROGRESS_STAGES = [
 // Resubmission stages appended to progress bar after expiry
 export const RESUBMISSION_STAGES = [
   { key: "resubmitted",        label: "Resubmitted",       color: "#F59E0B" },
-  { key: "tcp_approved_final", label: "TCP Approved",      color: "#10B981" },
 ];
 
 // Map a legacy stage key to the equivalent new key for display
@@ -70,7 +69,7 @@ export const LEGACY_STAGE_MAP: Record<string, string> = {
   approved:  "plan_approved",
 };
 
-export const COMPLETED_STAGES = ["approved", "implemented", "plan_approved", "tcp_approved_final"];
+export const COMPLETED_STAGES = ["approved", "implemented", "plan_approved", "tcp_approved_final"]; // tcp_approved_final kept for legacy data only
 export const AT_DOT_STAGES = ["submitted", "in_review", "submitted_to_dot", "dot_review"];
 
 // Clock targets (in calendar days) per plan type per phase
@@ -147,19 +146,23 @@ export const IMPORT_TARGET_FIELDS = [
 ];
 
 export const DEFAULT_MAIN_COLUMNS = [
-  { id: "loc", label: "LOC #" },          // Primary identifier — LOC number
-  { id: "type", label: "Type" },
-  { id: "scope", label: "Scope" },
-  { id: "segment", label: "Seg" },
-  { id: "location", label: "Location" },
-  { id: "lead", label: "Lead" },
-  { id: "priority", label: "Priority" },
-  { id: "status", label: "Status" },
-  { id: "submittedToDOT", label: "Submitted to DOT" },
-  { id: "requested", label: "Requested" },
-  { id: "requestedBy", label: "Requested By" },
-  { id: "needBy", label: "Need By" },
-  { id: "wait", label: "Wait" }
+  { id: "loc",        label: "LOC #" },       // Primary identifier
+  { id: "type",       label: "Type" },
+  { id: "location",   label: "Location" },    // Enriched: scope + segment folded in
+  { id: "hours",      label: "Hours" },
+  { id: "impacts",    label: "Impacts" },
+  { id: "lead",       label: "Lead" },
+  { id: "priority",   label: "Priority" },
+  { id: "compliance", label: "Compliance" },
+  { id: "status",     label: "Status" },
+  { id: "needBy",     label: "Need By" },
+  { id: "wait",       label: "Wait" },
+  // Available but not shown by default:
+  // { id: "scope", label: "Scope" }
+  // { id: "segment", label: "Seg" }
+  // { id: "submittedToDOT", label: "Submitted to DOT" }
+  // { id: "requested", label: "Requested" }
+  // { id: "requestedBy", label: "Requested By" }
 ];
 
 export const DEFAULT_TEAM_COLUMNS = [
@@ -192,11 +195,7 @@ export const DEFAULT_LOG_COLUMNS = [
   { id: "operator", label: "Operator" }
 ];
 
-export const MOT_FIELDS = [
-  { key: "mot_peakHour", label: "Peak Hour Variance Needed?", desc: "Will this plan require a redline for peak hour variance upon approval?" },
-  { key: "mot_extDuration", label: "Extended Implementation Duration?", desc: "Does this scope require continuous closure beyond 72 hours? (e.g. curb & gutter)" },
-  { key: "mot_noiseVariance", label: "Night Work / Noise Variance?", desc: "Will this work require night operations under a Police Commission noise variance?" },
-];
+export const MOT_FIELDS: { key: string; label: string; desc: string }[] = [];
 
 export const IMPACT_FIELDS = [
   { key: "impact_driveway", label: "Driveway Closures" },
@@ -207,7 +206,6 @@ export const IMPACT_FIELDS = [
 
 export const IMPACT_SECTION_KEYS = [
   "dir_nb", "dir_sb", "dir_directional",
-  "mot_peakHour", "mot_extDuration", "mot_noiseVariance",
   "impact_driveway", "impact_fullClosure", "impact_busStop", "impact_transit"
 ];
 
@@ -219,7 +217,7 @@ export const FIELD_REGISTRY: Record<string, {
   inGrid: boolean;
   group?: 'Identification' | 'Location' | 'Schedule' | 'Team & Priority';
 }> = {
-  id: { label: "Plan ID", type: "text", inForm: false, inGrid: false, group: 'Identification' },   // retired — LOC # is now primary
+  id: { label: "Plan ID", type: "text", inForm: false, inGrid: false },   // retired — LOC # is now primary
   loc: { label: "LOC # (Primary Identifier)", type: "text", inForm: true, inGrid: true, group: 'Identification' },
   requestedBy: { label: "Requested By", type: "text", inForm: true, inGrid: true, group: 'Identification' },
   type: { label: "Plan Type", type: "select", options: PLAN_TYPES, inForm: true, inGrid: true, group: 'Identification' },
@@ -237,11 +235,10 @@ export const FIELD_REGISTRY: Record<string, {
   dir_sb: { label: "SB", type: "checkbox", inForm: true, inGrid: true },
   dir_directional: { label: "DIR", type: "checkbox", inForm: true, inGrid: true },
   side_street: { label: "SIDE ST", type: "checkbox", inForm: true, inGrid: true },
-  mot_peakHour: { label: "Peak Hour Variance Needed?", type: "checkbox", inForm: false, inGrid: false },
-  mot_extDuration: { label: "Extended Implementation Duration?", type: "checkbox", inForm: false, inGrid: false },
-  mot_noiseVariance: { label: "Night Work / Noise Variance?", type: "checkbox", inForm: false, inGrid: false },
+  impact_krail: { label: "Krail Required", type: "checkbox", inForm: false, inGrid: false },
   impact_driveway: { label: "Driveway Closures", type: "checkbox", inForm: false, inGrid: false },
   impact_fullClosure: { label: "Full Street Closure", type: "checkbox", inForm: false, inGrid: false },
   impact_busStop: { label: "Bus Stop Impacts", type: "checkbox", inForm: false, inGrid: false },
   impact_transit: { label: "TANSAT Needed", type: "checkbox", inForm: false, inGrid: false },
+  work_hours: { label: "Hours of Work", type: "text", inForm: false, inGrid: false },
 };

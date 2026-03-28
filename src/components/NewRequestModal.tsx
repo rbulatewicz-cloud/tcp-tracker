@@ -1,11 +1,47 @@
 import React from 'react';
-import { MOT_FIELDS, IMPACT_FIELDS } from '../constants';
+import { IMPACT_FIELDS, FIELD_REGISTRY } from '../constants';
+import { useAppLists } from '../context/AppListsContext';
 import { CollapsibleSection } from './CollapsibleSection';
 import { Spinner } from './Spinner';
 import { RequestFormFields } from './NewRequestModal/RequestFormFields';
+import { HoursOfWorkForm } from './HoursOfWorkForm';
+import { ComplianceBanner } from './ComplianceBanner';
 import { formatFileSize } from '../utils/plans';
 import { usePermissions } from '../hooks/usePermissions';
-import { User, ReportTemplate, LoadingState, PlanForm } from '../types';
+import { User, ReportTemplate, LoadingState, PlanForm, WorkHours, UserRole } from '../types';
+
+// Workflow path info — updates live as plan type changes
+const WORKFLOW_INFO: Record<string, { label: string; color: string; steps: string; description: string }> = {
+  WATCH: {
+    label: 'Watch/Standard Path',
+    color: '#6366F1',
+    steps: 'Requested → Drafting → Submitted to DOT → Plan Approved',
+    description: 'Short-duration, low-complexity work. Watch Manual based plans. The traffic control plan and letter of concurrence are submitted together as a single package. No separate TCP review cycle with DOT.',
+  },
+  Standard: {
+    label: 'Watch/Standard Path',
+    color: '#6366F1',
+    steps: 'Requested → Drafting → Submitted to DOT → Plan Approved',
+    description: 'Moderate complexity with standard lane or sidewalk impacts. TCP and LOC are submitted together. Follows the same single-submittal process as WATCH but may involve greater traffic impacts or longer duration.',
+  },
+  Engineered: {
+    label: 'Engineered Path',
+    color: '#8B5CF6',
+    steps: 'Requested → Drafting → Submitted to DOT → TCP Approved → LOC Submitted → Plan Approved',
+    description: 'Complex plans requiring a two-phase DOT approval process — TCP drawings are reviewed and approved first, then the Letter of Concurrence is submitted separately. Typically involves full closures, detours, or high-impact work.',
+  },
+};
+
+const DIR_FIELDS = ['dir_nb', 'dir_sb', 'dir_directional', 'side_street'];
+
+// Visual group divider with label
+const GroupLabel = ({ label }: { label: string }) => (
+  <div className="flex items-center gap-3 px-7 pt-4 pb-0">
+    <div className="flex-1 h-px bg-slate-100" />
+    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-300">{label}</span>
+    <div className="flex-1 h-px bg-slate-100" />
+  </div>
+);
 
 interface NewRequestModalProps {
   showForm: boolean;
@@ -28,6 +64,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
   setWarningMessage, setShowNeedByWarningModal, handleSubmit, loading, motAllAnswered
 }) => {
   const { fieldPermissions, setFieldPermissions } = usePermissions();
+  const { planTypes } = useAppLists();
   const [validationErrors, setValidationErrors] = React.useState<string[]>([]);
 
   React.useEffect(() => {
@@ -36,20 +73,27 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
 
   if (!showForm) return null;
 
-  const atLeastOneMotAnswered = MOT_FIELDS.some(f => form[f.key] !== undefined && form[f.key] !== null);
   const update = (key: string, value: unknown) => {
     setValidationErrors([]);
     setForm(f => ({ ...f, [key]: value }));
   };
 
-  const atLeastOneDirChecked = ['dir_nb', 'dir_sb', 'dir_directional', 'side_street'].some(k => !!form[k]);
+  const atLeastOneDirChecked = DIR_FIELDS.some(k => !!form[k]);
+
+  const workHoursValid = (): boolean => {
+    const wh = form.work_hours;
+    if (!wh) return false;
+    if (wh.shift === 'continuous') return true;
+    return wh.days.length > 0;
+  };
 
   const getMissingItems = (): string[] => {
     const missing: string[] = [];
+    if (!form.type) missing.push('Plan Type is required');
     if (!form.street1) missing.push('Street 1 is required');
     if (!form.needByDate) missing.push('Need By Date is required');
     if (!atLeastOneDirChecked) missing.push('Select at least one direction (NB, SB, DIR, or Side Street)');
-    if (!atLeastOneMotAnswered) missing.push('Answer at least one Impacts & Requirements question');
+    if (!workHoursValid()) missing.push('Hours of Work: select a shift and at least one day (or 24/7 Continuous)');
     if (form.attachments.length === 0) missing.push('At least one PDF attachment is required');
     return missing;
   };
@@ -65,6 +109,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
     handleSubmit();
   };
 
+  const workflowInfo = form.type ? WORKFLOW_INFO[form.type] ?? null : null;
   const street1 = form.street1 || '';
   const street2 = form.street2 || '';
 
@@ -107,7 +152,79 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto min-h-0">
-          <CollapsibleSection title="Plan Details">
+
+          {/* ── Plan Identification ── */}
+          <CollapsibleSection title="Plan Identification">
+            <div className="flex flex-col gap-3">
+
+              {/* LOC # */}
+              {currentUser?.role === UserRole.SFTC ? (
+                <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+                  <div className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest mb-2">LOC # — Primary Identifier</div>
+                  <div className="text-sm font-bold text-slate-400 font-mono p-2">Auto-assigned on submit</div>
+                  <div className="text-[10px] text-indigo-400 mt-1">Your LOC number will be automatically assigned when you submit this request.</div>
+                </div>
+              ) : (
+                <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+                  <div className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest mb-2">LOC # — Primary Identifier</div>
+                  <input
+                    type="text"
+                    value={form.loc || ""}
+                    onChange={e => update('loc', e.target.value)}
+                    placeholder="e.g. LOC-366"
+                    className="text-sm font-bold text-slate-900 bg-white border border-indigo-200 rounded-md p-2 w-full focus:outline-none focus:border-indigo-400 font-mono"
+                  />
+                  <div className="text-[10px] text-indigo-400 mt-1">Pre-filled with the next available number. Edit only if a specific LOC is required.</div>
+                </div>
+              )}
+
+              {/* Requested By */}
+              <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
+                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Requested By</div>
+                <input
+                  type="text"
+                  value={form.requestedBy || ""}
+                  onChange={e => update('requestedBy', e.target.value)}
+                  placeholder="Your name"
+                  className="text-xs font-semibold text-slate-900 bg-white border border-slate-200 rounded-md p-2 w-full focus:outline-none focus:border-blue-400"
+                />
+                <div className="text-[10px] text-slate-400 mt-1">Auto-filled from your account. Edit if submitting on behalf of someone else.</div>
+              </div>
+
+              {/* Plan Type + Workflow preview */}
+              <div className="bg-slate-50 border border-slate-100 rounded-lg p-3">
+                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">Plan Type <span className="text-red-500">*</span></div>
+                <select
+                  value={form.type || ""}
+                  onChange={e => update('type', e.target.value)}
+                  className="text-xs font-semibold text-slate-900 bg-white border border-slate-200 rounded-md p-2 w-full cursor-pointer mb-3"
+                >
+                  <option value="" disabled>Select a plan type…</option>
+                  {planTypes.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+                {workflowInfo ? (
+                  <div className="rounded-lg border px-3 py-2" style={{ borderColor: `${workflowInfo.color}44`, background: `${workflowInfo.color}08` }}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-2 h-2 rounded-full" style={{ background: workflowInfo.color }} />
+                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: workflowInfo.color }}>
+                        {workflowInfo.label}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-600 leading-relaxed mb-1.5">{workflowInfo.description}</div>
+                    <div className="text-[10px] text-slate-400 leading-relaxed border-t border-slate-200 pt-1.5 mt-1">{workflowInfo.steps}</div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-slate-200 px-3 py-2 bg-white text-[10px] text-slate-400 italic">
+                    Select a plan type above to see its description and approval workflow.
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </CollapsibleSection>
+
+          {/* ── Scope & Location ── */}
+          <CollapsibleSection title="Scope & Location">
             <RequestFormFields
               form={form}
               setForm={setForm}
@@ -122,32 +239,58 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
             />
           </CollapsibleSection>
 
-          <CollapsibleSection title="Impacts & Requirements">
-            <div className="text-[10px] text-slate-400 mb-3">All fields required — helps the traffic team optimize plan development.</div>
-            {MOT_FIELDS.map(field => {
-              const val = form[field.key];
-              const unanswered = val === undefined || val === null;
-              return (
-                <div key={field.key} className={`mb-2 rounded-lg border-[1.5px] bg-white p-3 ${unanswered ? 'border-sky-200' : 'border-slate-200'}`}>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-xs font-semibold text-slate-900 flex-1">
-                      {field.label} <span className="text-red-500">*</span>
-                    </div>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <button
-                        onClick={() => update(field.key, true)}
-                        className={`rounded-md px-3.5 py-1 text-[11px] font-bold transition-all ${val === true ? 'border-2 border-emerald-500 bg-emerald-50 text-emerald-600' : 'border border-slate-200 bg-white text-slate-400'}`}
-                      >Yes</button>
-                      <button
-                        onClick={() => update(field.key, false)}
-                        className={`rounded-md px-3.5 py-1 text-[11px] font-bold transition-all ${val === false ? 'border-2 border-slate-600 bg-slate-100 text-slate-900' : 'border border-slate-200 bg-white text-slate-400'}`}
-                      >No</button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100">
+          {/* ── Work Conditions ── */}
+          <GroupLabel label="Work Conditions" />
+
+          <CollapsibleSection title="Hours of Work">
+            <div className="text-[10px] text-slate-400 mb-3">
+              Required — specify when work will occur so the traffic team can plan accordingly.
+            </div>
+            <HoursOfWorkForm
+              value={form.work_hours as WorkHours | undefined}
+              onChange={wh => update('work_hours', wh)}
+            />
+          </CollapsibleSection>
+
+          <CollapsibleSection title="Traffic Impacts">
+            {/* Direction flags + Krail */}
+            <div className="flex flex-wrap gap-4 pb-3 mb-3 border-b border-slate-100">
+              {DIR_FIELDS.map(k => {
+                const v = FIELD_REGISTRY[k];
+                if (!v) return null;
+                return (
+                  <label key={k} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!form[k]}
+                      onChange={e => update(k, e.target.checked)}
+                      className="rounded border-slate-300"
+                    />
+                    {v.label}
+                  </label>
+                );
+              })}
+              <div className="w-px bg-slate-200 self-stretch" />
+              <label className="flex items-center gap-2 text-xs text-violet-700 font-semibold cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!form.impact_krail}
+                  onChange={e => {
+                    const checked = e.target.checked;
+                    setForm(f => ({
+                      ...f,
+                      impact_krail: checked,
+                      ...(checked ? { work_hours: { shift: 'continuous' as const, days: [] } } : {}),
+                    }));
+                  }}
+                  className="rounded border-slate-300 accent-violet-600"
+                />
+                Krail
+              </label>
+            </div>
+
+            {/* Closure / impact checkboxes */}
+            <div className="grid grid-cols-2 gap-2">
               {IMPACT_FIELDS.map(field => (
                 <label key={field.key} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                   <input
@@ -162,15 +305,15 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
             </div>
           </CollapsibleSection>
 
-          <CollapsibleSection title="Notes" defaultOpen={true}>
-            <textarea
-              value={form.notes || ""}
-              onChange={e => update('notes', e.target.value)}
-              rows={3}
-              placeholder="Additional details or context for the traffic team..."
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm outline-none focus:border-blue-400 resize-none"
+          <CollapsibleSection title="Compliance Preview">
+            <ComplianceBanner
+              form={form}
+              onJustificationChange={val => update('phe_justification', val)}
             />
           </CollapsibleSection>
+
+          {/* ── Submission ── */}
+          <GroupLabel label="Submission" />
 
           <CollapsibleSection title="Documents">
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 p-3 text-xs font-semibold text-slate-500 transition-all hover:border-blue-400">
@@ -214,9 +357,20 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
               </div>
             )}
           </CollapsibleSection>
+
+          <CollapsibleSection title="Notes">
+            <textarea
+              value={form.notes || ""}
+              onChange={e => update('notes', e.target.value)}
+              rows={3}
+              placeholder="Additional details or context for the traffic team..."
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm outline-none focus:border-blue-400 resize-none"
+            />
+          </CollapsibleSection>
+
         </div>
 
-        {/* Footer — matches PlanCardActions style */}
+        {/* Footer */}
         <div className="border-t border-slate-100 flex-shrink-0 bg-white rounded-b-2xl">
           {validationErrors.length > 0 && (
             <div className="px-5 pt-3 pb-0">

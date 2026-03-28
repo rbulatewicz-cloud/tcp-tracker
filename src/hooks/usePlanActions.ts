@@ -1,5 +1,5 @@
-import { updatePlanStage, handleClearPlans, uploadTCPRevision, linkNewLOC, deleteDocument, updatePlanField as updatePlanFieldService, updatePlanFields as updatePlanFieldsService, deletePlan as deletePlanService, uploadStageAttachment as uploadStageAttachmentService, batchUploadStageAttachments as batchUploadStageAttachmentsService, renewLoc as renewLocService } from '../services/planService';
-import { addLogEntry, revertLogEntry, deleteLogEntry, clearLog, handleClearLog } from '../services/logService';
+import { updatePlanStage, handleClearPlans, uploadTCPRevision, linkNewLOC, deleteDocument, updatePlanField as updatePlanFieldService, updatePlanFields as updatePlanFieldsService, deletePlan as deletePlanService, uploadStageAttachment as uploadStageAttachmentService, batchUploadStageAttachments as batchUploadStageAttachmentsService, renewLoc as renewLocService, convertPlanType as convertPlanTypeService, assignLocToTBD as assignLocToTBDService, deleteStageAttachment as deleteStageAttachmentService } from '../services/planService';
+import { addLogEntry, deleteLogEntry, clearLog, handleClearLog } from '../services/logService';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Plan, Stage, User, UserRole, LoadingState, LogEntry, ReviewCycle, ImplementationWindow } from '../types';
@@ -24,6 +24,8 @@ interface UsePlanActionsParams {
   currentUser: User | null;
   role: UserRole | null;
   _UserRole: typeof UserRole;
+  onStageNotify?: (plan: Plan, newStage: string, stageLabel: string, actorEmail: string) => void;
+  onCommentNotify?: (plan: Plan, actorEmail: string, actorName: string) => void;
 }
 
 export const usePlanActions = ({
@@ -33,7 +35,7 @@ export const usePlanActions = ({
   isDirty, setIsDirty,
   td, getUserLabel, STAGES, setLoading,
   setClearLogConfirm, setClearPlansConfirm, setSelectedPlanIds,
-  currentUser, role, _UserRole
+  currentUser, role, _UserRole, onStageNotify, onCommentNotify,
 }: UsePlanActionsParams) => {
   // O(1) plan lookup — avoids repeated O(n) .find() across every action handler
   const plansById = new Map(plans.map(p => [p.id, p]));
@@ -49,10 +51,11 @@ export const usePlanActions = ({
     // Status changes always save immediately to Firestore (not buffered as drafts)
     const plan = plansById.get(pid) ?? draftPlan;
     if (!plan) return;
-    await updatePlanStage(plan, ns, date, getUserLabel, () => {}, STAGES, selectedPlan, setSelectedPlan, false, draftPlan, setDraftPlan, setIsDirty, reviewCycles, implementationWindow);
+    await updatePlanStage(plan, ns, date, getUserLabel, () => {}, STAGES, selectedPlan, setSelectedPlan, false, draftPlan, setDraftPlan, setIsDirty, reviewCycles, implementationWindow, onStageNotify, currentUser?.email);
   };
 
   const handleDOTCommentsRec = async (pid: string) => {
+    if (role === _UserRole.SFTC || role === _UserRole.GUEST) return;
     const currentDate = td;
     const plan = plansById.get(pid);
     if (!plan) return;
@@ -76,6 +79,7 @@ export const usePlanActions = ({
   };
 
   const pushTicket = async (pid: string, target: 'sftc' | 'engineering') => {
+    if (role === _UserRole.SFTC || role === _UserRole.GUEST) return;
     const plan = plansById.get(pid);
     if (!plan) return;
     
@@ -102,14 +106,14 @@ export const usePlanActions = ({
 
   const addLogEntryHandler = async (pid: string, entry: string, attachments?: File[], field?: string, previousValue?: any, newValue?: any) => {
     await addLogEntry(pid, entry, attachments, td, getUserLabel, field, previousValue, newValue);
+    // Fire comment notification for real user-authored entries only
+    if (!field && onCommentNotify && currentUser?.email) {
+      const plan = plansById.get(pid);
+      if (plan) onCommentNotify(plan, currentUser.email, currentUser.displayName || currentUser.name || currentUser.email);
+    }
   };
 
-  const revertLogEntryHandler = async (pid: string, logEntryId: string) => {
-    const plan = plansById.get(pid) ?? selectedPlan;
-    await revertLogEntry(pid, logEntryId, getUserLabel, td, plan?.log);
-  };
-
-  const deleteLogEntryHandler = async (pid: string, logEntryIndex: string) => {
+const deleteLogEntryHandler = async (pid: string, logEntryIndex: string) => {
     const plan = plansById.get(pid) ?? selectedPlan;
     if (!plan) return;
     const idx = parseInt(logEntryIndex, 10);
@@ -123,6 +127,10 @@ export const usePlanActions = ({
   const deleteDocumentHandler = async (pid: string, docId: string, type: 'tcp' | 'loc', plan: Plan, isDraft: boolean = true) => {
     const p = isDraft ? draftPlan : plan;
     await deleteDocument(pid, docId, type, p, setSelectedPlan, getUserLabel, td, isDraft, draftPlan, setDraftPlan, setIsDirty);
+  };
+
+  const deleteStageAttachmentHandler = async (pid: string, attachmentId: string, plan: Plan) => {
+    await deleteStageAttachmentService(pid, attachmentId, plan, setSelectedPlan, getUserLabel, td);
   };
 
   const clearLogHandler = async (pid: string, isDraft: boolean) => {
@@ -246,6 +254,18 @@ export const usePlanActions = ({
     return renewLocService(plan, plans, td, getUserLabel, setSelectedPlan);
   };
 
+  const convertPlanType = async (pid: string, newType: string): Promise<{ remappedStage: string | null }> => {
+    const plan = plansById.get(pid) ?? selectedPlan;
+    if (!plan) return { remappedStage: null };
+    return convertPlanTypeService(pid, newType, plan, setSelectedPlan, td, getUserLabel);
+  };
+
+  const assignLocToTBD = async (pid: string, customLoc: string | null): Promise<string> => {
+    const plan = plansById.get(pid) ?? selectedPlan;
+    if (!plan) return '';
+    return assignLocToTBDService(plan, customLoc, setSelectedPlan, td, getUserLabel);
+  };
+
   const uploadStageAttachmentHandler = async (
     pid: string,
     file: File,
@@ -275,9 +295,10 @@ export const usePlanActions = ({
     pushTicket,
     deletePlan,
     addLogEntry: addLogEntryHandler,
-    revertLogEntry: revertLogEntryHandler,
+
     deleteLogEntry: deleteLogEntryHandler,
     deleteDocument: deleteDocumentHandler,
+    deleteStageAttachment: deleteStageAttachmentHandler,
     clearLog: clearLogHandler,
     uploadTCPRevision: uploadTCPRevisionHandler,
     linkNewLOC: linkNewLOCHandler,
@@ -291,5 +312,7 @@ export const usePlanActions = ({
     uploadStageAttachment: uploadStageAttachmentHandler,
     batchUploadStageAttachments: batchUploadStageAttachmentsHandler,
     renewLoc,
+    convertPlanType,
+    assignLocToTBD,
   };
 };

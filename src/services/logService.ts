@@ -1,4 +1,4 @@
-import { doc, updateDoc, collection, addDoc, deleteDoc, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, getDocs, query, orderBy } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase';
@@ -43,43 +43,6 @@ export const addLogEntry = async (
     await addDoc(collection(db, 'plans', pid, 'logs'), newLogEntry);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `plans/${pid}/logs`);
-    throw error;
-  }
-};
-
-export const revertLogEntry = async (
-  pid: string,
-  logEntryUniqueId: string,
-  getUserLabel: () => string,
-  td: string,
-  planLog?: any[]
-) => {
-  try {
-    const logEntry = planLog?.find((e: any) => e.uniqueId === logEntryUniqueId);
-
-    if (!logEntry || !logEntry.field) {
-      throw new Error("Log entry cannot be reverted.");
-    }
-
-    const newLog = [
-      ...(planLog || []),
-      {
-        uniqueId: Date.now().toString(),
-        date: td,
-        action: `Reverted ${logEntry.field} from "${logEntry.newValue}" to "${logEntry.previousValue}"`,
-        user: getUserLabel(),
-        field: logEntry.field,
-        previousValue: logEntry.newValue,
-        newValue: logEntry.previousValue,
-      }
-    ];
-
-    await updateDoc(doc(db, 'plans', pid), {
-      [logEntry.field]: logEntry.previousValue,
-      log: newLog,
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `plans/${pid}`);
     throw error;
   }
 };

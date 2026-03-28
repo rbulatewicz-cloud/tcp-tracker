@@ -19,6 +19,7 @@ export interface NextAction {
   requiresAttachment?: boolean;                    // blocks confirm if no files attached
   attachmentLabel?: string;                        // label shown above the drop zone
   defaultDocType?: StageAttachment['documentType']; // pre-selected doc type
+  description?: string;        // short description shown as tooltip + in confirm modal
 }
 
 /** Derive workflow type from existing plan.type field — no new field needed */
@@ -36,7 +37,11 @@ export function getNextActions(stage: string, workflowType: PlanWorkflowType): N
   const s = normalizeStatus(stage);
   switch (s) {
     case 'requested':
-      return [{ label: 'Start Drafting', nextStatus: 'drafting' }];
+      return [{
+        label: 'Start Drafting',
+        nextStatus: 'drafting',
+        description: 'Begin drafting TCP plans. Moves the request into active drafting.',
+      }];
 
     case 'drafting':
       return [{
@@ -45,6 +50,7 @@ export function getNextActions(stage: string, workflowType: PlanWorkflowType): N
         requiresAttachment: true,
         attachmentLabel: 'Submittal Package',
         defaultDocType: 'tcp_drawings',
+        description: 'Upload and submit the completed TCP plan package to DOT for review.',
       }];
 
     case 'submitted_to_dot':
@@ -56,6 +62,7 @@ export function getNextActions(stage: string, workflowType: PlanWorkflowType): N
             requiresAttachment: true,
             attachmentLabel: 'Approval Letter',
             defaultDocType: 'approval_letter',
+            description: 'DOT approved the TCP drawings with no revisions. Upload the approval letter.',
           },
           {
             label: 'Comments Received',
@@ -64,6 +71,7 @@ export function getNextActions(stage: string, workflowType: PlanWorkflowType): N
             requiresAttachment: true,
             attachmentLabel: 'DOT Comments / Redlines',
             defaultDocType: 'dot_comments',
+            description: 'DOT returned the package with comments. Opens a review cycle — upload the redlines.',
           },
         ];
       }
@@ -75,6 +83,7 @@ export function getNextActions(stage: string, workflowType: PlanWorkflowType): N
           requiresAttachment: true,
           attachmentLabel: 'Approval Letter',
           defaultDocType: 'approval_letter',
+          description: 'DOT approved the plan with no revisions. Upload the approval letter and set the implementation window.',
         },
         {
           label: 'Comments Received',
@@ -83,6 +92,7 @@ export function getNextActions(stage: string, workflowType: PlanWorkflowType): N
           requiresAttachment: true,
           attachmentLabel: 'DOT Comments / Redlines',
           defaultDocType: 'dot_comments',
+          description: 'DOT returned the package with comments. Opens a review cycle — upload the redlines.',
         },
       ];
 
@@ -94,6 +104,7 @@ export function getNextActions(stage: string, workflowType: PlanWorkflowType): N
         requiresAttachment: true,
         attachmentLabel: 'Revised Set',
         defaultDocType: 'revision_package',
+        description: 'Upload the revised plan package addressing DOT\'s comments. Closes the current review cycle.',
       }];
 
     case 'tcp_approved':
@@ -103,6 +114,7 @@ export function getNextActions(stage: string, workflowType: PlanWorkflowType): N
         requiresAttachment: true,
         attachmentLabel: 'LOC Draft',
         defaultDocType: 'loc_draft',
+        description: 'TCP drawings are approved — submit the Letter of Credit (LOC) draft to DOT.',
       }];
 
     case 'loc_submitted':
@@ -114,6 +126,7 @@ export function getNextActions(stage: string, workflowType: PlanWorkflowType): N
           requiresAttachment: true,
           attachmentLabel: 'Approval Letter',
           defaultDocType: 'approval_letter',
+          description: 'LOC approved with no comments. Upload the approval letter and set the implementation window.',
         },
         {
           label: 'Comments Received',
@@ -122,6 +135,7 @@ export function getNextActions(stage: string, workflowType: PlanWorkflowType): N
           requiresAttachment: true,
           attachmentLabel: 'LOC Comments',
           defaultDocType: 'dot_comments',
+          description: 'DOT returned comments on the LOC. Opens a LOC review cycle — upload the comment letter.',
         },
       ];
 
@@ -133,10 +147,15 @@ export function getNextActions(stage: string, workflowType: PlanWorkflowType): N
         requiresAttachment: true,
         attachmentLabel: 'Revised LOC',
         defaultDocType: 'revision_package',
+        description: 'Upload the revised LOC addressing DOT\'s comments. Closes the current LOC review cycle.',
       }];
 
     case 'plan_approved':
-      return [{ label: 'Mark as Expired', nextStatus: 'expired' }];
+      return [{
+        label: 'Mark as Expired',
+        nextStatus: 'expired',
+        description: 'The implementation window has passed. Moves this plan to expired status.',
+      }];
 
     case 'expired':
       return [{
@@ -146,16 +165,19 @@ export function getNextActions(stage: string, workflowType: PlanWorkflowType): N
         requiresAttachment: true,
         attachmentLabel: 'Resubmittal Package',
         defaultDocType: 'revision_package',
+        description: 'Submit a revised plan package with a new implementation window to reactivate this plan.',
       }];
 
     case 'resubmitted':
       return [
         {
-          label: 'No Comments – TCP Approved',
-          nextStatus: 'tcp_approved_final',
+          label: 'No Comments – Plan Approved',
+          nextStatus: 'plan_approved',
+          collectWindow: true,
           requiresAttachment: true,
           attachmentLabel: 'Approval Letter',
           defaultDocType: 'approval_letter',
+          description: 'DOT approved the resubmission. Upload the approval letter and set the new implementation window.',
         },
         {
           label: 'Comments Received',
@@ -164,6 +186,7 @@ export function getNextActions(stage: string, workflowType: PlanWorkflowType): N
           requiresAttachment: true,
           attachmentLabel: 'Review Comments',
           defaultDocType: 'dot_comments',
+          description: 'DOT returned comments on the resubmission. Opens another review cycle.',
         },
       ];
 
@@ -175,6 +198,7 @@ export function getNextActions(stage: string, workflowType: PlanWorkflowType): N
         requiresAttachment: true,
         attachmentLabel: 'Revised Set',
         defaultDocType: 'revision_package',
+        description: 'Upload the revised set addressing DOT\'s resubmission comments. Closes the review cycle.',
       }];
 
     case 'tcp_approved_final':
@@ -224,6 +248,6 @@ export function getStatusSubLabel(stage: string, reviewCycles: { cycleType: stri
 export function getProgressBarStages(workflowType: PlanWorkflowType, stage: string) {
   const s = normalizeStatus(stage);
   const base = workflowType === 'engineered' ? ENGINEERED_PROGRESS_STAGES : WATCH_PROGRESS_STAGES;
-  const inResubmission = ['resubmitted', 'resubmit_review', 'tcp_approved_final'].includes(s);
+  const inResubmission = ['resubmitted', 'resubmit_review'].includes(s);
   return inResubmission ? [...base, ...RESUBMISSION_STAGES] : base;
 }

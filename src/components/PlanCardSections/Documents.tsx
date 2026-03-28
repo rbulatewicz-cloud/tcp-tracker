@@ -27,7 +27,7 @@ const DOC_TYPES: { value: StageAttachment['documentType']; label: string; primar
 
 export const Documents: React.FC = React.memo(() => {
   const { selectedPlan } = usePlanData();
-  const { uploadTCPRevision, linkNewLOC, deleteDocument, uploadStageAttachment } = usePlanActions();
+  const { uploadTCPRevision, linkNewLOC, deleteDocument, uploadStageAttachment, updatePlanField, addLogEntry, deleteStageAttachment } = usePlanActions();
   const { currentUser, UserRole, canEditPlan } = usePlanPermissions();
   const canDelete = currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN;
   const canUpload = currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN;
@@ -131,18 +131,35 @@ export const Documents: React.FC = React.memo(() => {
   const getStageLabelForKey = (key: string) =>
     ALL_STAGES.find(s => s.key === key)?.label ?? key;
 
+  const isEngineered = selectedPlan.type === 'Engineered';
+
   return (
     <div className="pb-4 mb-4 flex flex-col gap-5">
       {/* Pending documents warning */}
       {selectedPlan.pendingDocuments && (
         <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
           <span className="text-amber-500 text-sm mt-0.5">⚠</span>
-          <div>
+          <div className="flex-1">
             <div className="text-[11px] font-bold text-amber-700">Pending Documents</div>
             <div className="text-[10px] text-amber-600 mt-0.5">
-              Please upload the signed LOC and TCP drawings to complete this record.
+              {isEngineered
+                ? 'Please upload the signed LOC and TCP drawings to complete this record.'
+                : 'Please upload the signed LOC to complete this record.'}
             </div>
           </div>
+          {canDelete && (
+            <button
+              onClick={async () => {
+                await updatePlanField(selectedPlan.id, 'pendingDocuments', false, false);
+                addLogEntry(selectedPlan.id, 'Pending documents flag dismissed by MOT team.', [], 'note');
+                showToast('Pending documents flag cleared.', 'success');
+              }}
+              className="text-[10px] font-bold text-amber-600 hover:text-amber-900 border border-amber-300 hover:border-amber-500 rounded px-2 py-1 whitespace-nowrap transition-colors flex-shrink-0"
+              title="Dismiss — acknowledge this record is complete as-is"
+            >
+              Dismiss
+            </button>
+          )}
         </div>
       )}
 
@@ -293,6 +310,14 @@ export const Documents: React.FC = React.memo(() => {
                             {att.name}
                           </button>
                           <span className="text-[9px] text-slate-300 shrink-0">{att.uploadedAt.slice(0, 10)}</span>
+                          {canDelete && (
+                            <button
+                              onClick={() => deleteStageAttachment(selectedPlan.id, att.id, selectedPlan)}
+                              className="text-[10px] text-red-500 hover:underline shrink-0"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -310,24 +335,30 @@ export const Documents: React.FC = React.memo(() => {
       <div className="pt-3 mt-1 border-t border-slate-100">
         <div className="text-xs font-extrabold text-slate-800 uppercase tracking-wide mb-3 pb-1.5 border-b border-slate-200">Approved Documents & Revisions</div>
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <div className="flex justify-between items-center">
-              <span className="font-bold text-slate-800 text-xs">Approved TCPs</span>
-              <input type="file" ref={tcpInputRef} onChange={handleTCPUpload} className="hidden" />
-              {canEditPlan && (
-                <button onClick={() => tcpInputRef.current?.click()} className="text-teal-600 text-[10px] font-bold hover:underline">
-                  Upload Revision
-                </button>
-              )}
+          {/* Engineered plans only — TCP and LOC are separate submittals */}
+          {isEngineered && (
+            <div className="flex flex-col gap-1">
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-slate-800 text-xs">Approved TCPs</span>
+                <input type="file" ref={tcpInputRef} onChange={handleTCPUpload} className="hidden" />
+                {canUpload && (
+                  <button onClick={() => tcpInputRef.current?.click()} className="text-teal-600 text-[10px] font-bold hover:underline">
+                    Upload Revision
+                  </button>
+                )}
+              </div>
+              {renderDocHistory(selectedPlan.approvedTCPs || [], 'tcp')}
             </div>
-            {renderDocHistory(selectedPlan.approvedTCPs || [], 'tcp')}
-          </div>
+          )}
 
           <div className="flex flex-col gap-1">
             <div className="flex justify-between items-center">
-              <span className="font-bold text-slate-800 text-xs">Approved LOCs</span>
+              {/* For Watch/Standard the LOC includes the TCP drawing — label accordingly */}
+              <span className="font-bold text-slate-800 text-xs">
+                {isEngineered ? 'Approved LOCs' : 'Approved LOC / TCP Package'}
+              </span>
               <input type="file" ref={locInputRef} onChange={handleLOCLink} className="hidden" />
-              {canEditPlan && (
+              {canUpload && (
                 <button onClick={() => locInputRef.current?.click()} className="text-teal-600 text-[10px] font-bold hover:underline">
                   + Link New LOC
                 </button>

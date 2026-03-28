@@ -1,7 +1,8 @@
-import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, runTransaction, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import * as XLSX from 'xlsx';
 import { IMPORT_TARGET_FIELDS, ALL_STAGES, LEADS } from '../constants';
+import { Plan, LogEntry } from '../types';
 
 export interface ImportRow {
   _rowIndex: number;
@@ -25,8 +26,13 @@ export interface ImportRow {
   // Admin-set overrides (Step 3)
   isHistorical: boolean;
   pendingDocuments: boolean;
-  approved: boolean;         // admin approved this row for import
-  issues: string[];          // validation issues
+  approved: boolean;
+  issues: string[];
+  // New fields
+  isTBD: boolean;          // true = no LOC, will get TBD-xxx ID
+  isRenewal: boolean;      // true = LOC looks like "366.1"
+  parentLocId?: string;    // for renewals: "366" if LOC is "366.1"
+  renewalSuffix?: string;  // ".1" if LOC is "366.1"
 }
 
 // Parse Excel date serial to ISO string
@@ -58,9 +64,17 @@ function normalizeStage(val: string): string {
   return match?.key ?? 'requested';
 }
 
-// Auto-determine pendingDocuments: any plan beyond "requested" that has no docs should be flagged
+// Detect if LOC looks like a renewal (e.g. "366.1", "LOC-366.1")
+function detectRenewal(loc: string): { isRenewal: boolean; parentLocId?: string; renewalSuffix?: string } {
+  const match = loc.match(/^(.+)\.(\d+)$/);
+  if (match) {
+    return { isRenewal: true, parentLocId: match[1], renewalSuffix: `.${match[2]}` };
+  }
+  return { isRenewal: false };
+}
+
 function shouldFlagPendingDocs(stage: string): boolean {
-  return ['plan_approved', 'approved', 'expired', 'tcp_approved_final', 'closed'].includes(stage);
+  return ['plan_approved', 'approved', 'expired', 'closed'].includes(stage);
 }
 
 export const parseMasterFile = async (file: File) => {
@@ -71,7 +85,6 @@ export const parseMasterFile = async (file: File) => {
   const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
   if (rawRows.length === 0) throw new Error('Empty sheet');
 
-  // Find header row
   let headerRowIdx = 0;
   while (headerRowIdx < rawRows.length && (!rawRows[headerRowIdx] || (rawRows[headerRowIdx] as unknown[]).length === 0)) {
     headerRowIdx++;
@@ -87,7 +100,6 @@ export const parseMasterFile = async (file: File) => {
     range: headerRowIdx + 1,
   }) as Record<string, unknown>[];
 
-  // Auto-guess column mapping
   const initialMapping: Record<string, string> = {};
   IMPORT_TARGET_FIELDS.forEach(f => {
     const match = headers.find(h =>
@@ -101,7 +113,6 @@ export const parseMasterFile = async (file: File) => {
   return { headers, rows, initialMapping };
 };
 
-// Validate and map raw rows using column mapping — returns ImportRow[] with issues flagged
 export const buildImportRows = (
   rawRows: Record<string, unknown>[],
   columnMapping: Record<string, string>
@@ -119,10 +130,13 @@ export const buildImportRows = (
     const rawStage = get('stage').trim();
     const stage = rawStage ? normalizeStage(rawStage) : 'requested';
 
+    const isTBD = !loc;
+    const renewal = loc ? detectRenewal(loc) : { isRenewal: false };
+
     const issues: string[] = [];
-    if (!loc) issues.push('Missing LOC #');
     if (!street1) issues.push('Missing Street 1');
     if (!lead || !LEADS.includes(lead)) issues.push('Lead not assigned or not recognised');
+    // Note: missing LOC is no longer a blocking error — gets TBD ID
 
     const pendingDocuments = shouldFlagPendingDocs(stage);
 
@@ -146,8 +160,12 @@ export const buildImportRows = (
       notes: get('notes'),
       isHistorical: false,
       pendingDocuments,
-      approved: issues.length === 0,
+      approved: issues.length === 0, // TBD rows can be approved — they just get a temp ID
       issues,
+      isTBD,
+      isRenewal: renewal.isRenewal,
+      parentLocId: renewal.parentLocId,
+      renewalSuffix: renewal.renewalSuffix,
     };
   });
 };
@@ -158,22 +176,28 @@ export const confirmImport = async (
   td: string,
   getUserLabel: () => string
 ) => {
-  const approvedRows = rows.filter(r => r.approved && r.loc);
+  // Include both rows with LOC and TBD rows (isTBD) — all approved rows
+  const approvedRows = rows.filter(r => r.approved);
   const existingIds = new Set(existingPlans.map(p => p.id));
+  const importBatchId = `import_${td}_${getUserLabel().replace(/\s+/g, '_')}`;
+
+  let tbdCounter = 1;
 
   for (const row of approvedRows) {
-    const isUpdate = existingIds.has(row.loc);
-    const log = [
+    // Determine document ID: use LOC if present, otherwise generate TBD ID
+    const docId = row.loc || `TBD-${Date.now()}-${tbdCounter++}`;
+    const isUpdate = row.loc ? existingIds.has(row.loc) : false;
+
+    const log: LogEntry[] = [
       {
         uniqueId: Date.now().toString(),
         date: td,
-        action: isUpdate ? 'Updated via Master File Import' : 'Imported from Master File',
+        action: isUpdate ? 'Updated via Master File Import' : row.isTBD ? 'Imported — LOC Pending Assignment' : 'Imported from Master File',
         user: getUserLabel(),
       },
     ];
 
-    // Synthetic status history entries from imported dates
-    const statusHistory = [];
+    const statusHistory: any[] = [];
     if (row.dateRequested) {
       statusHistory.push({ uniqueId: `import_req_${row._rowIndex}`, date: row.dateRequested, action: 'Status → Requested', newValue: 'requested', user: 'Import' });
     }
@@ -186,9 +210,9 @@ export const confirmImport = async (
       log.push({ uniqueId: `log_app_${row._rowIndex}`, date: row.approvedDate, action: 'Plan Approved (Imported)', user: 'System' });
     }
 
-    const planData = {
-      id: row.loc,
-      loc: row.loc,
+    const planData: any = {
+      id: docId,
+      loc: row.loc || '',  // empty string for TBD — shown as "Unassigned" in UI
       rev: 0,
       type: row.type,
       scope: row.scope,
@@ -214,10 +238,85 @@ export const confirmImport = async (
       log,
       statusHistory,
       reviewCycles: [],
+      // New import tracking fields
+      importStatus: 'needs_review',
+      importBatchId,
+      locStatus: row.isTBD ? 'unassigned' : 'assigned',
+      // Renewal chain
+      ...(row.isRenewal && row.parentLocId ? { parentLocId: row.parentLocId, revisionSuffix: row.renewalSuffix } : {}),
     };
 
-    await setDoc(doc(db, 'plans', row.loc), planData, { merge: isUpdate });
+    await setDoc(doc(db, 'plans', docId), planData, { merge: isUpdate });
   }
 
-  return { imported: approvedRows.length, skipped: rows.length - approvedRows.length };
+  // Bump the LOC counter to max(counter, highest imported LOC) so new requests
+  // always get a number above everything that was imported.
+  const importedNums = approvedRows
+    .filter(r => r.loc && !r.isTBD)
+    .map(r => parseInt(String(r.loc).replace('LOC-', '').split('.')[0], 10))
+    .filter(n => !isNaN(n));
+  const maxImported = importedNums.length > 0 ? Math.max(...importedNums) : 0;
+  if (maxImported > 0) {
+    const counterRef = doc(db, 'settings', 'locCounter');
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(counterRef);
+      const current = snap.exists() ? (snap.data().count as number || 0) : 0;
+      if (maxImported > current) {
+        transaction.set(counterRef, { count: maxImported });
+      }
+    });
+  }
+
+  return {
+    imported: approvedRows.length,
+    skipped: rows.length - approvedRows.length,
+    tbdCount: approvedRows.filter(r => r.isTBD).length,
+    renewalCount: approvedRows.filter(r => r.isRenewal).length,
+  };
+};
+
+// Assign a real LOC number to a TBD plan — auto-increments counter or uses provided LOC
+export const assignLocToTBD = async (
+  tbdPlan: Plan,
+  customLoc: string | null,
+  setSelectedPlan: (plan: Plan | null) => void,
+  td: string,
+  getUserLabel: () => string
+): Promise<string> => {
+  let locNumber: string;
+
+  if (customLoc && customLoc.trim()) {
+    locNumber = customLoc.trim();
+  } else {
+    locNumber = await runTransaction(db, async (transaction) => {
+      const counterRef = doc(db, 'settings', 'locCounter');
+      const counterSnap = await transaction.get(counterRef);
+      const current = counterSnap.exists() ? (counterSnap.data().value || 0) : 0;
+      const next = current + 1;
+      transaction.set(counterRef, { value: next });
+      return String(next);
+    });
+  }
+
+  const logEntry: LogEntry = {
+    uniqueId: Date.now().toString(),
+    date: td,
+    action: `LOC number assigned: ${locNumber}`,
+    user: getUserLabel(),
+  };
+
+  const newPlanData: any = {
+    ...tbdPlan,
+    id: locNumber,
+    loc: locNumber,
+    locStatus: 'assigned',
+    log: [...(tbdPlan.log || []), logEntry],
+  };
+
+  // Write new doc with proper LOC ID, delete the TBD doc
+  await setDoc(doc(db, 'plans', locNumber), newPlanData);
+  await deleteDoc(doc(db, 'plans', tbdPlan.id));
+
+  setSelectedPlan(newPlanData as Plan);
+  return locNumber;
 };

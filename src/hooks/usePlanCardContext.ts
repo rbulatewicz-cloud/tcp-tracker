@@ -15,7 +15,7 @@ export const usePlanCardContext = (
   isPermissionEditingMode: boolean = false
 ): PlanCardContextType => {
   const { selectedPlan, isDirty, draftPlan } = planManagement;
-  const { handleClosePlanCard, updatePlanField, saveDraft, discardDraft, updateStage, handleDOTCommentsRec, addLogEntry, revertLogEntry, deleteLogEntry, deleteDocument, clearLog, uploadTCPRevision, linkNewLOC, deletePlan, uploadStageAttachment, batchUploadStageAttachments, renewLoc } = planActions;
+  const { handleClosePlanCard, updatePlanField, saveDraft, discardDraft, updateStage, handleDOTCommentsRec, addLogEntry, deleteLogEntry, deleteDocument, clearLog, uploadTCPRevision, linkNewLOC, deletePlan, uploadStageAttachment, batchUploadStageAttachments, renewLoc, convertPlanType, assignLocToTBD, deleteStageAttachment } = planActions;
 
   return React.useMemo(() => ({
     data: {
@@ -38,7 +38,6 @@ export const usePlanCardContext = (
       handleExportPlanToPDF: (plan: any) => import('../services/pdfService').then(service => service.exportPlanToPDF(plan, firestoreData.reportTemplate, STAGES, () => {}, () => "")),
       setStatusDate,
       addLogEntry,
-      revertLogEntry,
       deleteLogEntry,
       deleteDocument,
       clearLog,
@@ -47,6 +46,9 @@ export const usePlanCardContext = (
       uploadStageAttachment,
       batchUploadStageAttachments,
       renewLoc,
+      convertPlanType,
+      assignLocToTBD,
+      deleteStageAttachment,
     },
     permissions: {
       ...permissions,
@@ -54,6 +56,7 @@ export const usePlanCardContext = (
       currentUser: auth.currentUser,
       UserRole: UserRole,
       canEditPlan: auth.role !== UserRole.GUEST,
+      canEditFields: auth.role === UserRole.ADMIN || auth.role === UserRole.MOT,
       canView: permissions.canView || (() => true),
       fieldPermissions: permissions.fieldPermissions || {},
       setFieldPermissions: permissions.setFieldPermissions || (() => {}),
@@ -71,7 +74,7 @@ export const usePlanCardContext = (
     }
   }), [
     selectedPlan, isDirty, statusDate, handleClosePlanCard, deletePlan, updatePlanField, saveDraft, discardDraft, updateStage,
-    handleDOTCommentsRec, setStatusDate, addLogEntry, revertLogEntry, deleteLogEntry, deleteDocument, clearLog, uploadTCPRevision,
-    linkNewLOC, uploadStageAttachment, batchUploadStageAttachments, renewLoc, permissions, auth.currentUser, auth.role, firestoreData.reportTemplate, isPermissionEditingMode
+    handleDOTCommentsRec, setStatusDate, addLogEntry, deleteLogEntry, deleteDocument, clearLog, uploadTCPRevision,
+    linkNewLOC, uploadStageAttachment, batchUploadStageAttachments, renewLoc, convertPlanType, assignLocToTBD, deleteStageAttachment, permissions, auth.currentUser, auth.role, firestoreData.reportTemplate, isPermissionEditingMode
   ]);
 };
