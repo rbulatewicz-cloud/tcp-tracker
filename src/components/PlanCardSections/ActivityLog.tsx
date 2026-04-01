@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { usePlanData, usePlanActions, usePlanPermissions, usePlanUtils } from '../PlanCardContext';
+import { usePlanData, usePlanActions, usePlanPermissions } from '../PlanCardContext';
 import { ConfirmationModal } from '../ConfirmationModal';
 import { UserRole } from '../../types';
 
@@ -11,7 +11,6 @@ export const ActivityLog: React.FC = React.memo(() => {
   const [newLogEntry, setNewLogEntry] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { getLocalDateString } = usePlanUtils();
   const [confirmDelete, setConfirmDelete] = useState<{isOpen: boolean, index: number | null}>({isOpen: false, index: null});
 
   if (!plan) return null;

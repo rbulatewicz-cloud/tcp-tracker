@@ -12,7 +12,8 @@ export const usePlanCardContext = (
   firestoreData: any,
   statusDate: string,
   setStatusDate: React.Dispatch<React.SetStateAction<string>>,
-  isPermissionEditingMode: boolean = false
+  isPermissionEditingMode: boolean = false,
+  libraryVariances: any[] = []
 ): PlanCardContextType => {
   const { selectedPlan, isDirty, draftPlan } = planManagement;
   const { handleClosePlanCard, updatePlanField, saveDraft, discardDraft, updateStage, handleDOTCommentsRec, addLogEntry, deleteLogEntry, deleteDocument, clearLog, uploadTCPRevision, linkNewLOC, deletePlan, uploadStageAttachment, batchUploadStageAttachments, renewLoc, convertPlanType, assignLocToTBD, deleteStageAttachment } = planActions;
@@ -35,7 +36,7 @@ export const usePlanCardContext = (
       discardDraft,
       updateStage,
       handleDOTCommentsRec,
-      handleExportPlanToPDF: (plan: any) => import('../services/pdfService').then(service => service.exportPlanToPDF(plan, firestoreData.reportTemplate, STAGES, () => {}, () => "")),
+      handleExportPlanToPDF: (plan: any) => import('../services/pdfService').then(service => service.exportPlanToPDF(plan, firestoreData.reportTemplate, STAGES, () => {}, libraryVariances)),
       setStatusDate,
       addLogEntry,
       deleteLogEntry,
@@ -75,6 +76,6 @@ export const usePlanCardContext = (
   }), [
     selectedPlan, isDirty, statusDate, handleClosePlanCard, deletePlan, updatePlanField, saveDraft, discardDraft, updateStage,
     handleDOTCommentsRec, setStatusDate, addLogEntry, deleteLogEntry, deleteDocument, clearLog, uploadTCPRevision,
-    linkNewLOC, uploadStageAttachment, batchUploadStageAttachments, renewLoc, convertPlanType, assignLocToTBD, deleteStageAttachment, permissions, auth.currentUser, auth.role, firestoreData.reportTemplate, isPermissionEditingMode
+    linkNewLOC, uploadStageAttachment, batchUploadStageAttachments, renewLoc, convertPlanType, assignLocToTBD, deleteStageAttachment, permissions, auth.currentUser, auth.role, firestoreData.reportTemplate, isPermissionEditingMode, libraryVariances
   ]);
 };

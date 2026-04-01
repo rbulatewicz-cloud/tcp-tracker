@@ -1,7 +1,5 @@
-import React from 'react';
 import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts';
 import { daysBetween } from '../utils/plans';
-import { MONO_FONT } from '../constants';
 
 const getTrendData = (plans: any[], metric: string, td: string, TODAY: Date) => {
     const pastDays = 7;

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Plan, FilterState, SortConfig } from '../types';
 
 export const usePlanManagement = (plans: Plan[]) => {
@@ -21,8 +21,6 @@ export const usePlanManagement = (plans: Plan[]) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPlan]);
 
-  const [minimizedOutreachPlans, setMinimizedOutreachPlans] = useState<Record<string, boolean>>({});
-  const [activeImpactFilter, setActiveImpactFilter] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterState>({ stage: "all", type: "all", lead: "all", priority: "all", importStatus: "all" });
   const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
   const [planSearch, setPlanSearch] = useState("");
@@ -32,8 +30,6 @@ export const usePlanManagement = (plans: Plan[]) => {
     selectedPlan, setSelectedPlan,
     draftPlan, setDraftPlan,
     isDirty, setIsDirty,
-    minimizedOutreachPlans, setMinimizedOutreachPlans,
-    activeImpactFilter, setActiveImpactFilter,
     filter, setFilter,
     sortConfig, setSortConfig,
     planSearch, setPlanSearch,

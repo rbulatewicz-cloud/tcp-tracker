@@ -8,11 +8,9 @@ import { addPlanSubscriber, removePlanSubscriber } from '../services/notificatio
 export const PlanHeader: React.FC = () => {
   const {
     selectedPlan,
-    handleClosePlanCard,
     deletePlan,
     currentUser,
     UserRole,
-    updatePlanField,
     handleExportPlanToPDF,
     renewLoc,
   } = usePlanCard();

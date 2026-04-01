@@ -1,6 +1,6 @@
 import {
   collection, doc, addDoc, updateDoc, writeBatch,
-  query, where, getDocs, Timestamp,
+  query, where, getDocs,
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { AppNotification, NotifyEvent, Plan, User } from '../types';
@@ -174,4 +174,52 @@ export function buildDotCommentsNotif(plan: Plan, cycleNum: number) {
     body: `Cycle ${cycleNum} · ${planLabel(plan)}`,
     type: 'dot_comments' as NotifyEvent,
   };
+}
+
+export function buildNVExpiryNotif(plan: Plan, daysLeft: number, expiryDate: string) {
+  const urgency = daysLeft <= 0 ? 'EXPIRED' : daysLeft <= 7 ? `${daysLeft}d left` : `${daysLeft} days left`;
+  return {
+    title: `Noise Variance expiring — ${plan.loc}`,
+    body: `${urgency} · Expires ${expiryDate} · ${planLabel(plan)}`,
+    type: 'nv_expiring' as NotifyEvent,
+  };
+}
+
+/**
+ * Check all plans for NV expiry and write notifications for subscribers.
+ * Should be called once on app load (after plans and users are loaded).
+ * Notifies at 30-day and 7-day thresholds (and at expiry).
+ */
+export async function checkAndNotifyNVExpiry(
+  plans: Plan[],
+  users: { email: string; notifyOn?: NotifyEvent[] }[],
+  getVarianceDaysLeft: (linkedVarianceId: string) => number | null,
+): Promise<void> {
+  const THRESHOLDS = [30, 7, 0];
+  const today = new Date().toISOString().slice(0, 10);
+
+  for (const plan of plans) {
+    const nv = plan.compliance?.noiseVariance;
+    if (!nv?.linkedVarianceId || !plan.subscribers?.length) continue;
+
+    const days = getVarianceDaysLeft(nv.linkedVarianceId);
+    if (days === null) continue;
+
+    // Only notify at threshold days (30, 7, 0 = expiry day)
+    if (!THRESHOLDS.includes(days)) continue;
+
+    // Dedupe: check if a notification was already sent today for this plan + threshold
+    const dedupeKey = `nv_expiry_${plan.id}_${days}_${today}`;
+    if (sessionStorage.getItem(dedupeKey)) continue;
+    sessionStorage.setItem(dedupeKey, '1');
+
+    // Find expiry date from a rough calculation
+    const expiryDate = new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+    const { title, body, type } = buildNVExpiryNotif(plan, days, expiryDate);
+
+    const subscriberUsers = (plan.subscribers || [])
+      .map(email => users.find(u => u.email === email) ?? { email, notifyOn: ['nv_expiring'] as NotifyEvent[] });
+
+    await writeNotificationsForPlanEvent(plan, type, '', subscriberUsers as any, title, body);
+  }
 }

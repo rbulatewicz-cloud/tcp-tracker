@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { handleBulkLOCUpload as bulkLOCUploadService } from '../services/planService';
+import { handleBulkLOCUpload as bulkLOCUploadService } from '../services/locService';
 
 export const useLOCManagement = (selectedPlanIds: string[], plans: any[], currentUser: any, getUserLabel: () => string, td: string, setLoading: (loading: any) => void, setSelectedPlanIds: (ids: string[]) => void) => {
   const [selectedLOC, setSelectedLOC] = useState<any>(null);

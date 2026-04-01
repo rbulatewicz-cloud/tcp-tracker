@@ -8,6 +8,8 @@ import { HoursOfWorkForm } from './HoursOfWorkForm';
 import { ComplianceBanner } from './ComplianceBanner';
 import { formatFileSize } from '../utils/plans';
 import { usePermissions } from '../hooks/usePermissions';
+import { useApp } from '../hooks/useApp';
+import { getTurnaroundStats } from '../utils/planStats';
 import { User, ReportTemplate, LoadingState, PlanForm, WorkHours, UserRole } from '../types';
 
 // Workflow path info — updates live as plan type changes
@@ -65,7 +67,13 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
 }) => {
   const { fieldPermissions, setFieldPermissions } = usePermissions();
   const { planTypes } = useAppLists();
+  const { firestoreData } = useApp();
   const [validationErrors, setValidationErrors] = React.useState<string[]>([]);
+
+  const turnaroundStats = React.useMemo(
+    () => getTurnaroundStats(form.type, firestoreData.plans),
+    [form.type, firestoreData.plans]
+  );
 
   React.useEffect(() => {
     if (showForm) setValidationErrors([]);
@@ -216,6 +224,30 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
                 ) : (
                   <div className="rounded-lg border border-slate-200 px-3 py-2 bg-white text-[10px] text-slate-400 italic">
                     Select a plan type above to see its description and approval workflow.
+                  </div>
+                )}
+
+                {/* ── Turnaround stats ── */}
+                {form.type && (
+                  <div className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mr-0.5">📊 Avg Turnaround</span>
+                      {turnaroundStats.avgDays !== null ? (
+                        <span className="text-[12px] font-bold text-slate-800">{turnaroundStats.avgDays} days</span>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 italic">No recent data</span>
+                      )}
+                      <span className="text-slate-300 text-[11px]">·</span>
+                      <span className="text-[11px] text-slate-600">
+                        {turnaroundStats.inProgress} currently in progress
+                      </span>
+                      {turnaroundStats.sampleSize > 0 && (
+                        <span className="text-[10px] text-slate-400">
+                          (based on {turnaroundStats.sampleSize} plan{turnaroundStats.sampleSize !== 1 ? 's' : ''}, last 60 days
+                          {turnaroundStats.sampleSize <= 3 ? ' — limited data' : ''})
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

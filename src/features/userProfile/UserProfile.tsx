@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { UserCircle, Bell, LogOut, ChevronDown } from 'lucide-react';
-import { UserRole } from '../../types';
+import { UserCircle, Bell, LogOut } from 'lucide-react';
 
 interface UserProfileProps {
   currentUser: any;

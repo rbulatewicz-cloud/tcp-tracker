@@ -21,7 +21,7 @@ export const subscribeToUsers = (role: string, callback: (data: any[]) => void) 
   const unsubPublic = onSnapshot(collection(db, 'users_public'), (snapshot) => {
     const usersPublicData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as any));
 
-    if (role?.toUpperCase() === 'ADMIN') {
+    if (['ADMIN', 'MOT'].includes(role?.toUpperCase())) {
       // Clean up any previous private listener before creating a new one
       if (unsubPrivate) unsubPrivate();
       unsubPrivate = onSnapshot(collection(db, 'users_private'), (privateSnapshot) => {

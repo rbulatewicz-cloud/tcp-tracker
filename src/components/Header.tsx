@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { LayoutGrid, Ticket, MapPin, Calendar as CalendarIcon, Users, BarChart3, FileText, Menu, X, ShieldCheck, HelpCircle } from 'lucide-react';
+import { LayoutGrid, Ticket, MapPin, Calendar as CalendarIcon, Users, BarChart3, FileText, Menu, X, ShieldCheck, HelpCircle, FileWarning, BookOpen } from 'lucide-react';
 import { NavTab } from './NavTab';
-import { UserRole, User, AppConfig, AppNotification } from '../types';
+import { User, AppConfig, AppNotification } from '../types';
 import { SearchInput } from '../features/search/SearchInput';
 import { NewRequestButton } from '../features/actions/NewRequestButton';
 import { UserProfile } from '../features/userProfile/UserProfile';
@@ -58,8 +58,9 @@ const HeaderComponent: React.FC<HeaderProps> = ({
     { label: 'Requests',   icon: Ticket,        view: 'plan_requests', show: canViewTickets },
     { label: 'LOCs',       icon: MapPin,        view: 'locs',          show: false },
     { label: 'Calendar',   icon: CalendarIcon,  view: 'calendar',      show: true },
-    { label: 'Community',  icon: Users,         view: 'community',     show: true },
     { label: 'Compliance', icon: ShieldCheck,   view: 'compliance',    show: canViewCompliance },
+    { label: 'Library',    icon: FileWarning,   view: 'variances',     show: true },
+    { label: 'Reference',  icon: BookOpen,      view: 'reference',     show: true },
     { label: 'Metrics',    icon: BarChart3,     view: 'metrics',       show: canViewMetrics },
     { label: 'System Log', icon: FileText,      view: 'log',           show: canViewLogs },
     { label: 'Team',       icon: Users,         view: 'users',         show: canManageUsers },

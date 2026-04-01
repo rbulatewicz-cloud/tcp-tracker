@@ -32,7 +32,7 @@ const roleConfig: Record<string, { label: string; color: string; bg: string; des
     label: 'Community Relations',
     color: '#065F46',
     bg: '#D1FAE5',
-    description: 'Track and manage community outreach for active plans across all segments.',
+    description: 'Track driveway impact notices and community outreach for active plans. Access the Compliance view → Community Notices section.',
   },
   [UserRole.SFTC]: {
     label: 'SFTC Requestor',
@@ -62,8 +62,6 @@ const Pill: React.FC<{ label: string; bg: string; color: string }> = ({ label, b
 export const HelpModal: React.FC<HelpModalProps> = ({ onClose, currentUser }) => {
   const role = currentUser?.role as UserRole | undefined;
   const rc = role ? (roleConfig[role] ?? roleConfig[UserRole.GUEST]) : roleConfig[UserRole.GUEST];
-  const isMOTPlus = role === UserRole.MOT || role === UserRole.ADMIN;
-
   const [openSections, setOpenSections] = useState<Set<string>>(
     new Set(['role', 'table', 'submit', 'card', 'compliance', 'docs', 'follow', 'glossary'])
   );
@@ -159,10 +157,9 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose, currentUser }) =>
           <Row label="Scope & Location" value="Streets, scope, and segment — editable by MOT/Admin." />
           <Row label="Hours of Work" value="Shift schedule with days and times." />
           <Row label="Impacts & Requirements" value="All traffic impact flags and special requirements for this plan." />
-          <Row label="Compliance" value="Live tracker for PHE, Noise Variance, and CD Concurrence. Each has its own checklist and status." />
-          <Row label="Notes" value="Log entries visible to the whole team. Good for DOT comments, internal notes, or status context." />
+          <Row label="Compliance" value="Live tracker for PHE, Noise Variance, CD Concurrence, and Driveway Impact Notices. Each track auto-generates from the plan's work hours and impact flags." />
+          <Row label="Notes" value="Log entries visible to the whole team. Good for DOT comments, internal decisions, or status context." />
           <Row label="Documents" value="All attached files — TCPs, LOCs, permits. MOT/Admin can upload directly." />
-          <Row label="Community Outreach" value="Tracks resident and business notifications for the affected area." />
           <Row label="Activity Log" value="Full audit trail — every change, upload, and comment ever made on this plan." />
         </div>
       ),
@@ -181,7 +178,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose, currentUser }) =>
             label="PHE"
             value={
               <>
-                <strong>Peak Hour Exemption</strong> — Required when work overlaps peak traffic hours (Mon–Fri 6–9 AM or 3:30–7 PM) or involves a full street closure.
+                <strong>Peak Hour Exemption</strong> — Required when weekday work overlaps peak traffic hours (Mon–Fri 6–9 AM or 3:30–7 PM).
                 Submitted through the BOE Customer Service Portal. Fee applies (LAMC 62.61(b).3).
               </>
             }
@@ -206,9 +203,24 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose, currentUser }) =>
               </>
             }
           />
+          <Row
+            label="Driveway Notices"
+            value={
+              <>
+                <strong>Driveway Impact Notices</strong> — Triggered when the plan flags a driveway impact.
+                Add each affected property address, then use <strong>✉ Draft</strong> to generate a formal Word notice letter (one per address) via AI.
+                Mark each address as sent when delivered.
+              </>
+            }
+          />
+          <Row
+            label="Noise Variance Letter"
+            value="Once an NV track exists, use ✉ Draft Letter inside the Noise Variance panel (or from the Compliance view) to generate a Word document application letter to the LA Police Commission. AI fills in the scope, equipment list, and subject line — you review and download."
+          />
           <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
             <p style={{ fontSize: 11, color: '#166534', margin: 0, lineHeight: 1.5 }}>
               The TCP/WTCP checklist item auto-links to the plan's approved TCP documents. The CD Communication item auto-links to the CD Concurrence section — no double entry needed.
+              The Compliance Action Items view (Compliance tab) shows all plans with unresolved tracks, including a Community Notices table for driveway and bus stop impacts.
             </p>
           </div>
         </div>
@@ -276,8 +288,9 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose, currentUser }) =>
             ['Krail', 'Concrete barrier (Jersey barrier) used to redirect traffic'],
             ['DIR', 'Directional closure — lane or road segment closed to through traffic'],
             ['FC', 'Full Closure — entire street closed to all traffic'],
-            ['DW', 'Driveway impact — construction affects access to a driveway'],
+            ['DW', 'Driveway impact — construction affects access to a driveway; triggers a Driveway Notices compliance track'],
             ['BS', 'Bus Stop impact — a bus stop must be temporarily relocated'],
+            ['Driveway Notice', 'Formal advance notice letter sent to property owners at affected driveway addresses'],
             ['SS', 'Side Street — intersecting street impacted by the closure'],
           ].map(([term, def]) => (
             <div key={term} style={{ padding: '6px 0', borderBottom: '1px solid #F1F5F9' }}>

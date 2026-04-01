@@ -27,12 +27,19 @@ const TRACK_META = {
     agency: 'City Council Districts',
     color: 'blue',
   },
+  drivewayNotices: {
+    icon: '🚗',
+    label: 'Driveway Impact Letters',
+    agency: 'Community Relations',
+    color: 'green',
+  },
 } as const;
 
 const COLOR_CLASSES = {
-  amber:  { pill: 'bg-amber-50 border-amber-200 text-amber-800',  dot: 'bg-amber-400' },
+  amber:  { pill: 'bg-amber-50 border-amber-200 text-amber-800',   dot: 'bg-amber-400' },
   violet: { pill: 'bg-violet-50 border-violet-200 text-violet-800', dot: 'bg-violet-400' },
-  blue:   { pill: 'bg-blue-50 border-blue-200 text-blue-800',    dot: 'bg-blue-400' },
+  blue:   { pill: 'bg-blue-50 border-blue-200 text-blue-800',      dot: 'bg-blue-400' },
+  green:  { pill: 'bg-green-50 border-green-200 text-green-800',   dot: 'bg-green-400' },
 };
 
 export const ComplianceBanner: React.FC<ComplianceBannerProps> = ({
@@ -42,9 +49,10 @@ export const ComplianceBanner: React.FC<ComplianceBannerProps> = ({
   const triggers = detectComplianceTriggers(form);
 
   const active = [
-    triggers.phe           && 'phe',
-    triggers.noiseVariance && 'noiseVariance',
-    triggers.cdConcurrence && 'cdConcurrence',
+    triggers.phe              && 'phe',
+    triggers.noiseVariance    && 'noiseVariance',
+    triggers.cdConcurrence    && 'cdConcurrence',
+    triggers.drivewayNotices  && 'drivewayNotices',
   ].filter(Boolean) as (keyof typeof TRACK_META)[];
 
   if (active.length === 0) {

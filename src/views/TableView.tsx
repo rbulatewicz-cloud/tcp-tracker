@@ -2,17 +2,10 @@ import React from 'react';
 import { Spinner } from '../components/Spinner';
 import { daysFromToday, daysBetween } from '../utils/plans';
 import { COMPLETED_STAGES, ALL_STAGES } from '../constants';
-import { UserRole, Plan, Stage, FilterState, SortConfig, ColumnDef, LoadingState, User } from '../types';
+import { UserRole, Plan, Stage, FilterState, SortConfig, ColumnDef, LoadingState, User, NoiseVariance } from '../types';
 import { detectComplianceTriggers } from '../utils/compliance';
+import { getVarianceExpiryStatus } from '../services/varianceService';
 
-// Stages shown as summary cards at the top — key milestones only
-const CARD_STAGES = [
-  { key: 'requested',        label: 'Requested',        color: '#6B7280' },
-  { key: 'drafting',         label: 'Drafting',          color: '#3B82F6' },
-  { key: 'submitted_to_dot', label: 'Submitted to DOT',  color: '#F59E0B' },
-  { key: 'plan_approved',    label: 'Plan Approved',      color: '#10B981' },
-  { key: 'expired',          label: 'Expired',            color: '#DC2626' },
-];
 
 interface TableViewProps {
   STAGES: Stage[];
@@ -44,6 +37,7 @@ interface TableViewProps {
   toggleSelectPlan: (id: string) => void;
   setSelectedPlan: (plan: Plan | null) => void;
   isDark?: boolean;
+  libraryVariances?: NoiseVariance[];
 }
 
 function TableView({
@@ -76,6 +70,7 @@ function TableView({
   toggleSelectPlan,
   setSelectedPlan,
   isDark,
+  libraryVariances = [],
 }: TableViewProps) {
   const [statusDateModal, setStatusDateModal] = React.useState<{ status: string; date: string } | null>(null);
   const [showLegend, setShowLegend] = React.useState(false);
@@ -415,15 +410,39 @@ function TableView({
                           if (s === 'expired')   return '#DC2626';
                           return '#3B82F6';
                         };
+                        // NV color — override with expiry status if linked
+                        const nvStatus = plan.compliance?.noiseVariance?.status;
+                        let nvColor = statusColor(nvStatus);
+                        let nvTitle = `Noise Variance — ${nvStatus ?? 'not started'}`;
+                        if (plan.compliance?.noiseVariance?.linkedVarianceId) {
+                          const linked = libraryVariances.find(v =>
+                            v.id === plan.compliance!.noiseVariance!.linkedVarianceId ||
+                            (v.parentVarianceId ?? v.id) === plan.compliance!.noiseVariance!.linkedVarianceId
+                          );
+                          if (linked) {
+                            const expiry = getVarianceExpiryStatus(linked);
+                            if (expiry === 'expired')  { nvColor = '#DC2626'; nvTitle = `NV expired — ${linked.validThrough}`; }
+                            else if (expiry === 'critical') { nvColor = '#F97316'; nvTitle = `NV expiring soon — ${linked.validThrough}`; }
+                            else if (expiry === 'warning')  { nvColor = '#F59E0B'; nvTitle = `NV expires ${linked.validThrough}`; }
+                          }
+                        }
+                        // DN pill — sent / total addresses
+                        const dn = plan.compliance?.drivewayNotices;
+                        const dnSent  = dn?.addresses.filter(a => a.noticeSent).length ?? 0;
+                        const dnTotal = dn?.addresses.length ?? 0;
+                        const dnColor = dnSent === dnTotal && dnTotal > 0 ? '#10B981' : '#F59E0B';
+                        const dnLabel = dnTotal > 0 ? `DN ${dnSent}/${dnTotal}` : 'DN';
+
                         const dots: { label: string; color: string; title: string }[] = [];
-                        if (triggers.phe)           dots.push({ label: 'PHE', color: statusColor(plan.compliance?.phe?.status),            title: `PHE — ${plan.compliance?.phe?.status ?? 'not started'}` });
-                        if (triggers.noiseVariance) dots.push({ label: 'NV',  color: statusColor(plan.compliance?.noiseVariance?.status),  title: `Noise Variance — ${plan.compliance?.noiseVariance?.status ?? 'not started'}` });
-                        if (triggers.cdConcurrence) dots.push({ label: 'CD',  color: statusColor(plan.compliance?.cdConcurrence?.status),  title: `CD Concurrence — ${plan.compliance?.cdConcurrence?.status ?? 'not started'}` });
+                        if (triggers.phe)            dots.push({ label: 'PHE',   color: statusColor(plan.compliance?.phe?.status),     title: `PHE — ${plan.compliance?.phe?.status ?? 'not started'}` });
+                        if (triggers.noiseVariance)  dots.push({ label: 'NV',    color: nvColor,                                        title: nvTitle });
+                        if (triggers.cdConcurrence)  dots.push({ label: 'CD',    color: statusColor(plan.compliance?.cdConcurrence?.status), title: `CD Concurrence — ${plan.compliance?.cdConcurrence?.status ?? 'not started'}` });
+                        if (triggers.drivewayNotices) dots.push({ label: dnLabel, color: dnColor, title: `Driveway Notices — ${dnSent}/${dnTotal} sent` });
                         return (
                           <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px' }}>
                             {dots.length === 0
                               ? <span style={{ color: '#CBD5E1', fontSize: 10 }}>—</span>
-                              : <div style={{ display: 'flex', gap: 3 }}>
+                              : <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                                   {dots.map(d => (
                                     <span key={d.label} title={d.title} style={{ fontSize: 9, fontWeight: 800, color: d.color, background: `${d.color}18`, padding: '2px 4px', borderRadius: 3, border: `1px solid ${d.color}40` }}>
                                       {d.label}

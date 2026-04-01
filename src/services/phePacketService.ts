@@ -302,7 +302,6 @@ export async function generatePHEPacket(plan: Plan): Promise<void> {
           const contentType = res.headers.get('content-type') ?? '';
           const isPdf  = contentType.includes('pdf') || attachment.name.toLowerCase().endsWith('.pdf');
           const isPng  = contentType.includes('png') || attachment.name.toLowerCase().endsWith('.png');
-          const isJpeg = !isPdf && !isPng;
 
           if (isPdf) {
             const attachDoc   = await PDFDocument.load(bytes);

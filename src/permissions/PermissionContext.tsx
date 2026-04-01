@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useRef } from 'react';
+import { doc, onSnapshot, setDoc, updateDoc, deleteField } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { UserRole } from '../types';
 import { useAuth } from '../hooks/useAuth';
@@ -8,10 +8,14 @@ import { PermissionContext, type Permission } from './PermissionContextDef';
 export const PermissionProvider = ({ children }: { children: React.ReactNode }) => {
   const { currentUser, role } = useAuth();
   const [fieldPermissions, setFieldPermissions] = useState<Record<string, Permission>>({});
+  // Tracks whether the last fieldPermissions change came from Firestore (not a user action).
+  // Prevents the write-useEffect from echoing Firestore updates back to Firestore in a loop.
+  const fromFirestore = useRef(false);
 
   const canView = (fieldKey: string) => {
     const rolePermissions = fieldPermissions[fieldKey];
-    if (!rolePermissions) return true;
+    // No entry, or view array is empty/missing → allow everyone (treat as unrestricted)
+    if (!rolePermissions || !rolePermissions.view?.length) return true;
     return rolePermissions.view.includes(role || '') || role === UserRole.ADMIN;
   };
 
@@ -42,6 +46,11 @@ export const PermissionProvider = ({ children }: { children: React.ReactNode }) 
   };
 
   useEffect(() => {
+    // Skip the write if this state update originated from Firestore — don't echo it back.
+    if (fromFirestore.current) {
+      fromFirestore.current = false;
+      return;
+    }
     if (Object.keys(fieldPermissions).length > 0 && (role === UserRole.ADMIN || role === UserRole.MOT)) {
       setDoc(doc(db, 'settings', 'fieldPermissions'), fieldPermissions)
         .catch(error => handleFirestoreError(error, OperationType.WRITE, 'settings/fieldPermissions'));
@@ -53,7 +62,22 @@ export const PermissionProvider = ({ children }: { children: React.ReactNode }) 
     if (currentUser) {
       unsubPermissions = onSnapshot(doc(db, 'settings', 'fieldPermissions'), (docSnap) => {
         if (docSnap.exists()) {
-          setFieldPermissions(docSnap.data() as Record<string, Permission>);
+          const data = docSnap.data() as Record<string, Permission>;
+
+          // Self-heal: remove any entries where view is empty — they lock out all non-admins.
+          // Only admins can write; run once silently when detected.
+          if (role === UserRole.ADMIN) {
+            const brokenKeys = Object.keys(data).filter(k => !data[k]?.view?.length);
+            if (brokenKeys.length > 0) {
+              const patch: Record<string, unknown> = {};
+              brokenKeys.forEach(k => { patch[k] = deleteField(); });
+              updateDoc(doc(db, 'settings', 'fieldPermissions'), patch)
+                .catch((e: unknown) => handleFirestoreError(e, OperationType.WRITE, 'settings/fieldPermissions'));
+            }
+          }
+
+          fromFirestore.current = true;
+          setFieldPermissions(data);
         }
       }, (error) => handleFirestoreError(error, OperationType.GET, 'settings/fieldPermissions'));
     }

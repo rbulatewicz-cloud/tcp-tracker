@@ -12,7 +12,7 @@ export const PlanNotes: React.FC = React.memo(() => {
     currentUser,
     UserRole,
     fieldPermissions,
-    setFieldPermissions,
+    toggleSectionPermission,
   } = usePlanPermissions();
 
   if (!canView('notes')) return null;
@@ -25,8 +25,8 @@ export const PlanNotes: React.FC = React.memo(() => {
             fieldName="Notes"
             allowedEditRoles={fieldPermissions['notes']?.edit ?? ['MOT', 'CR']}
             allowedViewRoles={fieldPermissions['notes']?.view ?? ['GUEST', 'SFTC', 'MOT', 'CR']}
-            onToggleEdit={(role) => setFieldPermissions(prev => { const cur = { view: prev.notes?.view ?? ['GUEST','SFTC','MOT','CR'], edit: prev.notes?.edit ?? ['MOT','CR'] }; return {...prev, notes: { view: cur.view, edit: cur.edit.includes(role) ? cur.edit.filter(r => r !== role) : [...cur.edit, role] }}; })}
-            onToggleView={(role) => setFieldPermissions(prev => { const cur = { view: prev.notes?.view ?? ['GUEST','SFTC','MOT','CR'], edit: prev.notes?.edit ?? ['MOT','CR'] }; return {...prev, notes: { edit: cur.edit, view: cur.view.includes(role) ? cur.view.filter(r => r !== role) : [...cur.view, role] }}; })}
+            onToggleEdit={(role) => toggleSectionPermission(['notes'], role, 'edit')}
+            onToggleView={(role) => toggleSectionPermission(['notes'], role, 'view')}
           />
         )}
       </div>

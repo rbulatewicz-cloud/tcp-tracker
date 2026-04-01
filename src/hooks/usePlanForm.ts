@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { submitPlan, getNextLocNumber, peekNextLocNumber } from '../services/planService';
+import { submitPlan } from '../services/planService';
+import { peekNextLocNumber } from '../services/locService';
 import { showToast } from '../lib/toast';
 import { Plan, PlanForm, LoadingState, User, UserRole } from '../types';
 
@@ -73,11 +74,13 @@ export const usePlanForm = (
     setLoading(prev => ({ ...prev, submit: true }));
 
     try {
-      // SFTC has no LOC input — auto-assign via transaction at submit time.
-      // ADMIN/MOT have an editable field; if left blank (shouldn't happen), also auto-assign.
+      // Determine LOC to use. ADMIN/MOT have an editable pre-filled field; SFTC has none.
+      // Both paths use peekNextLocNumber (read-only) — the counter is never written here.
+      // Once the plan is saved, maxLocFromPlans naturally advances the sequence.
+      // This prevents wasted LOC numbers when a submit fails or the user cancels mid-flow.
       let locToUse = form.loc?.trim();
       if (!locToUse) {
-        locToUse = await getNextLocNumber(plans);
+        locToUse = await peekNextLocNumber(plans);
         setForm(prev => ({ ...prev, loc: locToUse! }));
       }
 

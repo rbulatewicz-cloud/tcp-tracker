@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, ChevronDown, BarChart3, FileText, Users, AppWindow, Settings } from 'lucide-react';
+import { Activity, ChevronDown, BarChart3, FileText, Users } from 'lucide-react';
 import { UserRole } from '../../types';
 
 interface AdminMenuProps {

@@ -1,7 +1,6 @@
 import React, { ReactNode, useMemo, useCallback } from 'react';
 import { useApp } from '../../hooks/useApp';
 import { PlanContext } from './PlanContext';
-import { usePlanManagement } from '../../hooks/usePlanManagement';
 import { usePlanActions } from '../../hooks/usePlanActions';
 import { usePlanExport } from '../../hooks/usePlanExport';
 import { STAGES } from '../../constants';
@@ -60,7 +59,7 @@ export const PlanProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     onCommentNotify: handleCommentNotify,
   });
 
-  const planExport = usePlanExport(uiState.setLoading, () => auth.currentUser ? `${auth.currentUser.name} (${auth.currentUser.role})` : "Guest", firestoreData.reportTemplate);
+  const planExport = usePlanExport(uiState.setLoading, firestoreData.reportTemplate);
 
   return (
     <PlanContext.Provider value={{ planManagement, planActions, planExport }}>

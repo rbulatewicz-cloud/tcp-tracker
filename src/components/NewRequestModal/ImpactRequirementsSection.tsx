@@ -1,5 +1,5 @@
 import React from 'react';
-import { FIELD_REGISTRY, MOT_FIELDS, IMPACT_FIELDS } from '../../constants';
+import { MOT_FIELDS, IMPACT_FIELDS } from '../../constants';
 import { Label } from '../ui/Label';
 import { Checkbox } from '../ui/Checkbox';
 

@@ -1,4 +1,4 @@
-import React, { ReactNode, useCallback, useMemo } from 'react';
+import React, { ReactNode, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { AppContext } from './AppContext';
 import { useUIState } from '../hooks/useUIState';
 import { usePlanManagement } from '../hooks/usePlanManagement';
@@ -10,8 +10,9 @@ import { usePlanActions } from '../hooks/usePlanActions';
 import { useUserManagement } from '../hooks/useUserManagement';
 import { useLOCManagement } from '../hooks/useLOCManagement';
 import { STAGES } from '../constants';
-import { UserRole, Plan } from '../types';
-import { writeNotificationsForPlanEvent, buildStatusChangeNotif, buildCommentNotif } from '../services/notificationService';
+import { UserRole, Plan, NoiseVariance } from '../types';
+import { writeNotificationsForPlanEvent, buildStatusChangeNotif, buildCommentNotif, checkAndNotifyNVExpiry } from '../services/notificationService';
+import { subscribeToVariances, daysUntilExpiry } from '../services/varianceService';
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const uiState = useUIState();
@@ -35,6 +36,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (subscriberUsers.length === 0) return;
     writeNotificationsForPlanEvent(plan, type, actorEmail, subscriberUsers as any, title, body);
   }, [firestoreData.users]);
+
+  // NV expiry notifications — check once per session when plans + users are ready
+  const [libraryVariances, setLibraryVariances] = useState<NoiseVariance[]>([]);
+  const nvCheckFired = useRef(false);
+  useEffect(() => subscribeToVariances(setLibraryVariances), []);
+  useEffect(() => {
+    if (nvCheckFired.current) return;
+    if (!firestoreData.plans.length || !firestoreData.users.length || !libraryVariances.length) return;
+    nvCheckFired.current = true;
+    const varianceMap = new Map(libraryVariances.map(v => [v.id, v]));
+    checkAndNotifyNVExpiry(
+      firestoreData.plans,
+      firestoreData.users,
+      (linkedVarianceId) => {
+        const v = varianceMap.get(linkedVarianceId);
+        return v ? daysUntilExpiry(v) : null;
+      },
+    );
+  }, [firestoreData.plans, firestoreData.users, libraryVariances]);
 
   const planActions = usePlanActions({
     plans: firestoreData.plans,
@@ -78,7 +98,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     permissions,
     planActions,
     userManagement,
-    locManagement
+    locManagement,
+    libraryVariances,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

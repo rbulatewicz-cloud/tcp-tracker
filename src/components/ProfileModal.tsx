@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserCircle, Bell, Mail, Zap, Clock, VolumeX, BookmarkCheck, Save, Loader } from 'lucide-react';
+import { X, UserCircle, Bell, Zap, Clock, VolumeX, BookmarkCheck, Save, Loader } from 'lucide-react';
 import { User, NotificationPrefs, NotifyEvent, NotifyFrequency } from '../types';
 import { SEGMENTS } from '../constants';
 import * as authService from '../services/authService';
@@ -13,10 +13,11 @@ interface ProfileModalProps {
 }
 
 const NOTIFY_OPTIONS: { key: NotifyEvent; label: string; description: string }[] = [
-  { key: 'status_change',   label: 'Status Changes',       description: 'When a plan moves to a new stage' },
-  { key: 'comment',         label: 'Comments & Notes',     description: 'When MOT or team adds a note' },
-  { key: 'doc_uploaded',    label: 'Documents Uploaded',   description: 'When a TCP drawing or LOC is attached' },
-  { key: 'window_expiring', label: 'Window Expiring Soon', description: '7 days before an implementation window closes' },
+  { key: 'status_change',   label: 'Status Changes',          description: 'When a plan moves to a new stage' },
+  { key: 'comment',         label: 'Comments & Notes',        description: 'When MOT or team adds a note' },
+  { key: 'doc_uploaded',    label: 'Documents Uploaded',      description: 'When a TCP drawing or LOC is attached' },
+  { key: 'window_expiring', label: 'Window Expiring Soon',    description: '7 days before an implementation window closes' },
+  { key: 'nv_expiring',     label: 'Noise Variance Expiring', description: 'When a linked variance is expiring in 30 or 7 days' },
 ];
 
 const FREQ_OPTIONS: { key: NotifyFrequency; label: string; icon: React.ReactNode; description: string }[] = [

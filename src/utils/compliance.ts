@@ -17,6 +17,7 @@ import {
   PHETrack,
   NoiseVarianceTrack,
   CDConcurrenceTrack,
+  DrivewayNoticeTrack,
 } from '../types';
 
 // ── Time helpers ──────────────────────────────────────────────────────────────
@@ -49,23 +50,61 @@ function overlaps(
   }
 }
 
-// Peak hours: Mon–Fri  6:00–9:00 AM  and  3:30–7:00 PM
-const PEAK_MORNING_START = 6 * 60;      // 360
-const PEAK_MORNING_END   = 9 * 60;      // 540
+// Peak hours: Mon–Fri ONLY  6:00–9:00 AM  and  3:30–7:00 PM
+// Weekends do NOT have BOE peak hour restrictions — only LAMC 41.40 noise variance applies
+const PEAK_MORNING_START = 6 * 60;       // 360
+const PEAK_MORNING_END   = 9 * 60;       // 540
 const PEAK_EVENING_START = 15 * 60 + 30; // 930
-const PEAK_EVENING_END   = 19 * 60;     // 1140
+const PEAK_EVENING_END   = 19 * 60;      // 1140
+
+function windowOverlapsPeak(start: string, end: string): boolean {
+  return (
+    overlaps(start, end, PEAK_MORNING_START, PEAK_MORNING_END) ||
+    overlaps(start, end, PEAK_EVENING_START, PEAK_EVENING_END)
+  );
+}
 
 function workHoursDuringPeak(wh: WorkHours): boolean {
   if (wh.shift === 'continuous') return true;
+
+  // Dual-shift: check daytime and nighttime windows independently.
+  // PHE is only needed if a window individually crosses a peak period.
+  if (wh.shift === 'both') {
+    if (!wh.days.includes('weekday')) return false;
+    // Daytime window (fall back to weekday_start/end for legacy records)
+    const dayStart = wh.day_start ?? wh.weekday_start;
+    const dayEnd   = wh.day_end   ?? wh.weekday_end;
+    if (dayStart && dayEnd && windowOverlapsPeak(dayStart, dayEnd)) return true;
+    // Nighttime window
+    if (wh.night_start && wh.night_end && windowOverlapsPeak(wh.night_start, wh.night_end)) return true;
+    return false;
+  }
+
+  // Mixed: check weekday's per-day shift configuration
+  if (wh.shift === 'mixed') {
+    if (!wh.days.includes('weekday')) return false;
+    const wdShift = wh.weekday_shift ?? 'daytime';
+    if (wdShift === 'both') {
+      const dayStart = wh.day_start ?? wh.weekday_start;
+      const dayEnd   = wh.day_end   ?? wh.weekday_end;
+      if (dayStart && dayEnd && windowOverlapsPeak(dayStart, dayEnd)) return true;
+      if (wh.night_start && wh.night_end && windowOverlapsPeak(wh.night_start, wh.night_end)) return true;
+      return false;
+    }
+    // daytime or nighttime single window on weekdays
+    const start = wh.weekday_start;
+    const end   = wh.weekday_end;
+    if (!start || !end) return false;
+    return windowOverlapsPeak(start, end);
+  }
+
+  // Single-shift: original logic
   for (const day of wh.days) {
-    if (day === 'sunday') continue; // peak hours are Mon–Fri + Sat specific
+    if (day !== 'weekday') continue; // PHE is Mon–Fri only; weekends use NV only
     const start = wh[`${day}_start` as keyof WorkHours] as string | undefined;
     const end   = wh[`${day}_end`   as keyof WorkHours] as string | undefined;
     if (!start || !end) continue;
-    if (
-      overlaps(start, end, PEAK_MORNING_START, PEAK_MORNING_END) ||
-      overlaps(start, end, PEAK_EVENING_START, PEAK_EVENING_END)
-    ) return true;
+    if (windowOverlapsPeak(start, end)) return true;
   }
   return false;
 }
@@ -78,13 +117,90 @@ const NIGHT_SAT_AFTER     = 18 * 60; // after  6:00 PM
 
 function workHoursDuringNight(wh: WorkHours): boolean {
   if (wh.shift === 'continuous') return true;
+
+  // Dual-shift: each day type has its own nighttime window — check against NV rules
+  if (wh.shift === 'both') {
+    if (wh.days.includes('sunday')) return true;
+    // Weekday: use dedicated weekday night window
+    if (wh.days.includes('weekday')) {
+      const ns = wh.night_start;
+      const ne = wh.night_end;
+      if (ns && ne) {
+        if (overlaps(ns, ne, NIGHT_WEEKDAY_START, 24 * 60)) return true;
+        if (overlaps(ns, ne, 0, NIGHT_WEEKDAY_END)) return true;
+      }
+    }
+    // Saturday: use saturday-specific night window (fall back to shared window for legacy records)
+    if (wh.days.includes('saturday')) {
+      const ns = wh.saturday_night_start ?? wh.night_start;
+      const ne = wh.saturday_night_end   ?? wh.night_end;
+      if (ns && ne) {
+        if (overlaps(ns, ne, 0, NIGHT_SAT_BEFORE)) return true;
+        if (overlaps(ns, ne, NIGHT_SAT_AFTER, 24 * 60)) return true;
+      }
+    }
+    return false;
+  }
+
+  // Mixed: check each day according to its per-day shift setting
+  if (wh.shift === 'mixed') {
+    for (const day of wh.days) {
+      // Sunday always triggers NV regardless of shift type
+      if (day === 'sunday') return true;
+
+      const dayShift = (wh as any)[`${day}_shift`] as string | undefined ?? 'daytime';
+
+      // Daytime-only days: no nighttime window to check
+      if (dayShift === 'daytime') continue;
+
+      if (day === 'weekday') {
+        if (dayShift === 'both') {
+          const ns = wh.night_start;
+          const ne = wh.night_end;
+          if (ns && ne) {
+            if (overlaps(ns, ne, NIGHT_WEEKDAY_START, 24 * 60)) return true;
+            if (overlaps(ns, ne, 0, NIGHT_WEEKDAY_END)) return true;
+          }
+        } else {
+          // nighttime single window
+          const start = wh.weekday_start;
+          const end   = wh.weekday_end;
+          if (start && end) {
+            if (overlaps(start, end, NIGHT_WEEKDAY_START, 24 * 60)) return true;
+            if (overlaps(start, end, 0, NIGHT_WEEKDAY_END)) return true;
+          }
+        }
+      }
+
+      if (day === 'saturday') {
+        if (dayShift === 'both') {
+          const ns = wh.saturday_night_start ?? wh.night_start;
+          const ne = wh.saturday_night_end   ?? wh.night_end;
+          if (ns && ne) {
+            if (overlaps(ns, ne, 0, NIGHT_SAT_BEFORE)) return true;
+            if (overlaps(ns, ne, NIGHT_SAT_AFTER, 24 * 60)) return true;
+          }
+        } else {
+          // nighttime single window
+          const start = wh.saturday_start;
+          const end   = wh.saturday_end;
+          if (start && end) {
+            if (overlaps(start, end, 0, NIGHT_SAT_BEFORE)) return true;
+            if (overlaps(start, end, NIGHT_SAT_AFTER, 24 * 60)) return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  // Single-shift: original logic
   for (const day of wh.days) {
     if (day === 'sunday') return true; // all Sunday = night work
     const start = wh[`${day}_start` as keyof WorkHours] as string | undefined;
     const end   = wh[`${day}_end`   as keyof WorkHours] as string | undefined;
     if (!start || !end) continue;
     if (day === 'weekday') {
-      // Night: 9pm–7am (overnight window)
       if (overlaps(start, end, NIGHT_WEEKDAY_START, 24 * 60)) return true;
       if (overlaps(start, end, 0, NIGHT_WEEKDAY_END)) return true;
     }
@@ -99,28 +215,29 @@ function workHoursDuringNight(wh: WorkHours): boolean {
 // ── Trigger detection ─────────────────────────────────────────────────────────
 
 export interface ComplianceTriggers {
-  phe:           boolean;
-  pheReasons:    string[];
-  noiseVariance: boolean;
-  nvReasons:     string[];
-  cdConcurrence: boolean;
-  cdReasons:     string[];
+  phe:              boolean;
+  pheReasons:       string[];
+  noiseVariance:    boolean;
+  nvReasons:        string[];
+  cdConcurrence:    boolean;
+  cdReasons:        string[];
+  drivewayNotices:  boolean;
+  drivewayReasons:  string[];
 }
 
 type PlanLike = Partial<PlanForm> | Partial<Plan>;
 
 export function detectComplianceTriggers(plan: PlanLike): ComplianceTriggers {
-  const pheReasons: string[] = [];
-  const nvReasons:  string[] = [];
-  const cdReasons:  string[] = [];
+  const pheReasons:      string[] = [];
+  const nvReasons:       string[] = [];
+  const cdReasons:       string[] = [];
+  const drivewayReasons: string[] = [];
 
   const wh = plan.work_hours as WorkHours | undefined;
 
-  // ── PHE triggers ──
-  if (plan.impact_fullClosure)
-    pheReasons.push('Full street closure');
+  // ── PHE triggers — time-based only (LAMC 62.61, BOE) ──
   if (wh && workHoursDuringPeak(wh))
-    pheReasons.push('Work hours overlap peak window (6–9 AM or 3:30–7 PM)');
+    pheReasons.push('Weekday work hours overlap peak window (Mon–Fri 6–9 AM or 3:30–7 PM)');
 
   // ── NV triggers ──
   if (wh && workHoursDuringNight(wh))
@@ -137,16 +254,22 @@ export function detectComplianceTriggers(plan: PlanLike): ComplianceTriggers {
   if (pheReasons.length > 0)
     cdReasons.push('PHE required (CD concurrence always required with PHE)');
 
+  // ── Driveway Notices trigger ──
+  if (plan.impact_driveway)
+    drivewayReasons.push('Driveway impact — affected property owners require advance notice');
+
   // Deduplicate CD reasons
   const uniqueCdReasons = [...new Set(cdReasons)];
 
   return {
-    phe:           pheReasons.length > 0,
+    phe:             pheReasons.length > 0,
     pheReasons,
-    noiseVariance: nvReasons.length > 0,
+    noiseVariance:   nvReasons.length > 0,
     nvReasons,
-    cdConcurrence: uniqueCdReasons.length > 0,
-    cdReasons:     uniqueCdReasons,
+    cdConcurrence:   uniqueCdReasons.length > 0,
+    cdReasons:       uniqueCdReasons,
+    drivewayNotices: drivewayReasons.length > 0,
+    drivewayReasons,
   };
 }
 
@@ -233,6 +356,14 @@ export function initializeComplianceTracks(
     } as CDConcurrenceTrack;
   }
 
+  if (triggers.drivewayNotices && !compliance.drivewayNotices) {
+    compliance.drivewayNotices = {
+      status: 'not_started',
+      triggeredBy: triggers.drivewayReasons,
+      addresses: [],
+    } as DrivewayNoticeTrack;
+  }
+
   return compliance;
 }
 
@@ -267,7 +398,7 @@ export function overallComplianceProgress(
   }
   if (compliance.noiseVariance) {
     total += 1;
-    if (['approved', 'submitted'].includes(compliance.noiseVariance.status)) done += 1;
+    if (['approved', 'submitted', 'linked_existing'].includes(compliance.noiseVariance.status)) done += 1;
   }
   if (compliance.cdConcurrence) {
     const p = cdProgress(compliance.cdConcurrence.cds);
@@ -296,4 +427,12 @@ export const CD_STATUS_LABELS: Record<string, string> = {
   concurred:          'Concurred',
   declined:           'Declined',
   na:                 'N/A',
+};
+
+export const DRIVEWAY_STATUS_LABELS: Record<string, string> = {
+  not_started: 'Not Started',
+  in_progress: 'In Progress',
+  sent:        'Notices Sent',
+  completed:   'Completed',
+  na:          'N/A',
 };

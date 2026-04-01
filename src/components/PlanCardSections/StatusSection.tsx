@@ -15,7 +15,7 @@ import {
 } from '../../lib/statusMachine';
 import { ReviewCycle } from '../../types';
 import { ALL_STAGES } from '../../constants';
-import { pheProgress, cdProgress } from '../../utils/compliance';
+import { pheProgress } from '../../utils/compliance';
 
 // Look up a status color from the full stage list
 function getStatusColor(statusKey: string): string {
@@ -245,8 +245,6 @@ export const StatusSection: React.FC = React.memo(() => {
     <div className="flex rounded-md border border-slate-200 overflow-hidden mb-2">
       {progressStages.map((stage, index) => {
         const isActive = stage.key === activeProgressKey;
-        const stageNorm = normalizeStatus(stage.key);
-        const activeNorm = normalizeStatus(activeProgressKey);
         const activeIdx = progressStages.findIndex(
           s => s.key === activeProgressKey
         );

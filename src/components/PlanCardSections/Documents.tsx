@@ -28,7 +28,7 @@ const DOC_TYPES: { value: StageAttachment['documentType']; label: string; primar
 export const Documents: React.FC = React.memo(() => {
   const { selectedPlan } = usePlanData();
   const { uploadTCPRevision, linkNewLOC, deleteDocument, uploadStageAttachment, updatePlanField, addLogEntry, deleteStageAttachment } = usePlanActions();
-  const { currentUser, UserRole, canEditPlan } = usePlanPermissions();
+  const { currentUser, UserRole } = usePlanPermissions();
   const canDelete = currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN;
   const canUpload = currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN;
   const tcpInputRef = useRef<HTMLInputElement>(null);

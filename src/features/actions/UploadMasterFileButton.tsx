@@ -1,6 +1,5 @@
 import React from 'react';
 import { Spinner } from '../../components/Spinner';
-import { UserRole } from '../../types';
 
 interface UploadMasterFileButtonProps {
   isRealAdmin: boolean;

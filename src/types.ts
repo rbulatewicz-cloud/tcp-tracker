@@ -1,3 +1,43 @@
+// ── Noise Variance Library ────────────────────────────────────────────────────
+export interface NoiseVariance {
+  id: string;
+  // AI-extracted metadata
+  title: string;
+  permitNumber: string;
+  coveredSegments: string[];          // e.g. ["A1", "A2"]
+  validFrom: string;                  // ISO date YYYY-MM-DD
+  validThrough: string;               // ISO date YYYY-MM-DD
+  applicableHours: 'nighttime' | '24_7' | 'both';
+  isGeneric: boolean;                 // true = no scope restrictions
+  coveredScopes: string[];            // empty when isGeneric
+  scopeLanguage: string;              // verbatim text from document
+  // Submission tracking (managed on the library card, shared across all linked plans)
+  submittedDate?: string;      // ISO date — when submitted to Police Commission
+  approvalDate?: string;       // ISO date — when approved
+  checkNumber?: string;        // check number used for permit fee payment
+  checkAmount?: string;        // check amount (e.g. "553.00")
+  // File
+  fileUrl: string;
+  fileName: string;
+  uploadedAt: string;
+  uploadedBy: string;
+  // Scan state
+  scanStatus: 'scanning' | 'pending_review' | 'complete' | 'error';
+  scanError?: string;
+  // Review flags — set when pending_review, cleared on approval
+  reviewFlags?: {
+    possibleRevision?: { varianceId: string; title: string; reason: string };
+    missingFields?: string[];     // e.g. ['Expiration date', 'Covered segments']
+    lowConfidence?: boolean;      // AI couldn't confidently identify this as a variance
+  };
+  // Revision tracking — all revisions of the same variance share a root ID
+  parentVarianceId?: string;          // root variance ID; undefined on originals
+  revisionNumber: number;             // 0 = original, 1 = first renewal, etc.
+  isArchived: boolean;                // true = superseded by a newer revision
+}
+
+export type VarianceExpiryStatus = 'valid' | 'warning' | 'critical' | 'expired' | 'unknown';
+
 export interface AppConfig {
   logoUrl: string | null;
   appName: string;
@@ -12,6 +52,7 @@ export interface AppConfig {
   phe_businessName?: string;
   phe_address?: string;
   phe_contactName?: string;
+  phe_contactTitle?: string;
   phe_contactPhone?: string;
   phe_contactEmail?: string;
   phe_isSubcontractor?: boolean;
@@ -91,6 +132,7 @@ export interface NoiseVarianceTrack {
   approvalDate?: string;
   attachments?: ComplianceAttachment[];
   notes?: string;
+  linkedVarianceId?: string;   // ID of linked NoiseVariance from the library
 }
 
 export interface CDEntry {
@@ -109,10 +151,60 @@ export interface CDConcurrenceTrack {
   notes?: string;
 }
 
+export type DrivewayLetterStatus = 'not_drafted' | 'draft' | 'approved' | 'sent';
+
+export interface DrivewayAddress {
+  id: string;
+  address: string;
+  ownerName?: string;
+  noticeSent?: boolean;
+  sentDate?: string;
+  // Letter lifecycle
+  letterStatus?: DrivewayLetterStatus;
+  letterId?: string;           // ID of the corresponding DrivewayLetter in the library
+}
+
+// ── Driveway Letter Library ───────────────────────────────────────────────────
+export interface DrivewayLetter {
+  id: string;
+  planId: string;
+  planLoc: string;             // e.g. "LOC-042" — for display in Library
+  addressId: string;           // links back to DrivewayAddress on the plan
+  address: string;             // denormalized for Library display
+  ownerName?: string;
+  segment: string;
+  status: DrivewayLetterStatus;
+  source?: 'drafted' | 'uploaded';  // how it entered the library
+  // Letter content (all editable fields saved here)
+  fields: import('./services/drivewayNoticeService').DrivewayNoticeFields;
+  exhibitImageUrl?: string;    // Exhibit 1 map image (uploaded by SFTC)
+  letterUrl?: string;          // Final approved PDF/docx — permanent record
+  // AI scan state (only for uploaded letters)
+  // scanning → needs_review (AI done, user hasn't confirmed) → complete (confirmed) | error
+  scanStatus?: 'scanning' | 'needs_review' | 'complete' | 'error';
+  scanError?: string;
+  // Audit
+  createdAt: string;
+  createdBy: string;
+  updatedAt?: string;
+  approvedAt?: string;
+  sentAt?: string;
+}
+
+export type DrivewayNoticeStatus = 'not_started' | 'in_progress' | 'sent' | 'completed' | 'na';
+
+export interface DrivewayNoticeTrack {
+  status: DrivewayNoticeStatus;
+  triggeredBy: string[];
+  addresses: DrivewayAddress[];
+  notes?: string;
+}
+
 export interface PlanCompliance {
   phe?: PHETrack;
   noiseVariance?: NoiseVarianceTrack;
   cdConcurrence?: CDConcurrenceTrack;
+  drivewayNotices?: DrivewayNoticeTrack;
 }
 
 export interface Stage {
@@ -179,7 +271,7 @@ export enum UserRole {
 }
 
 // ── Notification / profile types ─────────────────────────────────────────────
-export type NotifyEvent = 'status_change' | 'comment' | 'doc_uploaded' | 'window_expiring' | 'dot_comments' | 'plan_approved' | 'plan_expired';
+export type NotifyEvent = 'status_change' | 'comment' | 'doc_uploaded' | 'window_expiring' | 'dot_comments' | 'plan_approved' | 'plan_expired' | 'nv_expiring';
 
 export interface AppNotification {
   id: string;
@@ -267,18 +359,56 @@ export interface ColumnDef {
 }
 
 // ── Hours of Work ─────────────────────────────────────────────────────────────
-export type WorkShift = 'daytime' | 'nighttime' | 'both' | 'continuous';
+export type WorkShift = 'daytime' | 'nighttime' | 'both' | 'continuous' | 'mixed';
 export type WorkDay = 'weekday' | 'saturday' | 'sunday';
 
 export interface WorkHours {
   shift: WorkShift;
   days: WorkDay[];
+  // Per-day shift overrides — used when days have different shift types (shift === 'mixed')
+  // Also populated for uniform shifts to support easy per-day editing
+  weekday_shift?: 'daytime' | 'nighttime' | 'both';
+  saturday_shift?: 'daytime' | 'nighttime' | 'both';
+  sunday_shift?: 'daytime' | 'nighttime' | 'both';
+  // Single-shift mode: per-day-type windows (daytime or nighttime only)
   weekday_start?: string;   // "HH:MM" 24-hour format
   weekday_end?: string;
   saturday_start?: string;
   saturday_end?: string;
   sunday_start?: string;
   sunday_end?: string;
+  // Dual-shift mode (shift === 'both' or per-day 'both'): per-day-type windows
+  // Weekday windows
+  day_start?: string;              // weekday daytime window start
+  day_end?: string;                // weekday daytime window end
+  night_start?: string;            // weekday nighttime window start
+  night_end?: string;              // weekday nighttime window end
+  // Saturday windows (dual-shift only)
+  saturday_day_start?: string;
+  saturday_day_end?: string;
+  saturday_night_start?: string;
+  saturday_night_end?: string;
+  // Sunday windows (dual-shift only)
+  sunday_day_start?: string;
+  sunday_day_end?: string;
+  sunday_night_start?: string;
+  sunday_night_end?: string;
+}
+
+// ── Reference Library ─────────────────────────────────────────────────────────
+export type ReferenceDocCategory = 'BOE' | 'LADOT' | 'LAMC' | 'Police Commission' | 'Internal' | 'Other';
+
+export interface ReferenceDoc {
+  id: string;                      // ref_${timestamp}
+  _fid?: string;                   // Firestore document ID (client-side only)
+  title: string;
+  category: ReferenceDocCategory;
+  description?: string;
+  fileUrl: string;
+  fileName: string;
+  storagePath: string;             // full storage path for deletion
+  uploadedAt: string;              // ISO string
+  uploadedBy: string;              // display name or email
 }
 
 export interface PlanForm {

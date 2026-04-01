@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Bell, CheckCheck, MessageSquare, CheckCircle2, FileText, GitPullRequestArrow, Clock } from 'lucide-react';
+import { Bell, CheckCheck, MessageSquare, CheckCircle2, FileText, GitPullRequestArrow, Clock, AlertTriangle } from 'lucide-react';
 import { AppNotification, NotifyEvent } from '../types';
 import { UseNotificationsResult } from '../hooks/useNotifications';
 
@@ -16,6 +16,7 @@ function getNotifStyle(type: NotifyEvent): NotifStyle {
     case 'comment':        return { icon: <MessageSquare size={13} />,  color: '#8B5CF6', bg: 'rgba(139,92,246,0.1)' };
     case 'doc_uploaded':   return { icon: <FileText size={13} />,       color: '#06B6D4', bg: 'rgba(6,182,212,0.1)' };
     case 'window_expiring':return { icon: <Clock size={13} />,          color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' };
+    case 'nv_expiring':    return { icon: <AlertTriangle size={13} />,  color: '#7C3AED', bg: 'rgba(124,58,237,0.1)' };
     default:               return { icon: <Bell size={13} />,           color: '#64748B', bg: 'rgba(100,116,139,0.1)' };
   }
 }

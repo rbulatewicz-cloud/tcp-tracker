@@ -124,6 +124,24 @@ export const STREET_NAMES = [
   "Kewen Ave", "Cayuga Ave", "Telfair Ave", "Tamarack Ave", "El Dorado Ave", "Ilex", "San Fernando Rd"
 ];
 
+// Street → Segment lookup (ESFV Phase 2 Segment Delineation drawing, Rev 4.0)
+export const SEGMENT_STREETS: Record<string, string[]> = {
+  A1: ['Oxnard St', 'Aetna St', 'Bessemer St', 'Calvert St', 'Delano St', 'Erwin St', 'Sylvan St',
+       'Friar St', 'Victory Blvd', 'Gilmore St', 'Hamlin St', 'Haynes St', 'Kittridge St', 'Archwood St'],
+  A2: ['Vanowen St', 'Hartland St', 'Hart St', 'Vose St', 'Gault St', 'Sherman Way',
+       'Wyandotte St', 'Valerio St', 'Pacoima Wash'],
+  B1: ['Covello St', 'Saticoy St', 'Keswick St', 'Raymer St', 'Arminta St', 'Michaels St',
+       'Blythe St', 'Lorne St'],
+  B2: ['Lanark St', 'Titus St', 'Roscoe Blvd', 'Chase St', 'Parthenia St'],
+  B3: ['Rayen St', 'Osborne St', 'Nordhoff St', 'Tupper St', 'Vincennes St', 'Gledhill St',
+       'Plummer St', 'Novice St'],
+  C1: ['Vesper Ave', 'Woodman Ave', 'Canterbury Ave', 'Beachy Ave', 'Pacoima Diversion Channel'],
+  C2: ['Arleta Ave', 'Lev Ave', 'Bartee Ave', 'Vena Ave', 'I-5 Freeway', 'Remick Ave'],
+  C3: ['Laurel Canyon Blvd', 'Rincon Ave', 'Amboy Ave', "O'Melveny Ave", 'Haddon Ave',
+       'Oneida Ave', 'Kewen Ave', 'Cayuga Ave', 'Telfair Ave', 'Tamarack Ave',
+       'El Dorado Ave', 'Ilex Ave', 'San Fernando Rd'],
+};
+
 export const FONT = `'Outfit', sans-serif`;
 export const MONO_FONT = `'IBM Plex Mono', monospace`;
 
@@ -170,13 +188,6 @@ export const DEFAULT_TEAM_COLUMNS = [
   { id: "email", label: "Email" },
   { id: "role", label: "Role" },
   { id: "actions", label: "Actions" }
-];
-
-export const DEFAULT_COMMUNITY_COLUMNS = [
-  { id: "id", label: "Plan ID" },
-  { id: "street", label: "Street" },
-  { id: "impacts", label: "Impacts" },
-  { id: "status", label: "Outreach Status" }
 ];
 
 export const DEFAULT_LOC_COLUMNS = [

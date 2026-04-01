@@ -5,6 +5,10 @@ import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { User, UserRole } from '../types';
 import * as authService from '../services/authService';
 
+// Module-level flag — reset to false on every true page load.
+// Prevents onAuthStateChanged firing 2–3 times per load from each counting as a login.
+let _loginCountedThisPageLoad = false;
+
 const DEV_USER: User = {
   uid: 'dev-admin',
   name: 'Dev Admin',
@@ -38,7 +42,9 @@ export function useAuth() {
         let initialRole = await authService.fetchUserRole(userEmail);
         if (isBootstrapAdmin) initialRole = UserRole.ADMIN;
 
-        await authService.initializeUser(firebaseUser, userEmail, initialRole);
+        const shouldCountLogin = !_loginCountedThisPageLoad;
+        _loginCountedThisPageLoad = true;
+        await authService.initializeUser(firebaseUser, userEmail, initialRole, shouldCountLogin);
 
         // Read profileComplete + profile fields before setting loaded
         const [pubSnap, privSnap] = await Promise.all([

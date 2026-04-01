@@ -1,6 +1,6 @@
 import { doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { User, UserRole, NotificationPrefs } from '../types';
+import { UserRole, NotificationPrefs } from '../types';
 
 export const fetchUserRole = async (email: string): Promise<UserRole> => {
   try {
@@ -15,7 +15,7 @@ export const fetchUserRole = async (email: string): Promise<UserRole> => {
   }
 };
 
-export const initializeUser = async (user: any, email: string, role: UserRole) => {
+export const initializeUser = async (user: any, email: string, role: UserRole, countLogin = true) => {
   const userPublicRef  = doc(db, 'users_public',  email);
   const userPrivateRef = doc(db, 'users_private', email);
 
@@ -37,7 +37,10 @@ export const initializeUser = async (user: any, email: string, role: UserRole) =
           uid: user.uid, role, lastLogin: now, loginCount: 1, profileComplete: false,
         });
       } else {
-        await updateDoc(userPrivateRef, { lastLogin: now, loginCount: increment(1) });
+        await updateDoc(userPrivateRef, {
+          lastLogin: now,
+          ...(countLogin ? { loginCount: increment(1) } : {}),
+        });
       }
     } else {
       // New user — create both docs, profileComplete = false triggers welcome screen

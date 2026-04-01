@@ -9,9 +9,7 @@ import { ComplianceSection } from './PlanCardSections/ComplianceSection';
 import { PlanNotes } from './PlanCardSections/PlanNotes';
 import { Documents } from './PlanCardSections/Documents';
 import { ActivityLog } from './PlanCardSections/ActivityLog';
-import { CommunityOutreach } from './PlanCardSections/CommunityOutreach';
 import { CollapsibleSection } from './CollapsibleSection';
-import { useCommunityOutreach } from '../hooks/useCommunityOutreach';
 import { PlanCardProvider } from './PlanCardProvider';
 import { PlanCardActions } from './PlanCardActions';
 import { ImportBanner } from './PlanCardSections/ImportBanner';
@@ -29,13 +27,12 @@ const GroupLabel = ({ label }: { label: string }) => (
 );
 
 const PlanCardComponent: React.FC = () => {
-  const { planManagement, planActions, permissions, auth, firestoreData, uiState } = useApp();
+  const { planManagement, planActions, permissions, auth, firestoreData, uiState, libraryVariances } = useApp();
   const { selectedPlan } = planManagement;
   if (!selectedPlan) return null;
   const [statusDate, setStatusDate] = React.useState(getLocalDateString());
-  const { isOpen, isTriggered, toggle } = useCommunityOutreach(selectedPlan || {} as any);
 
-  const contextValue = usePlanCardContext(planManagement, planActions, permissions, auth, firestoreData, statusDate, setStatusDate, uiState.isPermissionEditingMode);
+  const contextValue = usePlanCardContext(planManagement, planActions, permissions, auth, firestoreData, statusDate, setStatusDate, uiState.isPermissionEditingMode, libraryVariances);
 
   return (
     <PlanCardProvider value={contextValue}>
@@ -88,18 +85,6 @@ const PlanCardComponent: React.FC = () => {
 
             <CollapsibleSection title="Documents">
               <Documents />
-            </CollapsibleSection>
-
-            {/* ── Stakeholders ── */}
-            <GroupLabel label="Stakeholders" />
-
-            <CollapsibleSection
-              title="Community Outreach"
-              isOpen={isOpen}
-              onToggle={toggle}
-              highlight={isTriggered}
-            >
-              <CommunityOutreach />
             </CollapsibleSection>
 
             {/* ── Audit ── */}

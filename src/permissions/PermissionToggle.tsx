@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Eye, Edit2 } from 'lucide-react';
 
 export const PermissionToggle = ({

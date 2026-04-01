@@ -8,38 +8,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { updatePlanStage, handleClearPlans, bulkUpdate, handleBulkLOCUpload } from './services/planService';
+import { bulkUpdate } from './services/planService';
 import { ImportWizard } from './components/ImportWizard';
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import ReactDOM from "react-dom";
-import { jsPDF } from "jspdf";
-import { PDFDocument } from "pdf-lib";
-import * as XLSX from 'xlsx';
-import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
-import { db, auth, loginWithGoogle, logout, storage, handleFirestoreError, OperationType } from './firebase';
-import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, getDoc, query, where, getDocs } from 'firebase/firestore';
+import { db, loginWithGoogle, logout, storage } from './firebase';
+import { doc, setDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { onAuthStateChanged } from 'firebase/auth';
-import { 
-  LayoutGrid, 
-  Ticket, 
-  MapPin, 
-  Calendar as CalendarIcon, 
-  ChevronDown, 
-  BarChart3, 
-  FileText, 
-  Users, 
-  Settings, 
-  AppWindow,
-  Activity
-} from 'lucide-react';
 import { UserManagementView } from './views/UserManagementView';
 import { SummaryStatsBar } from './components/SummaryStatsBar';
-import { PermissionToggle } from './permissions/PermissionToggle';
-import { PermissionProvider } from './permissions/PermissionContext';
-import { usePermissions } from './hooks/usePermissions';
-import { NavTab } from './components/NavTab';
-import { MetricChart } from './components/MetricChart';
 import { Spinner } from './components/Spinner';
 import { Header } from './components/Header';
 import { AdminToolbar } from './components/AdminToolbar';
@@ -52,24 +29,24 @@ import { SettingsView } from './views/SettingsView';
 import { CalendarView } from './views/CalendarView';
 import { TableView } from './views/TableView';
 import { GlobalActivityLogView } from './views/GlobalActivityLogView';
-import { CommunityRelationsView } from './views/CommunityRelationsView';
 import { TicketsView } from './views/TicketsView';
 import { LocManagerPortalView } from './views/LocManagerPortalView';
 import { ComplianceView } from './views/ComplianceView';
-import { generateDefaultLogo } from './utils/logo';
-import { daysBetween, getCycleTime, getStageDurations, daysFromToday, formatFileSize, calcMetrics } from './utils/plans';
+import VarianceLibraryView from './views/VarianceLibraryView';
+import CorridorMapView from './views/CorridorMapView';
+import ReferenceView from './views/ReferenceView';
+import { AppFeedbackView } from './views/AppFeedbackView';
+import { daysBetween, formatFileSize, calcMetrics } from './utils/plans';
 import { TodoSidebar } from './components/TodoSidebar';
 import { AppRequestSidebar } from './features/appRequests/AppRequestSidebar';
 import { ToastContainer } from './components/ToastContainer';
 import { showToast } from './lib/toast';
-import { UserRole, User, ReportTemplate, Plan } from './types';
-import { 
-  STAGES, PLAN_TYPES, SCOPES, SEGMENTS, PRIORITIES, LEADS, STREET_NAMES, 
+import { UserRole, Plan, NoiseVariance } from './types';
+import {
+  STAGES, PLAN_TYPES, PRIORITIES, LEADS, STREET_NAMES,
   FONT as font, MONO_FONT as monoFont,
-  IMPORT_TARGET_FIELDS, DEFAULT_MAIN_COLUMNS, DEFAULT_TEAM_COLUMNS, 
-  DEFAULT_COMMUNITY_COLUMNS, DEFAULT_LOC_COLUMNS, DEFAULT_LOG_COLUMNS,
-  MOT_FIELDS, IMPACT_FIELDS, IMPACT_SECTION_KEYS,
-  COMPLETED_STAGES, AT_DOT_STAGES
+  MOT_FIELDS,
+  COMPLETED_STAGES,
 } from './constants';
 
 import { useMasterFileImport } from './hooks/useMasterFileImport';
@@ -84,12 +61,11 @@ import { ProfileModal } from './components/ProfileModal';
 import { HelpModal } from './components/HelpModal';
 import * as authService from './services/authService';
 import { useNotifications } from './hooks/useNotifications';
+import { subscribeToVariances } from './services/varianceService';
 
 const TODAY = new Date();
 const getLocalDateString = () => new Date().toLocaleDateString('en-CA');
 const td = getLocalDateString();
-
-const DEFAULT_LOGO = generateDefaultLogo();
 
 const inp: React.CSSProperties = { background: "var(--bg-surface-2)", color: "var(--text-secondary)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontFamily: font, width: "100%", boxSizing: "border-box", outline: "none" };
 const lbl: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: "#64748B", letterSpacing: 1, textTransform: "uppercase", marginBottom: 4, display: "block" };
@@ -103,13 +79,10 @@ export default function App() {
 }
 
 function AppContent() {
-  const [statusDate, setStatusDate] = useState(getLocalDateString());
-  
-  const { uiState, planManagement, tableState, auth, firestoreData, permissions, planActions, userManagement, locManagement } = useApp();
+  const { uiState, planManagement, tableState, auth, firestoreData, permissions, planActions, locManagement } = useApp();
   const { isDark, toggle: toggleDark } = useDarkMode();
-  const { 
+  const {
     view, setView,
-    showAdminMenu, setShowAdminMenu,
     showForm, setShowForm,
     showAppRequestModal, setShowAppRequestModal,
     showAppRequestSidebar, setShowAppRequestSidebar,
@@ -122,33 +95,23 @@ function AppContent() {
     previewImage, setPreviewImage,
     deletingRequestId, setDeletingRequestId,
     isPermissionEditingMode, setIsPermissionEditingMode,
-    showUserForm, setShowUserForm,
     showLOCForm, setShowLOCForm,
     submissionSuccess, setSubmissionSuccess,
-    clearLogConfirm, setClearLogConfirm,
     clearPlansConfirm, setClearPlansConfirm,
     loading, setLoading
   } = uiState;
   const {
     selectedPlan, setSelectedPlan,
-    draftPlan, setDraftPlan,
-    isDirty, setIsDirty,
-    minimizedOutreachPlans, setMinimizedOutreachPlans,
-    activeImpactFilter, setActiveImpactFilter,
     filter, setFilter,
     sortConfig, setSortConfig,
     planSearch, setPlanSearch,
     selectedPlanIds, setSelectedPlanIds
   } = planManagement;
   const {
-    mainCols, setMainCols,
-    teamCols, setTeamCols,
-    communityCols, setCommunityCols,
-    locCols, setLocCols,
-    logCols, setLogCols,
+    mainCols,
+    locCols,
+    logCols,
     locSortConfig, setLocSortConfig,
-    communitySortConfig, setCommunitySortConfig,
-    teamSortConfig, setTeamSortConfig,
     searchQuery, setSearchQuery
   } = tableState;
   const { currentUser, setCurrentUser, isRealAdmin, loaded, showLogin, setShowLogin, profileComplete, role, canManageApp } = auth;
@@ -173,11 +136,15 @@ function AppContent() {
   const [notifOpen, setNotifOpen] = useState(false);
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications(currentUser?.email);
 
+  // Library variances — loaded globally so TableView, CalendarView, and CSV export can use them
+  const [libraryVariances, setLibraryVariances] = useState<NoiseVariance[]>([]);
+  useEffect(() => subscribeToVariances(setLibraryVariances), []);
+
   // Show welcome screen for new users (profileComplete === false, not null)
   const showWelcomeScreen = loaded && !!currentUser && profileComplete === false;
 
-  const { plans, setPlans, locs, setLocs, users, setUsers, appRequests, setAppRequests, appTodos, setAppTodos, reportTemplate, setReportTemplate, appConfig, setAppConfig } = firestoreData;
-  const { fieldPermissions, setFieldPermissions, toggleSectionPermission } = permissions;
+  const { plans, locs, users, appRequests, appTodos, reportTemplate, appConfig, setAppConfig } = firestoreData;
+  const { fieldPermissions } = permissions;
 
   const getUserLabel = () => {
     if (!currentUser) return "Guest";
@@ -185,36 +152,19 @@ function AppContent() {
   };
 
   const {
-    updateStage,
-    handleDOTCommentsRec,
     pushTicket,
-    addLogEntry,
-    deleteLogEntry,
-    handleClearLog,
     handleClearPlans,
     updatePlanField,
-    discardDraft,
-    handleClosePlanCard,
-    saveDraft,
-    updateLogEntry,
-    uploadTCPRevision,
-    linkNewLOC
   } = planActions;
 
-  const {
-    editingUser, setEditingUser,
-    userForm, setUserForm,
-    handleSaveUser
-  } = userManagement;
   const {
     selectedLOC, setSelectedLOC,
     locForm, setLocForm,
     showBulkLOCModal, setShowBulkLOCModal,
     bulkLOCFile, setBulkLOCFile,
-    bulkLOCProgress, setBulkLOCProgress,
+    bulkLOCProgress,
     handleBulkLOCUpload: handleBulkLOCUploadService
   } = locManagement;
-  const [logEntryForm, setLogEntryForm] = useState<{ text: string, attachments: File[] }>({ text: "", attachments: [] });
   const {
     form, setForm,
     handleSubmit: handlePlanSubmit,
@@ -250,38 +200,6 @@ function AppContent() {
     await logout();
     setView("table");
   }, [setView]);
-
-  const deleteUser = async (email: string, userRole: string) => {
-    if (email.toLowerCase() === currentUser?.email.toLowerCase()) { showToast("Cannot delete yourself", "error"); return; }
-
-    // Security check: only admins can delete other admins
-    if (userRole === UserRole.ADMIN && role !== UserRole.ADMIN) {
-      showToast("Only system admins can delete other Tier 0: System Admin members.", "error");
-      return;
-    }
-    
-    try {
-      await deleteDoc(doc(db, 'users_public', email.toLowerCase()));
-      await deleteDoc(doc(db, 'users_private', email.toLowerCase()));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `users_public/${email.toLowerCase()}`);
-    }
-  };
-
-  const handleSendInvite = (email: string, role: string) => {
-    const subject = encodeURIComponent("Invitation to join SFTC Traffic Control Portal");
-    const body = encodeURIComponent(`Hello,\n\nYou have been invited to join the SFTC Traffic Control Portal as a ${role}.\n\nPlease sign in using your Google account at:\n${window.location.origin}\n\nThanks,\nSFTC MOT Team`);
-    window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
-  };
-
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = error => reject(error);
-    });
-  };
 
   const handleSubmit = useCallback(() => handlePlanSubmit(motAllAnswered), [handlePlanSubmit, motAllAnswered]);
 
@@ -394,54 +312,6 @@ function AppContent() {
     }));
   }, [setLocSortConfig]);
 
-  const requestTeamSort = useCallback((key: string) => {
-    setTeamSortConfig(prev => ({
-      key,
-      direction: prev?.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
-    }));
-  }, [setTeamSortConfig]);
-
-  const sortedTeam = useMemo(() => [...users].sort((a,b) => {
-    if (!teamSortConfig) return 0;
-    const { key, direction } = teamSortConfig;
-    let aValue: any = a[key as keyof User] || "";
-    let bValue: any = b[key as keyof User] || "";
-
-    if (aValue < bValue) return direction === 'asc' ? -1 : 1;
-    if (aValue > bValue) return direction === 'asc' ? 1 : -1;
-    return 0;
-  }), [users, teamSortConfig]);
-  const requestCommunitySort = useCallback((key: string) => {
-    setCommunitySortConfig(prev => ({
-      key,
-      direction: prev?.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
-    }));
-  }, [setCommunitySortConfig]);
-
-  const sortedCommunity = useMemo(() => plans
-    .filter(p => (p.impact_driveway || p.impact_busStop || p.impact_fullClosure || p.impact_transit) && (!activeImpactFilter || p[activeImpactFilter]))
-    .sort((a,b) => {
-      if (!communitySortConfig) return 0;
-      const { key, direction } = communitySortConfig;
-      let aValue: any = a[key] || "";
-      let bValue: any = b[key] || "";
-
-      if (key === "id") {
-        aValue = a.id;
-        bValue = b.id;
-      } else if (key === "street") {
-        aValue = a.street1;
-        bValue = b.street1;
-      } else if (key === "status") {
-        aValue = a.outreach?.status || "Not Started";
-        bValue = b.outreach?.status || "Not Started";
-      }
-
-      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
-      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
-      return 0;
-    }), [plans, activeImpactFilter, communitySortConfig]);
-
   const sortedLocs = useMemo(() => {
     // Pre-compute end date timestamps to avoid repeated Date parsing during sort
     const locsWithTime = locs.map(l => ({ ...l, _endTime: l.endDate ? new Date(l.endDate).getTime() : 0 }));
@@ -486,7 +356,7 @@ function AppContent() {
     setLoading(prev => ({ ...prev, export: true }));
 
     setTimeout(() => {
-      const headers = ["Plan #", "Rev", "LOC #", "Type", "Scope", "Seg", "Location", "Lead", "Priority", "Status", "Submitted", "Need By", "Wait"];
+      const headers = ["Plan #", "Rev", "LOC #", "Type", "Scope", "Seg", "Location", "Lead", "Priority", "Status", "Submitted", "Need By", "Wait", "PHE Status", "NV Status", "NV Expiry", "DN Sent", "CD Status"];
       const rows = sortedData.map(plan => {
         const stage = stageLabelMap.get(plan.stage) || plan.stage;
         const wd = plan.submitDate && !COMPLETED_STAGES.includes(plan.stage)
@@ -495,6 +365,23 @@ function AppContent() {
             ? daysBetween(plan.submitDate, plan.approvedDate)
             : null;
         const waitStr = COMPLETED_STAGES.includes(plan.stage) ? "Approved" : wd !== null ? `${wd}d` : "—";
+
+        // Compliance columns
+        const pheStatus  = plan.compliance?.phe?.status ?? "—";
+        const nvStatus   = plan.compliance?.noiseVariance?.status ?? "—";
+        const linked     = plan.compliance?.noiseVariance?.linkedVarianceId
+          ? libraryVariances.find(v =>
+              v.id === plan.compliance!.noiseVariance!.linkedVarianceId ||
+              (v.parentVarianceId ?? v.id) === plan.compliance!.noiseVariance!.linkedVarianceId
+            )
+          : null;
+        const nvExpiry   = linked?.validThrough ?? "—";
+        const dn         = plan.compliance?.drivewayNotices;
+        const dnSent     = dn ? `${dn.addresses.filter(a => a.noticeSent).length}/${dn.addresses.length}` : "—";
+        const cdConcurrence = plan.compliance?.cdConcurrence;
+        const cdStatus   = cdConcurrence
+          ? cdConcurrence.cds.filter(e => e.applicable).map(e => `${e.cd}:${e.status}`).join('; ') || cdConcurrence.status
+          : "—";
 
         return [
           plan.id,
@@ -509,7 +396,12 @@ function AppContent() {
           stage,
           plan.submitDate || "—",
           plan.needByDate || "—",
-          waitStr
+          waitStr,
+          pheStatus,
+          nvStatus,
+          nvExpiry,
+          dnSent,
+          cdStatus,
         ];
       });
 
@@ -604,6 +496,7 @@ function AppContent() {
   };
   const canViewMetrics = true;
   const canViewLogs = role === UserRole.MOT || role === UserRole.ADMIN;
+  const [planViewMode, setPlanViewMode] = useState<'table' | 'map'>('table');
   const canViewTickets = role === UserRole.MOT || role === UserRole.ADMIN;
   const canEditPlan = role !== UserRole.GUEST;
   const canCreateRequest = role === UserRole.SFTC || role === UserRole.MOT || role === UserRole.ADMIN;
@@ -711,199 +604,23 @@ function AppContent() {
           />
         )}
 
-        {/* USER MANAGEMENT VIEW */}
+        {/* APP FEEDBACK VIEW */}
         {view === "app_feedback" && canManageApp && (
-          <div style={{padding:"20px 28px"}}>
-            <div style={{display:"grid", gridTemplateColumns:"2fr 1fr", gap:32, alignItems:"start"}}>
-              
-              {/* Left Column: App Requests */}
-              <div>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:32}}>
-                  <div>
-                    <h2 style={{fontSize:24,fontWeight:800,color:"#0F172A",marginBottom:16}}>App Change Requests</h2>
-                    <div style={{display:"flex", gap:16}}>
-                      <button 
-                        onClick={() => setAppRequestTab("pending")}
-                        style={{
-                          padding: "10px 20px",
-                          borderRadius: 8,
-                          fontSize: 14,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          border: "none",
-                          background: appRequestTab === "pending" ? "#6366F1" : "transparent",
-                          color: appRequestTab === "pending" ? "#fff" : "#64748B",
-                          transition: "all 0.2s"
-                        }}
-                      >
-                        Pending ({appRequests.filter(r => r.status === "pending").length})
-                      </button>
-                      <button 
-                        onClick={() => setAppRequestTab("completed")}
-                        style={{
-                          padding: "10px 20px",
-                          borderRadius: 8,
-                          fontSize: 14,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          border: "none",
-                          background: appRequestTab === "completed" ? "#10B981" : "transparent",
-                          color: appRequestTab === "completed" ? "#fff" : "#64748B",
-                          transition: "all 0.2s"
-                        }}
-                      >
-                        Completed ({appRequests.filter(r => r.status === "completed").length})
-                      </button>
-                    </div>
-                  </div>
-                  <div style={{fontSize:13,color:"#64748B",fontWeight:500,marginBottom:8}}>{appRequests.length} Total Requests</div>
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(400px, 1fr))",gap:24}}>
-                  {appRequests.filter(r => r.status === appRequestTab && (!searchQuery || (r.description && r.description.toLowerCase().includes(searchQuery.toLowerCase())) || (r.id && r.id.toLowerCase().includes(searchQuery.toLowerCase())) || (r.userName && r.userName.toLowerCase().includes(searchQuery.toLowerCase())) || (r.userEmail && r.userEmail.toLowerCase().includes(searchQuery.toLowerCase())))).map(req => (
-                <div key={req.id} style={{background:"#fff",borderRadius:16,border:"1px solid #E2E8F0",padding:24,display:"flex",flexDirection:"column",gap:20, position: "relative", boxShadow: "0 1px 3px rgba(0,0,0,0.05)"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                    <div>
-                      <div style={{fontSize:15,fontWeight:800,color:"#1E293B",marginBottom:4,letterSpacing:"-0.01em"}}>{req.id}</div>
-                      <div style={{fontSize:12,color:"#94A3B8",fontFamily:monoFont}}>{new Date(req.createdAt).toLocaleString()}</div>
-                    </div>
-                    <div style={{display: "flex", gap: 12, alignItems: "center"}}>
-                      <div style={{background:req.status==="pending"?"#F59E0B":"#10B981",color:"#fff",padding:"4px 12px",borderRadius:20,fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.05em"}}>{req.status}</div>
-                      
-                      {deletingRequestId === req.id ? (
-                        <div style={{display:"flex", alignItems:"center", gap:8, background:"#FEF2F2", padding:"4px 8px", borderRadius:8, border:"1px solid #FEE2E2"}}>
-                          <span style={{fontSize:10, fontWeight:700, color:"#991B1B"}}>Delete?</span>
-                          <button onClick={() => setDeletingRequestId(null)} style={{fontSize:10, color:"#64748B", border:"none", background:"transparent", cursor:"pointer", fontWeight:600}}>No</button>
-                          <button onClick={async () => {
-                            try {
-                              await deleteDoc(doc(db, 'app_feedback', req.id));
-                              setDeletingRequestId(null);
-                            } catch (err) {
-                              console.error("Delete failed:", err);
-                              setDeletingRequestId(null);
-                            }
-                          }} style={{fontSize:10, color:"#EF4444", border:"none", background:"transparent", cursor:"pointer", fontWeight:800}}>Yes</button>
-                        </div>
-                      ) : (
-                        <button 
-                          onClick={() => setDeletingRequestId(req.id)}
-                          style={{background: "transparent", border: "none", color: "#94A3B8", cursor: "pointer", padding: 4, transition: "color 0.2s"}}
-                          onMouseEnter={(e) => e.currentTarget.style.color = "#EF4444"}
-                          onMouseLeave={(e) => e.currentTarget.style.color = "#94A3B8"}
-                          title="Delete Request"
-                        >
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{fontSize:14,color:"#334155",lineHeight:1.6,whiteSpace:"pre-wrap",fontWeight:500}}>{req.description}</div>
-                  <div style={{fontSize:12,color:"#64748B"}}>By: <span style={{fontWeight:700,color:"#475569"}}>{req.userName}</span> <span style={{opacity:0.6}}>({req.userEmail})</span></div>
-                  
-                  {(req.screenshot || (req.files && req.files.length > 0)) && (
-                    <div style={{display:"flex", flexDirection:"column", gap:12}}>
-                      <div style={{fontSize:11,fontWeight:800,color:"#94A3B8",textTransform:"uppercase",letterSpacing:"0.05em"}}>Attached Files & Screenshots</div>
-                      <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(120px, 1fr))", gap:16}}>
-                        {req.screenshot && (
-                          <div 
-                            style={{aspectRatio:"1/1", borderRadius:12, overflow:"hidden", border:"1px solid #E2E8F0", background:"#F8FAFC", cursor:"zoom-in", transition:"all 0.3s cubic-bezier(0.4, 0, 0.2, 1)", boxShadow:"0 4px 6px -1px rgba(0,0,0,0.1)", position:"relative"}}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.transform = "translateY(-4px)";
-                              e.currentTarget.style.boxShadow = "0 10px 15px -3px rgba(0,0,0,0.1)";
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.transform = "translateY(0)";
-                              e.currentTarget.style.boxShadow = "0 4px 6px -1px rgba(0,0,0,0.1)";
-                            }}
-                            onClick={() => setPreviewImage(req.screenshot)}
-                          >
-                            <img 
-                              src={req.screenshot} 
-                              alt="Legacy Screenshot" 
-                              style={{width:"100%", height:"100%", objectFit:"cover", display:"block"}} 
-                              referrerPolicy="no-referrer"
-                            />
-                            <div style={{position:"absolute", inset:0, background:"linear-gradient(to top, rgba(0,0,0,0.4), transparent)", opacity:0, transition:"opacity 0.2s", display:"flex", alignItems:"flex-end", padding:8}} onMouseEnter={(e) => e.currentTarget.style.opacity = "1"} onMouseLeave={(e) => e.currentTarget.style.opacity = "0"}>
-                              <span style={{color:"#fff", fontSize:10, fontWeight:700}}>VIEW SCREENSHOT</span>
-                            </div>
-                          </div>
-                        )}
-                        {req.files && req.files.map((f: string, i: number) => {
-                          const isImage = (f as string).startsWith("data:image/") || /\.(jpeg|jpg|gif|png|webp|svg)(\?|$)/i.test(f as string);
-                          return (
-                            <div key={i} style={{aspectRatio:"1/1", borderRadius:12, overflow:"hidden", border:"1px solid #E2E8F0", background:"#F8FAFC", cursor:"pointer", transition:"all 0.3s cubic-bezier(0.4, 0, 0.2, 1)", boxShadow:"0 4px 6px -1px rgba(0,0,0,0.1)", position:"relative"}}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.transform = "translateY(-4px)";
-                                e.currentTarget.style.boxShadow = "0 10px 15px -3px rgba(0,0,0,0.1)";
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.transform = "translateY(0)";
-                                e.currentTarget.style.boxShadow = "0 4px 6px -1px rgba(0,0,0,0.1)";
-                              }}
-                              onClick={() => isImage ? setPreviewImage(f) : window.open(f)}
-                            >
-                              {isImage ? (
-                                <>
-                                  <img 
-                                    src={f} 
-                                    alt={`Attachment ${i+1}`} 
-                                    style={{width:"100%", height:"100%", objectFit:"cover", display:"block"}} 
-                                    referrerPolicy="no-referrer"
-                                  />
-                                  <div style={{position:"absolute", inset:0, background:"linear-gradient(to top, rgba(0,0,0,0.4), transparent)", opacity:0, transition:"opacity 0.2s", display:"flex", alignItems:"flex-end", padding:8}} onMouseEnter={(e) => e.currentTarget.style.opacity = "1"} onMouseLeave={(e) => e.currentTarget.style.opacity = "0"}>
-                                    <span style={{color:"#fff", fontSize:10, fontWeight:700}}>VIEW IMAGE</span>
-                                  </div>
-                                </>
-                              ) : (
-                                <div style={{height:"100%", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8, color:"#64748B", padding:12}}>
-                                  <div style={{width:40, height:40, borderRadius:10, background:"#F1F5F9", display:"flex", alignItems:"center", justifyContent:"center", color:"#6366F1"}}>
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
-                                  </div>
-                                  <span style={{fontSize:10, fontWeight:800, textTransform:"uppercase", letterSpacing:"0.05em"}}>File {i+1}</span>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  <div style={{marginTop:"auto",paddingTop:20,borderTop:"1px solid #F1F5F9",display:"flex",gap:12}}>
-                    <button onClick={async () => {
-                      try {
-                        await updateDoc(doc(db, 'app_feedback', req.id), { status: req.status === "pending" ? "completed" : "pending" });
-                      } catch (err) {
-                        console.error("Update failed:", err);
-                      }
-                    }} style={{flex:1,background:req.status === "pending" ? "#10B981" : "#F1F5F9",color:req.status === "pending" ? "#fff" : "#475569",border:"none",padding:"10px",borderRadius:10,fontSize:12,fontWeight:700,cursor:"pointer", transition: "all 0.2s"}}>
-                      {req.status === "pending" ? "Mark as Completed" : "Move back to Pending"}
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {appRequests.filter(r => r.status === appRequestTab).length === 0 && (
-                <div style={{gridColumn:"1/-1",padding:80,textAlign:"center",background:"#fff",borderRadius:16,border:"1px dashed #CBD5E1",color:"#94A3B8", fontWeight:500}}>No {appRequestTab} requests</div>
-              )}
-            </div>
-            </div>
-
-            {/* Right Column: To-Do List */}
-            <div style={{background: "#F8FAFC", borderRadius: 16, padding: 24, border: "1px solid #E2E8F0", position: "sticky", top: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)", height: "calc(100vh - 120px)"}}>
-              <h3 style={{fontSize: 18, fontWeight: 800, color: "#0F172A", marginBottom: 16, display: "flex", alignItems: "center", gap: 8}}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: "#6366F1"}}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                My Progression Tasks
-              </h3>
-              <TodoSidebar 
-                appTodos={appTodos}
-                newTodoText={newTodoText}
-                setNewTodoText={setNewTodoText}
-                todoCompletedExpanded={todoCompletedExpanded}
-                setTodoCompletedExpanded={setTodoCompletedExpanded}
-                onClose={() => setShowTodoSidebar(false)}
-              />
-            </div>
-          </div>
-        </div>
+          <AppFeedbackView
+            appRequests={appRequests}
+            searchQuery={searchQuery}
+            deletingRequestId={deletingRequestId}
+            setDeletingRequestId={setDeletingRequestId}
+            appRequestTab={appRequestTab}
+            setAppRequestTab={setAppRequestTab}
+            setPreviewImage={setPreviewImage}
+            appTodos={appTodos}
+            newTodoText={newTodoText}
+            setNewTodoText={setNewTodoText}
+            todoCompletedExpanded={todoCompletedExpanded}
+            setTodoCompletedExpanded={setTodoCompletedExpanded}
+            setShowTodoSidebar={setShowTodoSidebar}
+          />
         )}
 
         {view==="users" && canManageUsers && (
@@ -923,6 +640,8 @@ function AppContent() {
             hoveredPlanId={hoveredPlanId}
             setHoveredPlanId={setHoveredPlanId}
             setSelectedPlan={setSelectedPlan}
+            libraryVariances={libraryVariances}
+            setView={setView}
           />
         )}
 
@@ -955,26 +674,26 @@ function AppContent() {
           />
         )}
 
-        {/* COMMUNITY RELATIONS VIEW */}
-        {view==="community" && (
-          <CommunityRelationsView
-            activeImpactFilter={activeImpactFilter}
-            setActiveImpactFilter={setActiveImpactFilter}
-            communityCols={communityCols}
-            requestCommunitySort={requestCommunitySort}
-            communitySortConfig={communitySortConfig}
-            sortedCommunity={sortedCommunity}
-            monoFont={monoFont}
-            setSelectedPlan={setSelectedPlan}
-          />
-        )}
-
         {/* COMPLIANCE VIEW */}
         {view==="compliance" && canViewCompliance && (
           <ComplianceView
             plans={plans}
             setSelectedPlan={setSelectedPlan}
             setView={setView}
+            appConfig={appConfig}
+          />
+        )}
+
+        {/* VARIANCE LIBRARY */}
+        {view === "variances" && (
+          <VarianceLibraryView currentUser={currentUser} appConfig={appConfig} />
+        )}
+
+        {/* REFERENCE */}
+        {view === 'reference' && (
+          <ReferenceView
+            role={role}
+            uploadedBy={currentUser?.displayName || currentUser?.email || 'Unknown'}
           />
         )}
 
@@ -1011,8 +730,46 @@ function AppContent() {
           />
         )}
 
+        {/* TABLE / CORRIDOR TOGGLE */}
+        {view === "table" && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+            <div style={{ display: 'flex', border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
+              <button
+                onClick={() => setPlanViewMode('table')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px',
+                  fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none',
+                  background: planViewMode === 'table' ? '#1E293B' : '#FFFFFF',
+                  color:      planViewMode === 'table' ? '#FFFFFF' : '#64748B',
+                  transition: 'background 0.15s',
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                Table
+              </button>
+              <button
+                onClick={() => setPlanViewMode('map')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px',
+                  fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none',
+                  borderLeft: '1px solid #E2E8F0',
+                  background: planViewMode === 'map' ? '#1E293B' : '#FFFFFF',
+                  color:      planViewMode === 'map' ? '#FFFFFF' : '#64748B',
+                  transition: 'background 0.15s',
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 3 20 8 17 13 20 18 17 21 19 21 5 18 3 13 6 8 3 3 6"/><line x1="8" y1="3" x2="8" y2="17"/><line x1="13" y1="6" x2="13" y2="20"/></svg>
+                Corridor
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* TABLE VIEW */}
-        {view==="table"&&(
+        {view==="table" && planViewMode === 'map' && (
+          <CorridorMapView plans={filtered} setSelectedPlan={setSelectedPlan} />
+        )}
+        {view==="table" && planViewMode === 'table' && (
           <TableView
             STAGES={STAGES}
             plans={plans}
@@ -1043,6 +800,7 @@ function AppContent() {
             toggleSelectPlan={toggleSelectPlan}
             setSelectedPlan={setSelectedPlan}
             isDark={isDark}
+            libraryVariances={libraryVariances}
           />
         )}
 
@@ -1241,185 +999,27 @@ function AppContent() {
       {selectedPlan && (
         <PlanCard />
       )}
-              {selectedPlan && (
-                <div style={{display:"flex", flexDirection:"column", gap:8}}>
-                  <div style={{display:"flex", gap:8}}>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Followed up with DOT... (Paste images/files here)" 
-                      style={{...inp, flex:1}} 
-                      value={logEntryForm.text || ""}
-                      onChange={(e) => setLogEntryForm(prev => ({ ...prev, text: e.target.value }))}
-                      onPaste={(e) => {
-                        const items = e.clipboardData.items;
-                        const files: File[] = [];
-                        for (let i = 0; i < items.length; i++) {
-                          if (items[i].type.indexOf("image") !== -1 || items[i].type.indexOf("pdf") !== -1 || items[i].kind === 'file') {
-                            const blob = items[i].getAsFile();
-                            if (blob) files.push(blob);
-                          }
-                        }
-                        if (files.length > 0) {
-                          setLogEntryForm(prev => ({ ...prev, attachments: [...prev.attachments, ...files] }));
-                        }
-                      }}
-                      onKeyDown={(e: any)=>{
-                        if(e.key==="Enter" && (logEntryForm.text || logEntryForm.attachments.length > 0)){
-                          addLogEntry(selectedPlan.id, logEntryForm.text, logEntryForm.attachments);
-                          setLogEntryForm({ text: "", attachments: [] });
-                        }
-                      }}
-                    />
-                    <label style={{background:"#F1F5F9", color:"#64748B", padding:"9px 12px", borderRadius:8, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center"}}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
-                      <input type="file" multiple style={{display:"none"}} onChange={(e) => {
-                        const files = Array.from(e.target.files || []);
-                        setLogEntryForm(prev => ({ ...prev, attachments: [...prev.attachments, ...files] }));
-                      }} />
-                    </label>
-                    <button 
-                      onClick={()=>{
-                        if(logEntryForm.text || logEntryForm.attachments.length > 0){
-                          addLogEntry(selectedPlan.id, logEntryForm.text, logEntryForm.attachments);
-                          setLogEntryForm({ text: "", attachments: [] });
-                        }
-                      }} 
-                      style={{background:"#0F172A",color:"#fff",border:"none",padding:"9px 16px",borderRadius:8,fontWeight:700,cursor:"pointer",fontSize:11,fontFamily:font}}
-                    >
-                      Add
-                    </button>
-                  </div>
-                  {logEntryForm.attachments.length > 0 && (
-                    <div style={{display:"flex", flexWrap:"wrap", gap:6}}>
-                      {logEntryForm.attachments.map((f, i) => (
-                        <div key={i} style={{display:"flex", alignItems:"center", gap:4, background:"#F1F5F9", padding:"4px 8px", borderRadius:6, fontSize:10, color:"#475569"}}>
-                          <span style={{maxWidth:100, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{f.name}</span>
-                          <button onClick={() => setLogEntryForm(prev => ({ ...prev, attachments: prev.attachments.filter((_, idx) => idx !== i) }))} style={{border:"none", background:"transparent", color:"#94A3B8", cursor:"pointer", padding:0}}>✕</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="mt-5">
-                {selectedPlan && (
-                  <>
-                    <div className="flex justify-between items-center mb-2">
-                      {isPermissionEditingMode && currentUser?.role === UserRole.ADMIN && (
-                        <PermissionToggle
-                          fieldName="Activity Log"
-                          allowedEditRoles={fieldPermissions['activity_log']?.edit || []}
-                          allowedViewRoles={fieldPermissions['activity_log']?.view || []}
-                          onToggleEdit={(role) => setFieldPermissions(prev => ({ ...prev, activity_log: { ...prev.activity_log, edit: prev.activity_log?.edit?.includes(role) ? prev.activity_log.edit.filter(r => r !== role) : [...(prev.activity_log?.edit || []), role] } }))}
-                          onToggleView={(role) => setFieldPermissions(prev => ({ ...prev, activity_log: { ...prev.activity_log, view: prev.activity_log?.view?.includes(role) ? prev.activity_log.view.filter(r => r !== role) : [...(prev.activity_log?.view || []), role] } }))}
-                        />
-                      )}
-                    </div>
-                    <div style={{ border: "1px solid #E2E8F0", borderRadius: 8, overflow: "hidden" }}>
-                      {[...selectedPlan.log].map((l, idx) => ({ ...l, originalIndex: idx })).reverse().filter(l => !l.action.includes("Status → Implemented")).map((entry, i) => {
-                        const originalIndex = entry.originalIndex;
-                        return (
-                          <div key={originalIndex} style={{ display: "flex", gap: 12, padding: "10px 12px", borderBottom: i < selectedPlan.log.length - 1 ? "1px solid #F1F5F9" : "none", background: i % 2 === 0 ? "#fff" : "#FAFBFC", alignItems: "flex-start", paddingLeft: entry.action.startsWith("  ") ? "40px" : "12px" }}>
-                            {(currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN) ? (
-                              <input
-                                type="date"
-                                value={entry.date || ""}
-                                onChange={(e) => updateLogEntry(selectedPlan.id, originalIndex, "date", e.target.value)}
-                                style={{ fontSize: 10, fontFamily: monoFont, color: "#94A3B8", background: "transparent", border: "none", width: 90, marginTop: 2 }}
-                              />
-                            ) : (
-                              <div style={{ fontSize: 10, fontFamily: monoFont, color: "#94A3B8", minWidth: 72, paddingTop: 3 }}>{entry.date || ""}</div>
-                            )}
-
-                            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
-                              {entry.dateRequested && <div style={{ fontSize: 9, color: "#64748B", fontWeight: 600 }}>Requested: {entry.dateRequested}</div>}
-                              {(currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN) ? (
-                                <input
-                                  type="text"
-                                  value={entry.action || ""}
-                                  onChange={(e) => updateLogEntry(selectedPlan.id, originalIndex, "action", e.target.value)}
-                                  style={{ fontSize: 12, color: "#334155", width: "100%", background: "transparent", border: "none", outline: "none" }}
-                                />
-                              ) : (
-                                <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.4 }}>{entry.action || ""}</div>
-                              )}
-                              {entry.attachments && entry.attachments.length > 0 && (
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
-                                  {entry.attachments.map((file: any, fIdx: number) => (
-                                    <button
-                                      key={fIdx}
-                                      onClick={() => {
-                                        if (file.data) {
-                                          if (file.data.startsWith('http')) {
-                                            window.open(file.data, '_blank');
-                                          } else {
-                                            const win = window.open();
-                                            if (win) {
-                                              win.document.write(`<iframe src="${file.data}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-                                            }
-                                          }
-                                        } else if (file instanceof File) {
-                                          window.open(URL.createObjectURL(file), '_blank');
-                                        }
-                                      }}
-                                      style={{ display: "flex", alignItems: "center", gap: 4, background: "#F8FAFC", border: "1px solid #E2E8F0", padding: "4px 8px", borderRadius: 6, fontSize: 9, color: "#64748B", cursor: "pointer" }}
-                                    >
-                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
-                                      {file.name || "Attachment"}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-
-                            {(currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN) ? (
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
-                                <input
-                                  type="text"
-                                  value={entry.user || ""}
-                                  onChange={(e) => updateLogEntry(selectedPlan.id, originalIndex, "user", e.target.value)}
-                                  style={{ fontSize: 10, fontWeight: 600, color: "#64748B", textAlign: "right", background: "transparent", border: "none", width: 100 }}
-                                />
-                                <button
-                                  onClick={() => deleteLogEntry(selectedPlan.id, entry.uniqueId)}
-                                  style={{ background: "transparent", border: "none", color: "#EF4444", cursor: "pointer", fontSize: 12, padding: 0 }}
-                                  title="Delete Entry"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            ) : (
-                              <div style={{ fontSize: 10, fontWeight: 600, color: "#64748B", textAlign: "right", paddingTop: 3 }}>{entry.user}</div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-                {submissionSuccess.show && (
-                  <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }}>
-                    <div style={{ background: "#fff", borderRadius: 24, width: "100%", maxWidth: 400, padding: 32, textAlign: "center", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)" }}>
-                      <div style={{ width: 64, height: 64, background: "#DCFCE7", borderRadius: 32, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                      </div>
-                      <h3 style={{ fontSize: 20, fontWeight: 800, color: "#0F172A", marginBottom: 8 }}>Request Submitted!</h3>
-                      <p style={{ fontSize: 14, color: "#64748B", lineHeight: 1.5, marginBottom: 24 }}>
-                        Your request <span style={{ fontFamily: monoFont, fontWeight: 700, color: "#0F172A" }}>{submissionSuccess.id}</span> has been received.
-                        <br /><br />
-                        You are currently <span style={{ fontSize: 18, fontWeight: 800, color: "#F59E0B" }}>#{submissionSuccess.pos}</span> in the queue.
-                      </p>
-                      <button
-                        onClick={() => setSubmissionSuccess({ show: false, pos: 0, id: "" })}
-                        style={{ width: "100%", background: "#0F172A", color: "#fff", border: "none", padding: "12px", borderRadius: 12, fontWeight: 700, cursor: "pointer", fontSize: 14, fontFamily: font }}
-                      >
-                        Got it
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+      {submissionSuccess.show && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }}>
+          <div style={{ background: "#fff", borderRadius: 24, width: "100%", maxWidth: 400, padding: 32, textAlign: "center", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)" }}>
+            <div style={{ width: 64, height: 64, background: "#DCFCE7", borderRadius: 32, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <h3 style={{ fontSize: 20, fontWeight: 800, color: "#0F172A", marginBottom: 8 }}>Request Submitted!</h3>
+            <p style={{ fontSize: 14, color: "#64748B", lineHeight: 1.5, marginBottom: 24 }}>
+              Your request <span style={{ fontFamily: monoFont, fontWeight: 700, color: "#0F172A" }}>{submissionSuccess.id}</span> has been received.
+              <br /><br />
+              You are currently <span style={{ fontSize: 18, fontWeight: 800, color: "#F59E0B" }}>#{submissionSuccess.pos}</span> in the queue.
+            </p>
+            <button
+              onClick={() => setSubmissionSuccess({ show: false, pos: 0, id: "" })}
+              style={{ width: "100%", background: "#0F172A", color: "#fff", border: "none", padding: "12px", borderRadius: 12, fontWeight: 700, cursor: "pointer", fontSize: 14, fontFamily: font }}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Global Todo Sidebar for Admin & MOT */}
       {(role === UserRole.MOT || role === UserRole.ADMIN) && view !== "app_feedback" && (

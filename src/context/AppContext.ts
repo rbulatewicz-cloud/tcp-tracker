@@ -8,6 +8,7 @@ import type { usePermissions } from '../hooks/usePermissions';
 import type { usePlanActions } from '../hooks/usePlanActions';
 import type { useUserManagement } from '../hooks/useUserManagement';
 import type { useLOCManagement } from '../hooks/useLOCManagement';
+import type { NoiseVariance } from '../types';
 
 export interface AppContextType {
   uiState: ReturnType<typeof useUIState>;
@@ -19,6 +20,7 @@ export interface AppContextType {
   planActions: ReturnType<typeof usePlanActions>;
   userManagement: ReturnType<typeof useUserManagement>;
   locManagement: ReturnType<typeof useLOCManagement>;
+  libraryVariances: NoiseVariance[];
 }
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
