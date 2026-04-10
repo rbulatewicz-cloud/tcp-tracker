@@ -75,7 +75,7 @@ export const SystemTab: React.FC<SystemTabProps> = ({ users }) => {
         <h2 className="text-base font-bold text-slate-800 dark:text-slate-200 mb-4">App Info</h2>
         <div className="grid grid-cols-2 gap-4">
           {[
-            { label: 'App Version',      value: '0.0.2' },
+            { label: 'App Version',      value: '0.2.0' },
             { label: 'Firebase Project', value: 'gen-lang-client-0122413243' },
             { label: 'Hosting URL',      value: 'gen-lang-client-0122413243.web.app' },
             { label: 'Environment',      value: 'Production' },
@@ -92,7 +92,7 @@ export const SystemTab: React.FC<SystemTabProps> = ({ users }) => {
       <div className="border-t border-slate-100 dark:border-slate-700 pt-6">
         <h2 className="text-base font-bold text-slate-800 dark:text-slate-200 mb-1">AI Configuration</h2>
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-          Used to scan noise variance PDFs. Get a key from{' '}
+          Used to scan uploaded documents and generate driveway notice content. Get a key from{' '}
           <span className="font-mono text-indigo-600">aistudio.google.com</span>.
         </p>
         <div className="flex items-end gap-3">
@@ -124,9 +124,31 @@ export const SystemTab: React.FC<SystemTabProps> = ({ users }) => {
         <h2 className="text-base font-bold text-slate-800 dark:text-slate-200 mb-3">Changelog</h2>
         <div className="space-y-3 text-sm">
           {[
-            { version: 'v0.1.0', date: 'Mar 31 2026', notes: 'Reference tab with interactive workflow guide and document library; Corridor Map showing NB/SB plan coverage along Van Nuys Blvd; turnaround stats on new request form; per-day shift selection (mixed mode); login counter fix.' },
-            { version: 'v0.0.2', date: 'Mar 24 2026', notes: 'LOC-centric redesign, guided import wizard, branding settings, workflow clock targets.' },
-            { version: 'v0.0.1', date: 'Mar 2026',    notes: 'Initial release — SFTC plan tracking, team management, activity log.' },
+            {
+              version: 'v0.2.0',
+              date: 'Apr 9 2026',
+              notes: 'CR Queue: AI-powered driveway letter drafting — auto-fills from plan card and generates EN/ES body using past approved letters as style examples. Add driveway addresses directly from queue with property library autocomplete. Link, unlink, and delete address entries from queue. Inline plan details panel per queue card. Re-issue Needed tier resurfaces plans when work dates shift after notices were sent. Plan card driveway status now derived from live Library letter data (no manual dropdown). Post-approval implementation window editor. Approval confirm requires dates when window is mandatory. Settings → Compliance: Driveway Letter pre-fill section for CR contact and default work hours.',
+            },
+            {
+              version: 'v0.1.0',
+              date: 'Mar 31 2026',
+              notes: 'Reference tab with interactive workflow guide and document library; Corridor Map showing NB/SB plan coverage along Van Nuys Blvd; turnaround stats on new request form; per-day shift selection (mixed mode); login counter fix.',
+            },
+            {
+              version: 'v0.0.3',
+              date: 'Mar 28 2026',
+              notes: 'Compliance tracks: PHE application pre-fill, noise variance workflow, driveway impact notices with lead-time alerts. Email notifications for status changes and review cycles. LOC document management with approval history. Status workflow improvements: review cycle tracking, transition notes, attachment uploads per stage transition.',
+            },
+            {
+              version: 'v0.0.2',
+              date: 'Mar 24 2026',
+              notes: 'LOC-centric redesign, guided import wizard, branding settings, workflow clock targets.',
+            },
+            {
+              version: 'v0.0.1',
+              date: 'Mar 2026',
+              notes: 'Initial release — SFTC plan tracking, team management, activity log.',
+            },
           ].map(entry => (
             <div key={entry.version} className="flex gap-4">
               <span className="font-mono text-xs text-indigo-600 font-bold w-14 shrink-0 mt-0.5">{entry.version}</span>
