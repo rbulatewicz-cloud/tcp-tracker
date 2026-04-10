@@ -1,7 +1,7 @@
 import type { Plan } from '../types';
 
 const COMPLETED_STAGES = new Set(['approved', 'plan_approved', 'implemented', 'tcp_approved_final']);
-const INACTIVE_STAGES  = new Set(['approved', 'plan_approved', 'implemented', 'tcp_approved_final', 'closed', 'expired']);
+const INACTIVE_STAGES  = new Set(['approved', 'plan_approved', 'implemented', 'tcp_approved_final', 'closed', 'expired', 'cancelled']);
 
 export interface TurnaroundStats {
   /** Average calendar days from request → approval, null if no qualifying plans */

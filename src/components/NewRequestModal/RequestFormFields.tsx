@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { FIELD_REGISTRY } from '../../constants';
 import { useAppLists } from '../../context/AppListsContext';
 import { UserRole, User, ReportTemplate, PlanForm } from '../../types';
@@ -29,6 +29,13 @@ export const RequestFormFields: React.FC<RequestFormFieldsProps> = ({
   const update = (key: string, value: unknown) => setForm(f => ({ ...f, [key]: value }));
   const { scopes, leads } = useAppLists();
   const listOverrides: Record<string, string[]> = { scope: scopes, lead: leads };
+
+  const estimatedEndDate = useMemo(() => {
+    if (!form.needByDate || !form.planDurationDays) return null;
+    const d = new Date(form.needByDate + 'T00:00:00');
+    d.setDate(d.getDate() + form.planDurationDays);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }, [form.needByDate, form.planDurationDays]);
 
   const renderField = (k: string, v: typeof FIELD_REGISTRY[string]) => {
     if (!canView(k)) return null;
@@ -91,6 +98,28 @@ export const RequestFormFields: React.FC<RequestFormFieldsProps> = ({
             <h3 className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">{group}</h3>
             <div className="flex flex-col gap-2">
               {fields.map(([k, v]) => renderField(k, v))}
+              {group === 'Schedule' && (
+                <div className="flex flex-col gap-1">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Plan Duration</div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max="365"
+                      value={form.planDurationDays ?? ''}
+                      onChange={e => update('planDurationDays', e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                      placeholder="—"
+                      className="text-xs font-semibold text-slate-900 bg-white border border-slate-200 rounded-md p-2 w-20 outline-none focus:border-blue-400"
+                    />
+                    <span className="text-[11px] text-slate-500">days</span>
+                  </div>
+                  {estimatedEndDate && (
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      Est. end: <span className="font-semibold text-slate-600">{estimatedEndDate}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         );

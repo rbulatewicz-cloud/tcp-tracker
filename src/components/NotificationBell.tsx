@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Bell, CheckCheck, MessageSquare, CheckCircle2, FileText, GitPullRequestArrow, Clock, AlertTriangle } from 'lucide-react';
+import { Bell, CheckCheck, MessageSquare, CheckCircle2, FileText, GitPullRequestArrow, Clock, AlertTriangle, Wrench } from 'lucide-react';
 import { AppNotification, NotifyEvent } from '../types';
 import { UseNotificationsResult } from '../hooks/useNotifications';
 
@@ -16,8 +16,10 @@ function getNotifStyle(type: NotifyEvent): NotifStyle {
     case 'comment':        return { icon: <MessageSquare size={13} />,  color: '#8B5CF6', bg: 'rgba(139,92,246,0.1)' };
     case 'doc_uploaded':   return { icon: <FileText size={13} />,       color: '#06B6D4', bg: 'rgba(6,182,212,0.1)' };
     case 'window_expiring':return { icon: <Clock size={13} />,          color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' };
-    case 'nv_expiring':    return { icon: <AlertTriangle size={13} />,  color: '#7C3AED', bg: 'rgba(124,58,237,0.1)' };
-    default:               return { icon: <Bell size={13} />,           color: '#64748B', bg: 'rgba(100,116,139,0.1)' };
+    case 'nv_expiring':       return { icon: <AlertTriangle size={13} />, color: '#7C3AED', bg: 'rgba(124,58,237,0.1)' };
+    case 'feedback_updated':  return { icon: <Wrench size={13} />,        color: '#10B981', bg: 'rgba(16,185,129,0.1)' };
+    case 'feedback_comment':  return { icon: <MessageSquare size={13} />, color: '#6366F1', bg: 'rgba(99,102,241,0.1)' };
+    default:                  return { icon: <Bell size={13} />,          color: '#64748B', bg: 'rgba(100,116,139,0.1)' };
   }
 }
 
@@ -42,10 +44,11 @@ interface NotificationBellProps {
   markAllRead: UseNotificationsResult['markAllRead'];
   open: boolean;
   setOpen: (open: boolean) => void;
+  onNavigate: (n: AppNotification) => void;
 }
 
 export const NotificationBell: React.FC<NotificationBellProps> = ({
-  notifications, unreadCount, markRead, markAllRead, open, setOpen,
+  notifications, unreadCount, markRead, markAllRead, open, setOpen, onNavigate,
 }) => {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -60,6 +63,8 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
   const handleItemClick = (n: AppNotification) => {
     if (!n.read) markRead(n.id);
+    onNavigate(n);
+    setOpen(false);
   };
 
   return (
@@ -195,21 +200,29 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                           {timeAgo(n.createdAt)}
                         </span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace',
-                          color: style.color, background: style.bg,
-                          padding: '1px 5px', borderRadius: 4, flexShrink: 0,
-                        }}>{n.planLoc}</span>
-                        <span style={{
-                          fontSize: 11, color: 'var(--text-secondary)',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>{n.location}</span>
-                      </div>
+                      {(n.planLoc || n.location) && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                          {n.planLoc && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace',
+                              color: style.color, background: style.bg,
+                              padding: '1px 5px', borderRadius: 4, flexShrink: 0,
+                            }}>{n.planLoc}</span>
+                          )}
+                          {n.location && (
+                            <span style={{
+                              fontSize: 11, color: 'var(--text-secondary)',
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>{n.location}</span>
+                          )}
+                        </div>
+                      )}
                       <p style={{ margin: 0, fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
                         {n.body}
                       </p>
                     </div>
+                    {/* Navigate arrow */}
+                    <div style={{ paddingTop: 6, flexShrink: 0, color: 'var(--text-secondary)', opacity: 0.4, fontSize: 11 }}>›</div>
                   </div>
                 );
               })

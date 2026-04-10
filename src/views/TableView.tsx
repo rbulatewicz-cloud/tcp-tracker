@@ -1,7 +1,7 @@
 import React from 'react';
 import { Spinner } from '../components/Spinner';
 import { daysFromToday, daysBetween } from '../utils/plans';
-import { COMPLETED_STAGES, ALL_STAGES } from '../constants';
+import { COMPLETED_STAGES, APPROVED_STAGES, ALL_STAGES } from '../constants';
 import { UserRole, Plan, Stage, FilterState, SortConfig, ColumnDef, LoadingState, User, NoiseVariance } from '../types';
 import { detectComplianceTriggers } from '../utils/compliance';
 import { getVarianceExpiryStatus } from '../services/varianceService';
@@ -150,8 +150,28 @@ function TableView({
             {f.options.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         ))}
-        {(filter.stage !== 'all' || filter.type !== 'all' || filter.lead !== 'all' || filter.priority !== 'all' || filter.importStatus !== 'all') && (
-          <button onClick={() => setFilter({ stage: 'all', type: 'all', lead: 'all', priority: 'all', importStatus: 'all' })} style={{ background: 'transparent', color: '#F59E0B', border: '1px solid #FDE68A', borderRadius: 6, padding: '7px 12px', fontSize: 11, cursor: 'pointer', fontFamily: font, fontWeight: 600 }}>Clear</button>
+        {/* Requested By filter — unique names derived from plans */}
+        {(() => {
+          const names = Array.from(new Set(plans.map(p => p.requestedBy).filter(Boolean))).sort() as string[];
+          return names.length > 0 ? (
+            <select value={filter.requestedBy || 'all'} onChange={e => setFilter(pr => ({ ...pr, requestedBy: e.target.value }))} style={{ ...inp, width: 'auto', padding: '7px 12px', fontSize: 11, cursor: 'pointer' }}>
+              <option value="all">All Requestors</option>
+              {names.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          ) : null;
+        })()}
+        {/* Scope filter — unique scopes derived from plans */}
+        {(() => {
+          const scopes = Array.from(new Set(plans.map(p => p.scope).filter(Boolean))).sort() as string[];
+          return scopes.length > 0 ? (
+            <select value={filter.scope || 'all'} onChange={e => setFilter(pr => ({ ...pr, scope: e.target.value }))} style={{ ...inp, width: 'auto', padding: '7px 12px', fontSize: 11, cursor: 'pointer' }}>
+              <option value="all">All Scopes</option>
+              {scopes.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          ) : null;
+        })()}
+        {(filter.stage !== 'all' || filter.type !== 'all' || filter.lead !== 'all' || filter.priority !== 'all' || filter.importStatus !== 'all' || filter.requestedBy !== 'all' || filter.scope !== 'all') && (
+          <button onClick={() => setFilter({ stage: 'all', type: 'all', lead: 'all', priority: 'all', importStatus: 'all', requestedBy: 'all', scope: 'all' })} style={{ background: 'transparent', color: '#F59E0B', border: '1px solid #FDE68A', borderRadius: 6, padding: '7px 12px', fontSize: 11, cursor: 'pointer', fontFamily: font, fontWeight: 600 }}>Clear</button>
         )}
         {canExport && (
           <button onClick={exportToCSV} disabled={loading.export} style={{ background: 'var(--bg-surface)', color: '#64748B', border: '1px solid var(--border)', padding: '7px 12px', borderRadius: 6, fontSize: 11, cursor: loading.export ? 'not-allowed' : 'pointer', fontFamily: font, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, opacity: loading.export ? 0.7 : 1 }}>
@@ -483,8 +503,8 @@ function TableView({
                         return <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', fontFamily: monoFont, fontSize: 10, color: dl <= 0 ? '#DC2626' : dl <= 7 ? '#D97706' : '#64748B' }}>{plan.needByDate || '—'}</td>;
                       case 'wait':
                         return (
-                          <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', fontFamily: monoFont, fontWeight: 700, fontSize: 12, textAlign: 'center', color: COMPLETED_STAGES.includes(plan.stage) ? '#10B981' : (wd as number) > 20 ? '#DC2626' : (wd as number) > 10 ? '#D97706' : '#64748B' }}>
-                            {COMPLETED_STAGES.includes(plan.stage) ? '✓' : wd !== null ? `${wd}d` : '—'}
+                          <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', fontFamily: monoFont, fontWeight: 700, fontSize: 12, textAlign: 'center', color: APPROVED_STAGES.includes(plan.stage) ? '#10B981' : COMPLETED_STAGES.includes(plan.stage) ? '#94A3B8' : (wd as number) > 20 ? '#DC2626' : (wd as number) > 10 ? '#D97706' : '#64748B' }}>
+                            {APPROVED_STAGES.includes(plan.stage) ? '✓' : wd !== null ? `${wd}d` : '—'}
                           </td>
                         );
                       default:

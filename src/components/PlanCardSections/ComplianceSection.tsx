@@ -1,33 +1,71 @@
 import React, { useState, useEffect } from 'react';
 import {
-  PlanCompliance, NoiseVariance, DrivewayAddress, DrivewayNoticeStatus, DrivewayLetter,
-  UserRole,
+  PlanCompliance, NoiseVariance, DrivewayNoticeStatus,
+  DrivewayProperty, DrivewayLetter, DrivewayLetterStatus, DrivewayNoticeTrack, UserRole,
 } from '../../types';
 import { usePlanData, usePlanActions, usePlanPermissions } from '../PlanCardContext';
 import {
   detectComplianceTriggers, initializeComplianceTracks,
   pheProgress, cdProgress, overallComplianceProgress,
-  DRIVEWAY_STATUS_LABELS,
 } from '../../utils/compliance';
 import { generatePHEPacket } from '../../services/phePacketService';
 import { subscribeToVariances } from '../../services/varianceService';
 import { subscribeToDrivewayLetters } from '../../services/drivewayLetterService';
+import { subscribeToDrivewayProperties } from '../../services/drivewayPropertyService';
 import { useApp } from '../../hooks/useApp';
 import { VarianceLetterModal } from '../VarianceLetterModal';
-import { DrivewayNoticeModal } from '../DrivewayNoticeModal';
 import { SectionHeader } from './compliance/complianceShared';
 import { PHEPanel } from './compliance/PHEPanel';
 import { NVPanel } from './compliance/NVPanel';
 import { CDPanel } from './compliance/CDPanel';
 import { DrivewayNoticesPanel } from './compliance/DrivewayNoticesPanel';
 
-const DRIVEWAY_STATUS_COLORS: Record<string, string> = {
-  not_started: 'bg-slate-100 text-slate-500',
-  in_progress: 'bg-blue-100 text-blue-700',
-  sent:        'bg-amber-100 text-amber-700',
-  completed:   'bg-emerald-100 text-emerald-700',
-  na:          'bg-slate-50 text-slate-400',
-};
+// ── Derived driveway status ───────────────────────────────────────────────────
+// Computes the displayed status badge from actual letter states rather than a
+// manually-managed field. Only "N/A" remains as a manual override.
+
+function computeDrivewayStatus(
+  dn: DrivewayNoticeTrack,
+  libraryLetters: DrivewayLetter[]
+): { label: string; cls: string } {
+  if (dn.status === 'na') {
+    return { label: 'N/A', cls: 'bg-slate-100 text-slate-400 border border-slate-200' };
+  }
+
+  const addrs = dn.addresses ?? [];
+  if (addrs.length === 0) {
+    return { label: 'Not Started', cls: 'bg-slate-100 text-slate-500' };
+  }
+
+  const statuses: DrivewayLetterStatus[] = addrs.map(addr => {
+    if (addr.letterId) {
+      const lib = libraryLetters.find(l => l.id === addr.letterId);
+      if (lib) return lib.status;
+    }
+    return addr.letterStatus ?? 'not_drafted';
+  });
+
+  // Priority: all sent > metro revision > with metro > partially sent > approved > draft > not started
+  if (statuses.every(s => s === 'sent')) {
+    return { label: 'All Sent ✓', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200' };
+  }
+  if (statuses.some(s => s === 'metro_revision_requested')) {
+    return { label: 'Metro: Revise', cls: 'bg-orange-50 text-orange-700 border border-orange-200' };
+  }
+  if (statuses.some(s => s === 'submitted_to_metro')) {
+    return { label: 'With Metro', cls: 'bg-indigo-50 text-indigo-700 border border-indigo-200' };
+  }
+  if (statuses.some(s => s === 'sent')) {
+    return { label: 'Partially Sent', cls: 'bg-emerald-50 text-emerald-600 border border-emerald-100' };
+  }
+  if (statuses.some(s => s === 'approved')) {
+    return { label: 'Metro Approved', cls: 'bg-blue-50 text-blue-700 border border-blue-200' };
+  }
+  if (statuses.some(s => s === 'draft')) {
+    return { label: 'In Progress', cls: 'bg-amber-50 text-amber-700 border border-amber-200' };
+  }
+  return { label: 'Not Started', cls: 'bg-slate-100 text-slate-500' };
+}
 
 // ── Main ComplianceSection ────────────────────────────────────────────────────
 export const ComplianceSection: React.FC = React.memo(() => {
@@ -38,12 +76,14 @@ export const ComplianceSection: React.FC = React.memo(() => {
   const appConfig = firestoreData.appConfig;
   const [libraryVariances, setLibraryVariances] = useState<NoiseVariance[]>([]);
   const [libraryLetters, setLibraryLetters] = useState<DrivewayLetter[]>([]);
+  const [drivewayProperties, setDrivewayProperties] = useState<DrivewayProperty[]>([]);
   useEffect(() => subscribeToVariances(setLibraryVariances), []);
   useEffect(() => subscribeToDrivewayLetters(setLibraryLetters), []);
+  useEffect(() => subscribeToDrivewayProperties(setDrivewayProperties), []);
 
-  const canLink = currentUser?.role === UserRole.MOT
-    || currentUser?.role === UserRole.CR
-    || currentUser?.role === UserRole.ADMIN;
+  // SFTC engineers can update individual CD concurrence statuses and dates,
+  // but cannot change the overall track status or remove the track.
+  const canEditCD = canEditFields || currentUser?.role === UserRole.SFTC;
 
   const [expandedTrack, setExpandedTrack] = useState<string | null>(null);
   const [localCompliance, setLocalCompliance] = useState<PlanCompliance | null>(null);
@@ -51,7 +91,6 @@ export const ComplianceSection: React.FC = React.memo(() => {
   const [generatingPacket, setGeneratingPacket] = useState(false);
   const [removeConfirm, setRemoveConfirm] = useState<string | null>(null);
   const [letterModalOpen, setLetterModalOpen] = useState(false);
-  const [draftNoticeAddress, setDraftNoticeAddress] = useState<DrivewayAddress | null>(null);
 
   const triggers = detectComplianceTriggers(selectedPlan);
   const hasAnyTrigger = triggers.phe || triggers.noiseVariance || triggers.cdConcurrence || triggers.drivewayNotices;
@@ -76,7 +115,7 @@ export const ComplianceSection: React.FC = React.memo(() => {
   const removeTrack = (track: 'phe' | 'noiseVariance' | 'cdConcurrence' | 'drivewayNotices') => {
     const updated = { ...compliance, [track]: undefined };
     setLocalCompliance(updated);
-    updatePlanField(selectedPlan.id, 'compliance', updated);
+    updatePlanField(selectedPlan.id, 'compliance', updated, false); // false = bypass draft, write directly to Firestore
     setDirty(false);
     setRemoveConfirm(null);
     if (expandedTrack === track) setExpandedTrack(null);
@@ -221,7 +260,7 @@ export const ComplianceSection: React.FC = React.memo(() => {
             <div className="border-t border-blue-100">
               <CDPanel
                 cd={compliance.cdConcurrence}
-                canEdit={canEditFields}
+                canEdit={canEditCD}
                 onChange={c => updateCompliance({ cdConcurrence: c })}
               />
             </div>
@@ -253,21 +292,32 @@ export const ComplianceSection: React.FC = React.memo(() => {
             <span className="text-base">🏠</span>
             <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
               <span className="text-[12px] font-bold text-slate-800">Driveway Impact Notices</span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${DRIVEWAY_STATUS_COLORS[compliance.drivewayNotices.status] ?? 'bg-slate-100 text-slate-500'}`}>
-                {DRIVEWAY_STATUS_LABELS[compliance.drivewayNotices.status] ?? compliance.drivewayNotices.status}
-              </span>
+              {(() => {
+                const ds = computeDrivewayStatus(compliance.drivewayNotices, libraryLetters);
+                return (
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${ds.cls}`}>
+                    {ds.label}
+                  </span>
+                );
+              })()}
             </div>
+            {/* N/A is the only manual override — all other statuses are derived from letter states */}
             {canEditFields && (
-              <select
-                value={compliance.drivewayNotices.status}
-                onChange={e => { e.stopPropagation(); updateCompliance({ drivewayNotices: { ...compliance.drivewayNotices!, status: e.target.value as DrivewayNoticeStatus } }); }}
-                onClick={e => e.stopPropagation()}
-                className="text-[11px] border border-slate-200 rounded-md px-1.5 py-0.5 bg-white text-slate-600 outline-none focus:border-green-400"
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  const next: DrivewayNoticeStatus = compliance.drivewayNotices!.status === 'na' ? 'not_started' : 'na';
+                  updateCompliance({ drivewayNotices: { ...compliance.drivewayNotices!, status: next } });
+                }}
+                className={`text-[10px] font-semibold rounded px-2 py-0.5 border transition-colors ${
+                  compliance.drivewayNotices.status === 'na'
+                    ? 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200'
+                    : 'text-slate-400 border-slate-200 hover:text-slate-600 hover:border-slate-300'
+                }`}
+                title={compliance.drivewayNotices.status === 'na' ? 'Clear N/A — track is active' : 'Mark N/A — no notice required for this plan'}
               >
-                {Object.entries(DRIVEWAY_STATUS_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
-                ))}
-              </select>
+                {compliance.drivewayNotices.status === 'na' ? 'Clear N/A' : 'N/A'}
+              </button>
             )}
             <span className={`text-slate-400 text-xs transition-transform ${expandedTrack === 'driveway' ? 'rotate-180' : ''}`}>▾</span>
           </div>
@@ -276,12 +326,11 @@ export const ComplianceSection: React.FC = React.memo(() => {
               <DrivewayNoticesPanel
                 dn={compliance.drivewayNotices}
                 canEdit={canEditFields}
-                canLink={canLink}
                 onChange={d => updateCompliance({ drivewayNotices: d })}
                 plan={selectedPlan}
                 appConfig={appConfig}
-                onDraftNotice={addr => setDraftNoticeAddress(addr)}
-                libraryLetters={libraryLetters}
+                drivewayProperties={drivewayProperties}
+                currentUserEmail={currentUser?.email}
               />
             </div>
           )}
@@ -302,7 +351,7 @@ export const ComplianceSection: React.FC = React.memo(() => {
       )}
 
       {/* Save button */}
-      {dirty && canEditFields && (
+      {dirty && (canEditFields || canEditCD) && (
         <div className="flex justify-end pt-1">
           <button
             onClick={saveCompliance}
@@ -327,47 +376,6 @@ export const ComplianceSection: React.FC = React.memo(() => {
         />
       )}
 
-      {/* Driveway Notice Modal */}
-      {draftNoticeAddress && (
-        <DrivewayNoticeModal
-          plan={selectedPlan}
-          appConfig={appConfig}
-          address={draftNoticeAddress}
-          existingLetter={
-            draftNoticeAddress.letterId
-              ? libraryLetters.find(l => l.id === draftNoticeAddress.letterId) ?? null
-              : null
-          }
-          libraryLetters={libraryLetters}
-          currentUser={currentUser}
-          onClose={() => setDraftNoticeAddress(null)}
-          onLetterSaved={(letterId) => {
-            if (compliance.drivewayNotices) {
-              const letter = libraryLetters.find(l => l.id === letterId);
-              const updated = {
-                ...compliance.drivewayNotices,
-                addresses: compliance.drivewayNotices.addresses.map(a =>
-                  a.id === draftNoticeAddress.id
-                    ? { ...a, letterId, letterStatus: letter?.status ?? 'draft' }
-                    : a
-                ),
-              };
-              updateCompliance({ drivewayNotices: updated });
-            }
-          }}
-          onMarkSent={(id) => {
-            if (compliance.drivewayNotices) {
-              const updated = {
-                ...compliance.drivewayNotices,
-                addresses: compliance.drivewayNotices.addresses.map(a =>
-                  a.id === id ? { ...a, noticeSent: true, sentDate: new Date().toISOString().slice(0, 10) } : a
-                ),
-              };
-              updateCompliance({ drivewayNotices: updated });
-            }
-          }}
-        />
-      )}
     </div>
   );
 });

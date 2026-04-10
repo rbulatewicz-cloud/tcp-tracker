@@ -1,10 +1,10 @@
 import {
   collection, doc, addDoc, updateDoc, deleteDoc,
-  onSnapshot, query, orderBy, getDoc, setDoc,
+  onSnapshot, query, orderBy, getDoc, setDoc, arrayUnion, deleteField,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
-import { DrivewayLetter, DrivewayLetterStatus } from '../types';
+import { DrivewayLetter, DrivewayLetterStatus, MetroComment } from '../types';
 import { DrivewayNoticeFields } from './drivewayNoticeService';
 import { SEGMENT_STREETS } from '../constants';
 
@@ -56,10 +56,101 @@ export async function approveDrivewayLetter(id: string): Promise<void> {
   });
 }
 
-export async function markDrivewayLetterSent(id: string): Promise<void> {
+export async function markDrivewayLetterSent(id: string, dateStr?: string): Promise<void> {
+  const ts = dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : new Date().toISOString();
   await updateDoc(doc(db, COL, id), {
     status: 'sent' as DrivewayLetterStatus,
-    sentAt: new Date().toISOString(),
+    sentAt: ts,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+// ── Metro review workflow ─────────────────────────────────────────────────────
+
+export async function submitLetterToMetro(id: string, dateStr?: string): Promise<void> {
+  const ts = dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : new Date().toISOString();
+  await updateDoc(doc(db, COL, id), {
+    status: 'submitted_to_metro' as DrivewayLetterStatus,
+    metroSubmittedAt: ts,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function metroApproveLetter(id: string, dateStr?: string): Promise<void> {
+  const ts = dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : new Date().toISOString();
+  await updateDoc(doc(db, COL, id), {
+    status: 'approved' as DrivewayLetterStatus,
+    metroApprovedAt: ts,
+    approvedAt: ts,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function metroRequestRevision(
+  id: string,
+  commentText: string,
+  addedBy: string
+): Promise<void> {
+  const comment: MetroComment = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+    text: commentText,
+    addedAt: new Date().toISOString(),
+    addedBy,
+    isRevisionRequest: true,
+  };
+  await updateDoc(doc(db, COL, id), {
+    status: 'metro_revision_requested' as DrivewayLetterStatus,
+    metroRevisionCount: (await getDoc(doc(db, COL, id))).data()?.metroRevisionCount + 1 || 1,
+    metroComments: arrayUnion(comment),
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function resubmitLetterToMetro(id: string, dateStr?: string): Promise<void> {
+  const ts = dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : new Date().toISOString();
+  await updateDoc(doc(db, COL, id), {
+    status: 'submitted_to_metro' as DrivewayLetterStatus,
+    metroSubmittedAt: ts,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function revertDrivewayLetterStatus(
+  id: string,
+  toStatus: DrivewayLetterStatus
+): Promise<void> {
+  const clearFields: Record<string, unknown> = {
+    status: toStatus,
+    updatedAt: new Date().toISOString(),
+  };
+  // Clear forward-state timestamps when reverting back
+  if (toStatus === 'draft') {
+    clearFields.metroSubmittedAt = null;
+    clearFields.metroApprovedAt  = null;
+    clearFields.approvedAt       = null;
+  } else if (toStatus === 'submitted_to_metro') {
+    clearFields.metroApprovedAt = null;
+    clearFields.approvedAt      = null;
+    clearFields.metroSubmittedAt = new Date().toISOString();
+  } else if (toStatus === 'approved') {
+    clearFields.sentAt = null;
+  }
+  await updateDoc(doc(db, COL, id), clearFields);
+}
+
+export async function addMetroComment(
+  id: string,
+  text: string,
+  addedBy: string
+): Promise<void> {
+  const comment: MetroComment = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+    text,
+    addedAt: new Date().toISOString(),
+    addedBy,
+  };
+  await updateDoc(doc(db, COL, id), {
+    metroComments: arrayUnion(comment),
     updatedAt: new Date().toISOString(),
   });
 }
@@ -165,7 +256,8 @@ ${segRef}
 Return this exact JSON structure:
 {
   "letterDate": "YYYY-MM-DD, or empty string if not found",
-  "recipientAddress": "Full property address of the letter recipient",
+  "recipientAddress": "Mailing address of the letter recipient — who the letter is physically sent to (may be a property management company at a different address than the impacted driveway)",
+  "drivewayImpactAddress": "The specific driveway or property address that will be physically impacted/blocked. Look in the body of the letter for phrases like 'your driveway at [ADDRESS]' or 'the property at [ADDRESS]'. If only one address appears, use it for both this field and recipientAddress.",
   "recipientName": "Recipient name, or empty string if not found",
   "street1": "Primary work location street",
   "street2": "Cross street or empty string",
@@ -215,28 +307,33 @@ Important: set remainingDrivewayOpen to true only if the letter explicitly state
     const extracted = JSON.parse(jsonMatch[0]);
 
     const fields: DrivewayNoticeFields = {
-      letterDate:           extracted.letterDate || '',
-      recipientAddress:     extracted.recipientAddress || '',
-      recipientName:        extracted.recipientName || '',
-      street1:              extracted.street1 || '',
-      street2:              extracted.street2 || '',
-      segment:              extracted.segment || '',
-      workDates:            extracted.workDates || '',
-      workHoursDescription: extracted.workHoursDescription || '',
-      projectName:          extracted.projectName || '',
-      businessName:         extracted.businessName || '',
-      contactName:          extracted.contactName || '',
-      contactTitle:         extracted.contactTitle || '',
-      contactPhone:         extracted.contactPhone || '',
-      contactEmail:         extracted.contactEmail || '',
+      letterDate:            extracted.letterDate || '',
+      recipientAddress:      extracted.recipientAddress || '',
+      drivewayImpactAddress: extracted.drivewayImpactAddress || extracted.recipientAddress || '',
+      recipientName:         extracted.recipientName || '',
+      street1:               extracted.street1 || '',
+      street2:               extracted.street2 || '',
+      segment:               extracted.segment || '',
+      workDates:             extracted.workDates || '',
+      workHoursDescription:  extracted.workHoursDescription || '',
+      projectName:           extracted.projectName || '',
+      businessName:          extracted.businessName || '',
+      contactName:           extracted.contactName || '',
+      contactTitle:          extracted.contactTitle || '',
+      contactPhone:          extracted.contactPhone || '',
+      contactEmail:          extracted.contactEmail || '',
       remainingDrivewayOpen: extracted.remainingDrivewayOpen === true,
-      bodyParagraph:        extracted.bodyParagraph || '',
-      bodyParagraphEs:      extracted.bodyParagraphEs || '',
+      bodyParagraph:         extracted.bodyParagraph || '',
+      bodyParagraphEs:       extracted.bodyParagraphEs || '',
     };
+
+    // letter.address = impacted driveway address (not mailing address)
+    const impactAddress = fields.drivewayImpactAddress || fields.recipientAddress || 'Unknown address';
 
     await updateDoc(doc(db, COL, id), {
       fields,
-      address: fields.recipientAddress || 'Unknown address',
+      address: impactAddress,
+      ownerName: fields.recipientName || '',
       segment: fields.segment || '',
       scanStatus: 'needs_review',
     });
@@ -251,8 +348,27 @@ Important: set remainingDrivewayOpen to true only if the letter explicitly state
 }
 
 export async function retryDrivewayLetterScan(id: string, file: File): Promise<void> {
-  await updateDoc(doc(db, COL, id), { scanStatus: 'scanning', scanError: undefined });
+  await updateDoc(doc(db, COL, id), { scanStatus: 'scanning', scanError: deleteField() });
   scanDrivewayLetterWithGemini(id, file).catch(err => console.error('Retry scan error:', err));
+}
+
+/**
+ * Re-run AI extraction on a previously confirmed letter using its stored PDF URL.
+ * No file re-upload needed — fetches from Firebase Storage and rescans.
+ * Puts the letter back into needs_review so the user can confirm the updated fields.
+ */
+export async function rescanDrivewayLetterFromUrl(id: string, letterUrl: string): Promise<void> {
+  await updateDoc(doc(db, COL, id), { scanStatus: 'scanning', scanError: deleteField() });
+  try {
+    const response = await fetch(letterUrl);
+    if (!response.ok) throw new Error(`Failed to fetch PDF (${response.status})`);
+    const blob = await response.blob();
+    const file = new File([blob], 'letter.pdf', { type: 'application/pdf' });
+    scanDrivewayLetterWithGemini(id, file).catch(err => console.error('Rescan error:', err));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await updateDoc(doc(db, COL, id), { scanStatus: 'error', scanError: `Could not fetch stored PDF: ${message}` });
+  }
 }
 
 // ── Exhibit 1 image upload ────────────────────────────────────────────────────
@@ -301,8 +417,9 @@ export function pickCorpusExamples(
   segment: string,
   limit = 3
 ): DrivewayNoticeFields[] {
+  const MATURE_STATUSES: DrivewayLetterStatus[] = ['submitted_to_metro', 'metro_revision_requested', 'approved', 'sent'];
   return allLetters
-    .filter(l => (l.status === 'approved' || l.status === 'sent') && l.segment === segment)
+    .filter(l => MATURE_STATUSES.includes(l.status) && l.segment === segment)
     .slice(0, limit)
     .map(l => l.fields);
 }

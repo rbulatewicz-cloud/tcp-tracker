@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutGrid, Ticket, MapPin, Calendar as CalendarIcon, Users, BarChart3, FileText, Menu, X, ShieldCheck, HelpCircle, FileWarning, BookOpen } from 'lucide-react';
+import { LayoutGrid, Ticket, MapPin, Calendar as CalendarIcon, Users, BarChart3, FileText, Menu, X, ShieldCheck, HelpCircle, FileWarning, BookOpen, MessageCircle } from 'lucide-react';
 import { NavTab } from './NavTab';
 import { User, AppConfig, AppNotification } from '../types';
 import { SearchInput } from '../features/search/SearchInput';
@@ -33,12 +33,14 @@ interface HeaderProps {
   isDark?: boolean;
   toggleDark?: () => void;
   onOpenProfile: (tab: 'profile' | 'notifications') => void;
+  onOpenMyRequests?: () => void;
   notifications: AppNotification[];
   unreadCount: number;
   markRead: UseNotificationsResult['markRead'];
   markAllRead: UseNotificationsResult['markAllRead'];
   notifOpen: boolean;
   setNotifOpen: (open: boolean) => void;
+  onNotifNavigate: (n: AppNotification) => void;
 }
 
 const HeaderComponent: React.FC<HeaderProps> = ({
@@ -48,8 +50,8 @@ const HeaderComponent: React.FC<HeaderProps> = ({
   handleLogout,
   setShowLogin,
   canViewTickets, canViewMetrics, canViewLogs, canManageUsers, canManageApp, canViewCompliance, canCreateRequest, canRequestAppChange,
-  onOpenHelp, setShowForm, setShowAppRequestModal, setShowAppRequestSidebar, appConfig, isDark, toggleDark, onOpenProfile,
-  notifications, unreadCount, markRead, markAllRead, notifOpen, setNotifOpen,
+  onOpenHelp, setShowForm, setShowAppRequestModal, setShowAppRequestSidebar, appConfig, isDark, toggleDark, onOpenProfile, onOpenMyRequests,
+  notifications, unreadCount, markRead, markAllRead, notifOpen, setNotifOpen, onNotifNavigate,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -125,10 +127,11 @@ const HeaderComponent: React.FC<HeaderProps> = ({
               markAllRead={markAllRead}
               open={notifOpen}
               setOpen={setNotifOpen}
+              onNavigate={onNotifNavigate}
             />
           )}
 
-          <NewRequestButton canCreateRequest={canCreateRequest} onClick={() => setShowForm(true)} />
+<NewRequestButton canCreateRequest={canCreateRequest} onClick={() => setShowForm(true)} />
 
           <UserProfile
             currentUser={currentUser}

@@ -66,6 +66,22 @@ export interface AppConfig {
     leads?: string[];
     planTypes?: string[];
   };
+  // Driveway letter workflow settings
+  driveway_metroSLADays?: number;    // flag overdue in Metro's court (default 5)
+  driveway_metroWarnDays?: number;   // amber warning before SLA breached (default 3)
+  driveway_leadTimeDays?: number;    // required lead time before work start (default 10)
+  driveway_reissueDays?: number;     // date-shift threshold for reissue decision (default 5)
+
+  // ── Driveway Letter Pre-fill ──────────────────────────────────────────────
+  // Auto-populates the Draft Letter modal in the CR Queue.
+  // The contact here is typically the Metro CR rep, not the contractor.
+  driveway_projectName?: string;       // e.g. "East San Fernando Light Rail Transit"
+  driveway_businessName?: string;      // e.g. "Metro" or contractor company name
+  driveway_contactName?: string;       // CR contact residents should reach (e.g. "Alex Rodriguez")
+  driveway_contactTitle?: string;      // e.g. "Community Relations Manager"
+  driveway_contactPhone?: string;      // Direct phone for CR contact
+  driveway_contactEmail?: string;      // Email for CR contact
+  driveway_defaultWorkHours?: string;  // e.g. "nighttime hours (9:00 PM to 6:00 AM), Mon–Fri"
 }
 
 // ── Compliance Track types ────────────────────────────────────────────────────
@@ -151,7 +167,26 @@ export interface CDConcurrenceTrack {
   notes?: string;
 }
 
-export type DrivewayLetterStatus = 'not_drafted' | 'draft' | 'approved' | 'sent';
+export type DrivewayLetterStatus =
+  | 'not_drafted'
+  | 'draft'
+  | 'submitted_to_metro'
+  | 'metro_revision_requested'
+  | 'approved'
+  | 'sent';
+
+export interface DrivewayProperty {
+  id: string;
+  address: string;
+  ownerName?: string;
+  ownerPhone?: string;
+  ownerEmail?: string;
+  segment?: string;
+  notes?: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt?: string;
+}
 
 export interface DrivewayAddress {
   id: string;
@@ -162,6 +197,11 @@ export interface DrivewayAddress {
   // Letter lifecycle
   letterStatus?: DrivewayLetterStatus;
   letterId?: string;           // ID of the corresponding DrivewayLetter in the library
+  propertyId?: string;         // ID of the corresponding DrivewayProperty in the properties collection
+  // Date-shift tracking — snapshotted when notice is marked sent
+  sentWindowStart?: string;    // plan's implementation window start at time of sending
+  sentWindowEnd?: string;      // plan's implementation window end at time of sending
+  dateShiftDismissed?: boolean; // true = CR dismissed the reissue warning
 }
 
 // ── Driveway Letter Library ───────────────────────────────────────────────────
@@ -172,6 +212,7 @@ export interface DrivewayLetter {
   addressId: string;           // links back to DrivewayAddress on the plan
   address: string;             // denormalized for Library display
   ownerName?: string;
+  propertyId?: string;         // ID of the corresponding DrivewayProperty
   segment: string;
   status: DrivewayLetterStatus;
   source?: 'drafted' | 'uploaded';  // how it entered the library
@@ -183,12 +224,26 @@ export interface DrivewayLetter {
   // scanning → needs_review (AI done, user hasn't confirmed) → complete (confirmed) | error
   scanStatus?: 'scanning' | 'needs_review' | 'complete' | 'error';
   scanError?: string;
+  // Metro review tracking
+  metroSubmittedAt?: string;       // ISO — when submitted to Metro for review
+  metroApprovedAt?: string;        // ISO — when Metro approved the letter
+  metroRevisionCount?: number;     // how many times Metro has requested revisions
+  metroComments?: MetroComment[];  // Metro feedback thread
+
   // Audit
   createdAt: string;
   createdBy: string;
   updatedAt?: string;
   approvedAt?: string;
   sentAt?: string;
+}
+
+export interface MetroComment {
+  id: string;
+  text: string;
+  addedAt: string;
+  addedBy: string;
+  isRevisionRequest?: boolean;  // true = added as part of a "revision needed" action
 }
 
 export type DrivewayNoticeStatus = 'not_started' | 'in_progress' | 'sent' | 'completed' | 'na';
@@ -271,15 +326,23 @@ export enum UserRole {
 }
 
 // ── Notification / profile types ─────────────────────────────────────────────
-export type NotifyEvent = 'status_change' | 'comment' | 'doc_uploaded' | 'window_expiring' | 'dot_comments' | 'plan_approved' | 'plan_expired' | 'nv_expiring';
+export type NotifyEvent = 'status_change' | 'comment' | 'doc_uploaded' | 'window_expiring' | 'dot_comments' | 'plan_approved' | 'plan_expired' | 'nv_expiring' | 'feedback_updated' | 'feedback_comment';
+
+export interface FeedbackComment {
+  id: string;
+  authorEmail: string;
+  authorName: string;
+  text: string;
+  createdAt: string;
+}
 
 export interface AppNotification {
   id: string;
   userId: string;          // email of recipient
   type: NotifyEvent;
-  planId: string;
-  planLoc: string;         // e.g. "LOC-366"
-  location: string;        // street1 + street2
+  planId?: string;
+  planLoc?: string;        // e.g. "LOC-366" (absent for non-plan notifications)
+  location?: string;       // street1 + street2 (absent for non-plan notifications)
   title: string;           // short headline
   body: string;            // detail line
   read: boolean;
@@ -346,11 +409,26 @@ export interface FilterState {
   lead: string;
   priority: string;
   importStatus: string;
+  requestedBy: string;
+  scope: string;
 }
 
 export interface SortConfig {
   key: string;
   direction: 'asc' | 'desc';
+}
+
+export interface PDFExportOptions {
+  includeMetadata: boolean;
+  includeScopeNotes: boolean;
+  includeWorkHours: boolean;
+  includeImpacts: boolean;
+  includeCompliance: boolean;
+  includeActivityLog: boolean;
+  includedTCPUrls: string[];
+  includedLOCUrls: string[];
+  includeNoiseVariance: boolean;
+  includedStageAttachmentUrls: string[];
 }
 
 export interface ColumnDef {
@@ -436,6 +514,8 @@ export interface PlanForm {
   impact_transit: boolean;
   work_hours?: WorkHours;
   phe_justification?: string;   // "Why is peak hour work required?" — captured at request time
+  planDurationDays?: number;    // how many days the work window lasts; end = needByDate + planDurationDays
+  driveway_addresses?: Array<{ address: string; propertyId?: string }>;
   attachments: File[];
   approvedTCPs: PlanDocument[];
   approvedLOCs: PlanDocument[];
@@ -487,6 +567,7 @@ export interface Plan {
   lead: string;
   priority: string;
   needByDate: string;
+  planDurationDays?: number;    // how many days the work window lasts; end = needByDate + planDurationDays
   notes: string;
 
   // Directions
@@ -536,6 +617,7 @@ export interface Plan {
   }[];
   reviewCycles?: ReviewCycle[];
   implementationWindow?: ImplementationWindow | null;
+  softImplementationWindow?: { startDate: string; endDate: string; notes?: string } | null;
 
   // Hours of work
   work_hours?: WorkHours;

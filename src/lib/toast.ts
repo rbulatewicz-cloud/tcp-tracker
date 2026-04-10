@@ -1,4 +1,4 @@
-export type ToastType = 'success' | 'error' | 'info' | 'warning';
+export type ToastType = 'success' | 'error' | 'info' | 'warning' | 'loading';
 
 export interface ToastItem {
   id: number;
@@ -24,6 +24,14 @@ export function showToast(message: string, type: ToastType = 'info') {
     _toasts = _toasts.filter(t => t.id !== id);
     _notify();
   }, 4500);
+}
+
+/** Show a toast that stays until manually dismissed. Returns the id for dismissal. */
+export function showPersistentToast(message: string, type: ToastType = 'loading'): number {
+  const id = _nextId++;
+  _toasts = [..._toasts, { id, message, type }];
+  _notify();
+  return id;
 }
 
 export function dismissToast(id: number) {

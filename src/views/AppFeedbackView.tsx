@@ -1,8 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { db } from '../firebase';
-import { doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { doc, deleteDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { MessageCircle, Send, ChevronDown, ChevronUp } from 'lucide-react';
 import { TodoSidebar } from '../components/TodoSidebar';
 import { MONO_FONT as monoFont } from '../constants';
+import { writeFeedbackNotification, writeFeedbackCommentNotification } from '../services/notificationService';
+import { FeedbackComment } from '../types';
+import { showToast } from '../lib/toast';
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
 
 interface AppFeedbackViewProps {
   appRequests: any[];
@@ -18,6 +32,8 @@ interface AppFeedbackViewProps {
   todoCompletedExpanded: boolean;
   setTodoCompletedExpanded: (v: boolean) => void;
   setShowTodoSidebar: (v: boolean) => void;
+  currentUserEmail: string;
+  currentUserName: string;
 }
 
 export const AppFeedbackView: React.FC<AppFeedbackViewProps> = ({
@@ -34,7 +50,43 @@ export const AppFeedbackView: React.FC<AppFeedbackViewProps> = ({
   todoCompletedExpanded,
   setTodoCompletedExpanded,
   setShowTodoSidebar,
+  currentUserEmail,
+  currentUserName,
 }) => {
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [draftText, setDraftText] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState<string | null>(null);
+
+  const toggleComments = (id: string) =>
+    setExpandedComments(prev => ({ ...prev, [id]: !prev[id] }));
+
+  const handleSubmitComment = async (req: any) => {
+    const text = (draftText[req.id] || '').trim();
+    if (!text) return;
+    const comment: FeedbackComment = {
+      id: `${Date.now()}`,
+      authorEmail: currentUserEmail,
+      authorName: currentUserName,
+      text,
+      createdAt: new Date().toISOString(),
+    };
+    const existingWatchers: string[] = req.watchers || (req.userEmail ? [req.userEmail] : []);
+    const newWatchers = [...new Set([...existingWatchers, currentUserEmail])];
+    setSubmitting(req.id);
+    try {
+      await updateDoc(doc(db, 'app_feedback', req.id), {
+        comments: arrayUnion(comment),
+        watchers: newWatchers,
+      });
+      await writeFeedbackCommentNotification(newWatchers, currentUserEmail, currentUserName, req.id, text);
+      setDraftText(prev => ({ ...prev, [req.id]: '' }));
+      setExpandedComments(prev => ({ ...prev, [req.id]: true }));
+    } catch {
+      showToast('Failed to post comment.', 'error');
+    } finally {
+      setSubmitting(null);
+    }
+  };
   const filteredRequests = appRequests.filter(r =>
     r.status === appRequestTab &&
     (!searchQuery ||
@@ -181,10 +233,78 @@ export const AppFeedbackView: React.FC<AppFeedbackViewProps> = ({
                   </div>
                 )}
 
-                <div style={{ marginTop: "auto", paddingTop: 20, borderTop: "1px solid #F1F5F9", display: "flex", gap: 12 }}>
+                {/* Comment thread */}
+                {(() => {
+                  const comments: FeedbackComment[] = req.comments || [];
+                  const isOpen = expandedComments[req.id] ?? false;
+                  return (
+                    <div style={{ borderTop: "1px solid #F1F5F9" }}>
+                      <button
+                        onClick={() => toggleComments(req.id)}
+                        style={{ width: "100%", padding: "8px 0", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11, fontWeight: 700, color: "#64748B" }}
+                      >
+                        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <MessageCircle size={12} />
+                          {comments.length > 0 ? `${comments.length} comment${comments.length !== 1 ? 's' : ''}` : 'Add a comment'}
+                        </span>
+                        {isOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      </button>
+                      {isOpen && (
+                        <div style={{ paddingBottom: 12 }}>
+                          {comments.length > 0 && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+                              {[...comments].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).map(c => {
+                                const isMe = c.authorEmail === currentUserEmail;
+                                return (
+                                  <div key={c.id} style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start" }}>
+                                    <div style={{ fontSize: 9, color: "#94A3B8", marginBottom: 2, fontWeight: 600 }}>
+                                      {isMe ? 'You' : c.authorName} · {timeAgo(c.createdAt)}
+                                    </div>
+                                    <div style={{ maxWidth: "85%", padding: "7px 10px", borderRadius: 10, background: isMe ? "#6366F1" : "#F8FAFC", border: isMe ? "none" : "1px solid #E2E8F0", color: isMe ? "#fff" : "#334155", fontSize: 12, lineHeight: 1.5 }}>
+                                      {c.text}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                          <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                            <textarea
+                              value={draftText[req.id] || ''}
+                              onChange={e => setDraftText(prev => ({ ...prev, [req.id]: e.target.value }))}
+                              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmitComment(req); } }}
+                              placeholder="Reply… (Enter to send, Shift+Enter for new line)"
+                              rows={2}
+                              style={{ flex: 1, fontSize: 12, padding: "8px 10px", border: "1px solid #E2E8F0", borderRadius: 8, background: "#fff", color: "#334155", resize: "none", outline: "none", fontFamily: "inherit" }}
+                            />
+                            <button
+                              onClick={() => handleSubmitComment(req)}
+                              disabled={!draftText[req.id]?.trim() || submitting === req.id}
+                              style={{ background: "#6366F1", border: "none", borderRadius: 8, padding: "8px 10px", cursor: "pointer", color: "#fff", opacity: !draftText[req.id]?.trim() ? 0.4 : 1, flexShrink: 0 }}
+                            >
+                              <Send size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                <div style={{ paddingTop: 12, borderTop: "1px solid #F1F5F9", display: "flex", gap: 12 }}>
                   <button onClick={async () => {
+                    const newStatus = req.status === "pending" ? "completed" : "pending";
                     try {
-                      await updateDoc(doc(db, 'app_feedback', req.id), { status: req.status === "pending" ? "completed" : "pending" });
+                      await updateDoc(doc(db, 'app_feedback', req.id), { status: newStatus });
+                      if (req.userEmail) {
+                        await writeFeedbackNotification(
+                          req.userEmail,
+                          currentUserEmail,
+                          newStatus,
+                          req.id,
+                          req.description || '',
+                        );
+                      }
                     } catch (err) {
                       console.error("Update failed:", err);
                     }

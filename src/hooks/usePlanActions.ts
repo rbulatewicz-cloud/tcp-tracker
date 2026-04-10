@@ -54,6 +54,10 @@ export const usePlanActions = ({
     const plan = plansById.get(pid) ?? draftPlan;
     if (!plan) return;
     await updatePlanStage(plan, ns, date, getUserLabel, () => {}, STAGES, selectedPlan, setSelectedPlan, false, draftPlan, setDraftPlan, setIsDirty, reviewCycles, implementationWindow, onStageNotify, currentUser?.email);
+    // Sync draftPlan.stage after a successful write so that a subsequent saveDraft
+    // doesn't diff the old stage vs the new Firestore stage and revert the transition.
+    // (The usePlanManagement sync useEffect is skipped when isDirty=true.)
+    setDraftPlan(prev => prev?.id === pid ? { ...prev, stage: ns as Plan['stage'] } : prev);
   };
 
   const handleDOTCommentsRec = async (pid: string) => {
@@ -200,8 +204,16 @@ const deleteLogEntryHandler = async (pid: string, logEntryIndex: string) => {
     const originalPlan = plansById.get(draftPlan.id);
     if (!originalPlan) return;
 
+    // Fields managed exclusively by updateStage — never allow saveDraft to
+    // overwrite them. Without this exclusion, a dirty plan + stage transition
+    // would revert the stage: draftPlan still holds the old stage (isDirty
+    // prevents the sync useEffect from running), so the diff sees a "change"
+    // and writes the old stage back.
+    const STAGE_MANAGED_FIELDS = new Set(['stage', 'statusHistory', 'reviewCycles', 'implementationWindow']);
+
     const changes: Partial<Plan> = {};
     for (const key in draftPlan) {
+      if (STAGE_MANAGED_FIELDS.has(key)) continue;
       const dv = draftPlan[key as keyof Plan];
       const sv = originalPlan[key as keyof Plan];
       const changed =

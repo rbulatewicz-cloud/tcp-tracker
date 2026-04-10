@@ -36,6 +36,10 @@ const SummaryStatsBarComponent: React.FC<SummaryStatsBarProps> = ({
     { label: 'Overdue',       value: metrics.overdue, color: metrics.overdue > 0 ? '#DC2626' : '#10B981', tip: 'Active plans past their need-by date.' },
   ];
 
+  const atDotWaitEl = canSeeMetrics ? (
+    <SegmentedMetricBar total={metrics.atDotWaitMetric?.total ?? '—'} breakdown={metrics.atDotWaitMetric?.breakdown ?? []} monoFont={monoFont} />
+  ) : null;
+
   const turnaroundEl = canSeeMetrics ? (
     <SegmentedMetricBar total={metrics.turnaroundMetric?.total ?? '—'} breakdown={metrics.turnaroundMetric?.breakdown ?? []} monoFont={monoFont} />
   ) : null;
@@ -95,6 +99,14 @@ const SummaryStatsBarComponent: React.FC<SummaryStatsBarProps> = ({
             </div>
           </div>
         ))}
+        {canSeeMetrics && atDotWaitEl && (
+          <div style={{ flex: 1.5, borderLeft: '1px solid var(--border-subtle)', padding: '2px 12px' }}>
+            {atDotWaitEl}
+            <div style={{ fontSize: 9, fontWeight: 600, color: '#94A3B8', letterSpacing: 0.4, marginTop: 3, textTransform: 'uppercase', display: 'flex', alignItems: 'center' }}>
+              Avg Wait at DOT<InfoTooltip formula="Avg days plans currently at DOT have been waiting since submission, broken out by plan type." />
+            </div>
+          </div>
+        )}
         {canSeeMetrics && turnaroundEl && (
           <div style={{ flex: 1.5, borderLeft: '1px solid var(--border-subtle)', padding: '2px 12px' }}>
             {turnaroundEl}

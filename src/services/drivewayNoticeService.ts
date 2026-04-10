@@ -17,7 +17,8 @@ export interface DrivewayNoticeFields {
   segment: string;
   workDates: string;                // e.g. "April 1 – June 30, 2025"
   workHoursDescription: string;    // e.g. "nighttime hours (9:00 PM to 6:00 AM) Monday through Friday"
-  recipientAddress: string;        // affected property address
+  recipientAddress: string;        // mailing address (where the letter is sent — may be a property mgmt company)
+  drivewayImpactAddress?: string;  // actual impacted driveway address (may differ from recipientAddress)
   recipientName: string;           // "Resident/Business Owner" if unknown
   remainingDrivewayOpen?: boolean; // true = one driveway stays open (green in exhibit)
   // AI-generated body

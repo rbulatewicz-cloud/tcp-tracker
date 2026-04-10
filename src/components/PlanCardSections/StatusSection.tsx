@@ -24,7 +24,7 @@ function getStatusColor(statusKey: string): string {
 
 export const StatusSection: React.FC = React.memo(() => {
   const { selectedPlan } = usePlanData();
-  const { updateStage, batchUploadStageAttachments, addLogEntry, convertPlanType } = usePlanActions();
+  const { updateStage, updatePlanField, batchUploadStageAttachments, addLogEntry, convertPlanType, linkNewLOC } = usePlanActions();
   const { getLocalDateString } = usePlanUtils();
   const {
     canEditPlan,
@@ -46,6 +46,11 @@ export const StatusSection: React.FC = React.memo(() => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [transitionNotes, setTransitionNotes] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Post-approval implementation window editing
+  const [editingWindow, setEditingWindow] = useState(false);
+  const [editStart, setEditStart] = useState('');
+  const [editEnd, setEditEnd] = useState('');
   const autoExpiredRef = useRef<string | null>(null);
 
   // Convert plan type modal state
@@ -198,14 +203,24 @@ export const StatusSection: React.FC = React.memo(() => {
           pendingAction.defaultDocType
         );
       }
-    } catch (error) {
-      console.error('Failed to update stage:', error);
-      showToast('Failed to update status. Please try again.', 'error');
-    } finally {
-      setLoadingStage(null);
+
+      // When approving, also save to Approved Documents & Revisions so the
+      // user doesn't have to upload the same file twice.
+      if (pendingAction.nextStatus === 'plan_approved' && pendingFiles.length > 0) {
+        for (const file of pendingFiles) {
+          await linkNewLOC(selectedPlan.id, file);
+        }
+      }
+      // All done — close the modal
       setPendingAction(null);
       setPendingFiles([]);
       setTransitionNotes('');
+    } catch (error) {
+      console.error('Failed to update stage:', error);
+      showToast('Failed to update status. Please try again.', 'error');
+      // Do NOT close the modal on error — keep it open so the user can retry
+    } finally {
+      setLoadingStage(null);
     }
   };
 
@@ -279,6 +294,7 @@ export const StatusSection: React.FC = React.memo(() => {
       { key: 'loc_review', label: 'LOC Review Cycle', color: '#EF4444' },
       { key: 'resubmit_review', label: 'Resubmit Review Cycle', color: '#EF4444' },
       { key: 'expired', label: 'Expired', color: '#DC2626' },
+      { key: 'cancelled', label: 'Cancelled', color: '#94A3B8' },
     ];
     return (
       allStages.find(s => s.key === normalizedStage)?.label ??
@@ -446,21 +462,25 @@ export const StatusSection: React.FC = React.memo(() => {
                 </p>
                 <div className="flex gap-2 mb-3">
                   <div className="flex-1">
-                    <label className="block text-xs text-slate-500 mb-1">Start Date</label>
+                    <label className="block text-xs text-slate-500 mb-1">
+                      Start Date <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="date"
                       value={windowStart}
                       onChange={e => setWindowStart(e.target.value)}
-                      className="w-full rounded-lg border border-slate-200 p-2 text-sm"
+                      className={`w-full rounded-lg border p-2 text-sm ${!windowStart ? 'border-red-300 bg-red-50' : 'border-slate-200'}`}
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="block text-xs text-slate-500 mb-1">End Date</label>
+                    <label className="block text-xs text-slate-500 mb-1">
+                      End Date <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="date"
                       value={windowEnd}
                       onChange={e => setWindowEnd(e.target.value)}
-                      className="w-full rounded-lg border border-slate-200 p-2 text-sm"
+                      className={`w-full rounded-lg border p-2 text-sm ${!windowEnd ? 'border-red-300 bg-red-50' : 'border-slate-200'}`}
                     />
                   </div>
                 </div>
@@ -489,7 +509,7 @@ export const StatusSection: React.FC = React.memo(() => {
               </button>
               <button
                 onClick={handleConfirm}
-                disabled={!!loadingStage}
+                disabled={!!loadingStage || (!!pendingAction?.collectWindow && (!windowStart || !windowEnd))}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50 hover:bg-blue-700"
               >
                 {loadingStage ? 'Saving…' : pendingFiles.length > 0 ? `Confirm & Upload (${pendingFiles.length})` : 'Confirm'}
@@ -606,8 +626,8 @@ export const StatusSection: React.FC = React.memo(() => {
       {/* Current status + sub-label */}
       <div className="flex items-center gap-2 mb-3">
         <span className="text-[11px] font-bold text-slate-500 uppercase">Current:</span>
-        <span className={`text-[11px] font-bold ${normalizedStage === 'closed' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
-          {normalizedStage === 'closed' ? '⚰️ Closed Out' : currentStatusLabel}
+        <span className={`text-[11px] font-bold ${normalizedStage === 'closed' || normalizedStage === 'cancelled' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+          {normalizedStage === 'closed' ? '⚰️ Closed Out' : normalizedStage === 'cancelled' ? '✕ Cancelled' : currentStatusLabel}
         </span>
         {subLabel && (
           <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
@@ -619,7 +639,100 @@ export const StatusSection: React.FC = React.memo(() => {
             {selectedPlan.implementationWindow.startDate} → {selectedPlan.implementationWindow.endDate}
           </span>
         )}
+        {selectedPlan.implementationWindow && normalizedStage === 'plan_approved' && canChangeStatus && !editingWindow && (
+          <button
+            onClick={() => {
+              setEditStart(selectedPlan.implementationWindow!.startDate);
+              setEditEnd(selectedPlan.implementationWindow!.endDate);
+              setEditingWindow(true);
+            }}
+            className="text-[10px] font-semibold text-slate-400 hover:text-blue-600 transition-colors"
+            title="Edit implementation dates"
+          >
+            ✏ Edit dates
+          </button>
+        )}
+        {!selectedPlan.implementationWindow && selectedPlan.softImplementationWindow && (
+          <span className="text-[10px] text-slate-500 bg-slate-100 border border-dashed border-slate-300 px-2 py-0.5 rounded-full font-semibold">
+            ~ {selectedPlan.softImplementationWindow.startDate} → {selectedPlan.softImplementationWindow.endDate} (est.)
+          </span>
+        )}
       </div>
+
+      {/* Post-approval implementation window editor */}
+      {normalizedStage === 'plan_approved' && canChangeStatus && (
+        <>
+          {/* Warning banner when no dates set */}
+          {!selectedPlan.implementationWindow && !editingWindow && (
+            <div className="mb-3 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+              <span className="text-[11px] text-amber-700 font-semibold flex-1">
+                ⚠ No implementation dates set — add them so the team knows the work window.
+              </span>
+              <button
+                onClick={() => { setEditStart(''); setEditEnd(''); setEditingWindow(true); }}
+                className="flex-shrink-0 text-[11px] font-bold text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                + Set Dates
+              </button>
+            </div>
+          )}
+
+          {/* Inline date editor */}
+          {editingWindow && (
+            <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+              <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wide">Implementation Window</p>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-[10px] text-slate-500 mb-1">Start Date <span className="text-red-500">*</span></label>
+                  <input
+                    type="date"
+                    value={editStart}
+                    onChange={e => setEditStart(e.target.value)}
+                    className={`w-full rounded border px-2 py-1.5 text-[12px] outline-none focus:ring-1 focus:ring-emerald-400 ${
+                      !editStart ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'
+                    }`}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-[10px] text-slate-500 mb-1">End Date <span className="text-red-500">*</span></label>
+                  <input
+                    type="date"
+                    value={editEnd}
+                    onChange={e => setEditEnd(e.target.value)}
+                    className={`w-full rounded border px-2 py-1.5 text-[12px] outline-none focus:ring-1 focus:ring-emerald-400 ${
+                      !editEnd ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'
+                    }`}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={async () => {
+                    if (!editStart || !editEnd) { showToast('Both start and end dates are required.', 'warning'); return; }
+                    await updatePlanField(selectedPlan.id, 'implementationWindow', {
+                      startDate: editStart,
+                      endDate: editEnd,
+                      isExpired: false,
+                    });
+                    setEditingWindow(false);
+                    showToast('Implementation dates saved.', 'success');
+                  }}
+                  disabled={!editStart || !editEnd}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 transition-colors disabled:opacity-40"
+                >
+                  Save Dates
+                </button>
+                <button
+                  onClick={() => setEditingWindow(false)}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 text-[11px] text-slate-500 hover:text-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Next action buttons */}
       {canChangeStatus && nextActions.length > 0 && (
@@ -655,6 +768,19 @@ export const StatusSection: React.FC = React.memo(() => {
                   className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-slate-300 bg-slate-100 text-slate-500 hover:bg-slate-200 disabled:opacity-50"
                 >
                   {loadingStage === 'closed' ? '…' : '⚰️ Close Out Plan'}
+                </button>
+              </Tooltip>
+            )}
+
+            {/* Cancel Request — available for any active pre-terminal stage */}
+            {!['plan_approved', 'expired', 'closed', 'cancelled', 'tcp_approved_final'].includes(normalizedStage) && (
+              <Tooltip text="Cancel this request. The LOC record is preserved for audit purposes but removed from active views." position="top" maxWidth={280}>
+                <button
+                  onClick={() => handleActionClick({ label: '✕ Cancel Request', nextStatus: 'cancelled', description: 'This LOC is no longer needed. The record will be preserved but removed from active views.' })}
+                  disabled={!!loadingStage}
+                  className="px-3 py-1.5 rounded-lg text-[11px] font-bold border border-slate-200 bg-white text-slate-400 hover:bg-slate-50 hover:text-slate-500 disabled:opacity-50"
+                >
+                  {loadingStage === 'cancelled' ? '…' : '✕ Cancel Request'}
                 </button>
               </Tooltip>
             )}

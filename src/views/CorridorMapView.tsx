@@ -32,7 +32,7 @@ interface PillData {
 
 function buildPills(plans: Plan[], lane: 'nb' | 'sb'): PillData[] {
   const relevant = plans.filter(p => {
-    if (p.stage === 'closed') return false;
+    if (p.stage === 'closed' || p.stage === 'cancelled') return false;
     const hasNB = p.dir_nb;
     const hasSB = p.dir_sb;
     // Include in lane if: explicitly flagged, or no direction set at all (show both)

@@ -36,7 +36,8 @@ import VarianceLibraryView from './views/VarianceLibraryView';
 import CorridorMapView from './views/CorridorMapView';
 import ReferenceView from './views/ReferenceView';
 import { AppFeedbackView } from './views/AppFeedbackView';
-import { daysBetween, formatFileSize, calcMetrics } from './utils/plans';
+import { MyRequestsModal } from './views/MyRequestsModal';
+import { daysBetween, formatFileSize, calcMetrics, getLocalDateString } from './utils/plans';
 import { TodoSidebar } from './components/TodoSidebar';
 import { AppRequestSidebar } from './features/appRequests/AppRequestSidebar';
 import { ToastContainer } from './components/ToastContainer';
@@ -47,6 +48,7 @@ import {
   FONT as font, MONO_FONT as monoFont,
   MOT_FIELDS,
   COMPLETED_STAGES,
+  APPROVED_STAGES,
 } from './constants';
 
 import { useMasterFileImport } from './hooks/useMasterFileImport';
@@ -64,7 +66,6 @@ import { useNotifications } from './hooks/useNotifications';
 import { subscribeToVariances } from './services/varianceService';
 
 const TODAY = new Date();
-const getLocalDateString = () => new Date().toLocaleDateString('en-CA');
 const td = getLocalDateString();
 
 const inp: React.CSSProperties = { background: "var(--bg-surface-2)", color: "var(--text-secondary)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", fontSize: 13, fontFamily: font, width: "100%", boxSizing: "border-box", outline: "none" };
@@ -87,6 +88,7 @@ function AppContent() {
     showAppRequestModal, setShowAppRequestModal,
     showAppRequestSidebar, setShowAppRequestSidebar,
     showNeedByWarningModal, setShowNeedByWarningModal,
+    showMyRequests, setShowMyRequests,
     warningMessage, setWarningMessage,
     showTodoSidebar, setShowTodoSidebar,
     todoCompletedExpanded, setTodoCompletedExpanded,
@@ -222,6 +224,8 @@ function AppContent() {
     if(filter.priority!=="all"&&p.priority!==filter.priority) return false;
     if(filter.importStatus==="needs_review"&&p.importStatus!=="needs_review") return false;
     if(filter.importStatus==="tbd"&&p.locStatus!=="unassigned") return false;
+    if(filter.requestedBy!=="all"&&p.requestedBy!==filter.requestedBy) return false;
+    if(filter.scope!=="all"&&p.scope!==filter.scope) return false;
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -291,8 +295,8 @@ function AppContent() {
       aValue = PRIORITY_MAP[a.priority] || 0;
       bValue = PRIORITY_MAP[b.priority] || 0;
     } else if (key === "LOC #") {
-      aValue = parseInt(a.loc) || 0;
-      bValue = parseInt(b.loc) || 0;
+      aValue = parseFloat(String(a.loc ?? '').replace(/^LOC-/i, '')) || 0;
+      bValue = parseFloat(String(b.loc ?? '').replace(/^LOC-/i, '')) || 0;
     } else {
       aValue = a[dataKey] || "";
       bValue = b[dataKey] || "";
@@ -364,7 +368,7 @@ function AppContent() {
           : plan.submitDate && plan.approvedDate
             ? daysBetween(plan.submitDate, plan.approvedDate)
             : null;
-        const waitStr = COMPLETED_STAGES.includes(plan.stage) ? "Approved" : wd !== null ? `${wd}d` : "—";
+        const waitStr = APPROVED_STAGES.includes(plan.stage) ? "Approved" : wd !== null ? `${wd}d` : "—";
 
         // Compliance columns
         const pheStatus  = plan.compliance?.phe?.status ?? "—";
@@ -511,6 +515,21 @@ function AppContent() {
     }
   }, [role, view, canManageApp]);
 
+  // Notification click → navigate to the relevant item
+  const handleNotifNavigate = (n: import('./types').AppNotification) => {
+    if (n.planId) {
+      // Plan-based notification — open the plan card
+      const plan = plans.find(p => p.id === n.planId);
+      if (plan) {
+        setView('table');
+        setSelectedPlan(plan);
+      }
+    } else if (n.type === 'feedback_comment' || n.type === 'feedback_updated') {
+      // App request notification — go to the feedback view
+      if (canManageApp) setView('app_feedback');
+    }
+  };
+
   useEffect(() => {
     document.title = appConfig.pageTitle || appConfig.appName || 'TCP Tracker';
   }, [appConfig.pageTitle, appConfig.appName]);
@@ -566,12 +585,14 @@ function AppContent() {
         toggleDark={toggleDark}
         onOpenProfile={openProfile}
         onOpenHelp={() => setShowHelp(true)}
+        onOpenMyRequests={currentUser ? () => setShowMyRequests(true) : undefined}
         notifications={notifications}
         unreadCount={unreadCount}
         markRead={markRead}
         markAllRead={markAllRead}
         notifOpen={notifOpen}
         setNotifOpen={setNotifOpen}
+        onNotifNavigate={handleNotifNavigate}
       />
 
       {/* SUMMARY STATS BAR */}
@@ -620,6 +641,8 @@ function AppContent() {
             todoCompletedExpanded={todoCompletedExpanded}
             setTodoCompletedExpanded={setTodoCompletedExpanded}
             setShowTodoSidebar={setShowTodoSidebar}
+            currentUserEmail={currentUser?.email ?? ''}
+            currentUserName={currentUser?.displayName || currentUser?.email || ''}
           />
         )}
 
@@ -686,7 +709,7 @@ function AppContent() {
 
         {/* VARIANCE LIBRARY */}
         {view === "variances" && (
-          <VarianceLibraryView currentUser={currentUser} appConfig={appConfig} />
+          <VarianceLibraryView currentUser={currentUser} appConfig={appConfig} plans={plans} setSelectedPlan={setSelectedPlan} />
         )}
 
         {/* REFERENCE */}
@@ -812,6 +835,10 @@ function AppContent() {
       </div>
 
       {/* APP REQUEST MODAL */}
+      {showMyRequests && currentUser && (
+        <MyRequestsModal currentUser={currentUser} onClose={() => setShowMyRequests(false)} />
+      )}
+
       {showNeedByWarningModal && (
         <div style={{position:"fixed", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:2000}}>
           <div style={{background:"#fff", padding:24, borderRadius:12, width:400, boxShadow:"0 10px 25px rgba(0,0,0,0.2)"}}>

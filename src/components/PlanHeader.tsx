@@ -4,6 +4,7 @@ import { Plan } from '../types';
 import { showToast } from '../lib/toast';
 import { Tooltip } from './Tooltip';
 import { addPlanSubscriber, removePlanSubscriber } from '../services/notificationService';
+import { PDFExportModal } from './PDFExportModal';
 
 export const PlanHeader: React.FC = () => {
   const {
@@ -13,11 +14,13 @@ export const PlanHeader: React.FC = () => {
     UserRole,
     handleExportPlanToPDF,
     renewLoc,
+    libraryVariances,
   } = usePlanCard();
 
   const [confirmRenew, setConfirmRenew] = useState(false);
   const [renewing, setRenewing] = useState(false);
   const [togglingFollow, setTogglingFollow] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   const isFollowing = !!(currentUser?.email && selectedPlan.subscribers?.includes(currentUser.email));
 
@@ -188,7 +191,7 @@ export const PlanHeader: React.FC = () => {
           )}
           <Tooltip text="Download a PDF summary of this plan card." position="bottom">
             <button
-              onClick={() => handleExportPlanToPDF(selectedPlan)}
+              onClick={() => setShowExportModal(true)}
               className="text-[11px] px-3 py-1 border border-slate-300 rounded-md bg-white text-slate-700 font-bold hover:bg-slate-50"
             >
               Export PDF
@@ -196,6 +199,15 @@ export const PlanHeader: React.FC = () => {
           </Tooltip>
         </div>
       </div>
+
+      {showExportModal && (
+        <PDFExportModal
+          plan={selectedPlan}
+          libraryVariances={libraryVariances ?? []}
+          onGenerate={(opts) => handleExportPlanToPDF(selectedPlan, opts)}
+          onClose={() => setShowExportModal(false)}
+        />
+      )}
     </div>
   );
 };

@@ -1,7 +1,8 @@
-import React from 'react';
-import { usePlanData, usePlanUtils } from '../PlanCardContext';
+import React, { useState } from 'react';
+import { usePlanData, usePlanUtils, usePlanActions, usePlanPermissions } from '../PlanCardContext';
 import { getWorkflowType, getProgressBarStages, normalizeStatus } from '../../lib/statusMachine';
 import { CLOCK_TARGETS } from '../../constants';
+import { UserRole } from '../../types';
 
 // Map stage key → which clock phase it represents
 const STAGE_TO_PHASE: Record<string, string> = {
@@ -28,8 +29,45 @@ function clockColor(days: number, planType: string, phase: string): string {
 export const ProgressionHistory: React.FC = React.memo(() => {
   const { selectedPlan } = usePlanData();
   const { getLocalDateString, daysBetween } = usePlanUtils();
+  const { updatePlanField } = usePlanActions();
+  const { currentUser } = usePlanPermissions();
+
+  const [editingSoftWindow, setEditingSoftWindow] = useState(false);
+  const [draftStart, setDraftStart] = useState('');
+  const [draftEnd, setDraftEnd]     = useState('');
+  const [draftNotes, setDraftNotes] = useState('');
 
   if (!selectedPlan) return null;
+
+  const canEditSoftWindow =
+    currentUser?.role === UserRole.MOT ||
+    currentUser?.role === UserRole.ADMIN ||
+    currentUser?.role === UserRole.CR;
+
+  const softWin = selectedPlan.softImplementationWindow;
+  const hardWin = selectedPlan.implementationWindow;
+
+  function openSoftEdit() {
+    setDraftStart(softWin?.startDate ?? '');
+    setDraftEnd(softWin?.endDate ?? '');
+    setDraftNotes(softWin?.notes ?? '');
+    setEditingSoftWindow(true);
+  }
+
+  function saveSoftWindow() {
+    if (!draftStart || !draftEnd) return;
+    updatePlanField(selectedPlan!.id, 'softImplementationWindow', {
+      startDate: draftStart,
+      endDate:   draftEnd,
+      notes:     draftNotes.trim() || undefined,
+    });
+    setEditingSoftWindow(false);
+  }
+
+  function clearSoftWindow() {
+    updatePlanField(selectedPlan!.id, 'softImplementationWindow', null);
+    setEditingSoftWindow(false);
+  }
 
   const planType = selectedPlan.type || 'WATCH';
   const workflowType = getWorkflowType(planType);
@@ -221,24 +259,120 @@ export const ProgressionHistory: React.FC = React.memo(() => {
           );
         })}
 
-        {/* Implementation window */}
-        {selectedPlan.implementationWindow && (
+        {/* Soft (estimated) implementation window — editable, shown before hard window is set */}
+        {!hardWin && (softWin || canEditSoftWindow) && (
+          <div className="text-[11px] rounded-md border border-dashed border-slate-300 bg-slate-50 overflow-hidden">
+            {editingSoftWindow ? (
+              <div className="p-2 space-y-2">
+                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Estimated Implementation Window</div>
+                <div className="flex gap-2 flex-wrap">
+                  <div className="flex flex-col gap-0.5">
+                    <label className="text-[9px] text-slate-400 uppercase tracking-wide">Start</label>
+                    <input
+                      type="date"
+                      value={draftStart}
+                      onChange={e => setDraftStart(e.target.value)}
+                      className="border border-slate-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-400 bg-white"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <label className="text-[9px] text-slate-400 uppercase tracking-wide">End</label>
+                    <input
+                      type="date"
+                      value={draftEnd}
+                      onChange={e => setDraftEnd(e.target.value)}
+                      className="border border-slate-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-400 bg-white"
+                    />
+                  </div>
+                </div>
+                <input
+                  type="text"
+                  value={draftNotes}
+                  onChange={e => setDraftNotes(e.target.value)}
+                  placeholder="Optional note (e.g. pending DOT approval)"
+                  className="w-full border border-slate-200 rounded px-2 py-1 text-[11px] outline-none focus:border-blue-400 bg-white"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={saveSoftWindow}
+                    disabled={!draftStart || !draftEnd}
+                    className="px-3 py-1 rounded bg-blue-600 text-white text-[11px] font-semibold hover:bg-blue-700 disabled:opacity-40 transition-colors"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setEditingSoftWindow(false)}
+                    className="px-3 py-1 rounded border border-slate-200 text-[11px] text-slate-500 hover:text-slate-700 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  {softWin && (
+                    <button
+                      onClick={clearSoftWindow}
+                      className="ml-auto text-[10px] text-red-400 hover:text-red-600 transition-colors"
+                    >
+                      Remove estimate
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : softWin ? (
+              <div className="p-2">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <div className="w-2 h-2 rounded-full bg-slate-400 border border-dashed border-slate-500 flex-shrink-0" />
+                  <span className="font-bold text-slate-500">Estimated Window</span>
+                  <span className="text-[9px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full font-semibold">Planning</span>
+                  {canEditSoftWindow && (
+                    <button onClick={openSoftEdit} className="ml-auto text-[10px] text-slate-400 hover:text-blue-600 transition-colors">
+                      ✏ Edit
+                    </button>
+                  )}
+                </div>
+                <div className="pl-4 text-slate-600">
+                  {softWin.startDate} → {softWin.endDate}
+                </div>
+                {softWin.notes && (
+                  <div className="pl-4 text-slate-400 mt-0.5 italic">{softWin.notes}</div>
+                )}
+              </div>
+            ) : (
+              /* No soft window yet — show add button */
+              canEditSoftWindow && (
+                <button
+                  onClick={openSoftEdit}
+                  className="w-full px-3 py-2 text-[11px] text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors text-left"
+                >
+                  + Add estimated implementation window
+                </button>
+              )
+            )}
+          </div>
+        )}
+
+        {/* Hard (approved) implementation window */}
+        {hardWin && (
           <div className="text-[11px] p-2 bg-emerald-50 rounded-md border border-emerald-100">
             <div className="flex items-center gap-2 mb-1">
               <div className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
               <span className="font-bold text-emerald-700">Implementation Window</span>
-              {selectedPlan.implementationWindow.locRevision && (
+              {hardWin.locRevision && (
                 <span className="text-[9px] text-emerald-600 ml-1">
-                  ({selectedPlan.implementationWindow.locRevision})
+                  ({hardWin.locRevision})
                 </span>
               )}
             </div>
             <div className="pl-4 text-slate-600">
-              {selectedPlan.implementationWindow.startDate} → {selectedPlan.implementationWindow.endDate}
-              {selectedPlan.implementationWindow.isExpired && (
+              {hardWin.startDate} → {hardWin.endDate}
+              {hardWin.isExpired && (
                 <span className="ml-2 text-red-600 font-bold">(Expired)</span>
               )}
             </div>
+            {/* Show original estimate for reference if it differs */}
+            {softWin && (softWin.startDate !== hardWin.startDate || softWin.endDate !== hardWin.endDate) && (
+              <div className="pl-4 mt-1 text-[10px] text-slate-400 italic">
+                Planning estimate was: {softWin.startDate} → {softWin.endDate}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -99,7 +99,7 @@ export const batchUploadStageAttachments = async (
   documentType: import('../types').StageAttachment['documentType'],
   plan: Plan,
   currentUser: User | null,
-  setSelectedPlan: (plan: Plan | null) => void
+  setSelectedPlan: (planOrUpdater: Plan | null | ((prev: Plan | null) => Plan | null)) => void
 ): Promise<void> => {
   try {
     const uploads = await Promise.all(
@@ -121,11 +121,15 @@ export const batchUploadStageAttachments = async (
     );
     const updatedAttachments = [...(plan.stageAttachments || []), ...uploads];
 
-    // Auto-promote to Approved Documents based on document type
+    // Auto-promote to Approved Documents based on document type AND stage.
+    // Submissions to DOT (submitted_to_dot, dot_review, revision_package stages) are
+    // submittal packages — they must NOT be promoted to Approved Documents.
+    // Only promote when the stage confirms the drawing has actually been approved.
     const extraUpdates: Partial<Plan> = {};
+    const SUBMISSION_STAGES = new Set(['submitted_to_dot', 'dot_review', 'resubmit_review']);
 
     const tcpUploads = uploads.filter(u => u.documentType === 'tcp_drawings');
-    if (tcpUploads.length > 0) {
+    if (tcpUploads.length > 0 && !SUBMISSION_STAGES.has(stage)) {
       const existingTCPs = plan.approvedTCPs || [];
       const newTCPs = tcpUploads.map((u, i) => ({
         id: u.id,
@@ -164,7 +168,7 @@ export const batchUploadStageAttachments = async (
 
     const updatePayload = { stageAttachments: updatedAttachments, ...extraUpdates };
     await updateDoc(doc(db, 'plans', pid), updatePayload);
-    setSelectedPlan({ ...plan, ...updatePayload } as Plan);
+    setSelectedPlan(prev => (prev ? { ...prev, ...updatePayload } : { ...plan, ...updatePayload }) as Plan);
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `plans/${pid}`);
     throw error;

@@ -296,7 +296,7 @@ export const linkNewLOC = async (
   plan: Plan,
   getUserLabel: () => string,
   td: string,
-  setSelectedPlan: (plan: Plan | null) => void,
+  setSelectedPlan: (planOrUpdater: Plan | null | ((prev: Plan | null) => Plan | null)) => void,
   currentUser: User | null
 ) => {
   try {
@@ -315,8 +315,8 @@ export const linkNewLOC = async (
     };
 
     const newLOCs = [...(plan.approvedLOCs || []), newLOC];
-    const updateData = {
-      ...plan,
+    // Only write the fields that actually changed — never spread full plan into Firestore
+    const updatePayload: Partial<Plan> = {
       approvedLOCs: newLOCs,
       currentLOC: file.name,
       locRev: version,
@@ -325,8 +325,9 @@ export const linkNewLOC = async (
       log: [...(plan.log || []), { date: td, action: `Linked New LOC: ${file.name.replace(/^\d+_/, '')}`, user: getUserLabel() }]
     };
 
-    await updateDoc(doc(db, 'plans', pid), updateData);
-    setSelectedPlan({ ...plan, ...updateData } as Plan);
+    await updateDoc(doc(db, 'plans', pid), updatePayload);
+    // Use functional updater to merge with current state — avoids stale closure reverting stage
+    setSelectedPlan(prev => (prev ? { ...prev, ...updatePayload } : { ...plan, ...updatePayload }) as Plan);
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `plans/${pid}`);
     throw error;

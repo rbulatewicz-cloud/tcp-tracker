@@ -8,6 +8,7 @@ export const useUIState = () => {
   const [showAppRequestModal, setShowAppRequestModal] = useState(false);
   const [showAppRequestSidebar, setShowAppRequestSidebar] = useState(false);
   const [showNeedByWarningModal, setShowNeedByWarningModal] = useState(false);
+  const [showMyRequests, setShowMyRequests] = useState(false);
   const [warningMessage, setWarningMessage] = useState("");
   const [showTodoSidebar, setShowTodoSidebar] = useState(false);
   const [todoCompletedExpanded, setTodoCompletedExpanded] = useState(false);
@@ -36,6 +37,7 @@ export const useUIState = () => {
     showAppRequestModal, setShowAppRequestModal,
     showAppRequestSidebar, setShowAppRequestSidebar,
     showNeedByWarningModal, setShowNeedByWarningModal,
+    showMyRequests, setShowMyRequests,
     warningMessage, setWarningMessage,
     showTodoSidebar, setShowTodoSidebar,
     todoCompletedExpanded, setTodoCompletedExpanded,

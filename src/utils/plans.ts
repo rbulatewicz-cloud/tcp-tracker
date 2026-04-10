@@ -2,6 +2,14 @@ import { COMPLETED_STAGES, AT_DOT_STAGES } from '../constants';
 
 export const getLocalDateString = () => new Date().toLocaleDateString('en-CA');
 
+/** Format an ISO date string (YYYY-MM-DD or full ISO timestamp) to "Jan 1, 2024". Returns "—" for empty/invalid. */
+export function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  // Full ISO timestamp (contains 'T') → parse as-is; date-only string → force local midnight
+  const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
+  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export const getUserLabel = (currentUser: any) => {
   if (!currentUser) return "Guest";
   return `${currentUser.name} (${currentUser.role})`;
@@ -103,8 +111,27 @@ export const calcMetrics = (plans: any[], LEADS: string[], td: string, TODAY: Da
   const avgOverageStandard = approvedWithRequestStandard.length > 0 ? (approvedWithRequestStandard.reduce((s,p) => s + daysBetween(p.dateRequested || p.requestDate, p.approvedDate), 0) / approvedWithRequestStandard.length).toFixed(1) : "—";
   const avgOverageEngineered = approvedWithRequestEngineered.length > 0 ? (approvedWithRequestEngineered.reduce((s,p) => s + daysBetween(p.dateRequested || p.requestDate, p.approvedDate), 0) / approvedWithRequestEngineered.length).toFixed(1) : "—";
   
-  const avgWait = atDOT.filter(p=>p.submitDate).length > 0 ? (atDOT.filter(p=>p.submitDate).reduce((s,p) => s + daysBetween(p.submitDate, td), 0) / atDOT.filter(p=>p.submitDate).length).toFixed(1) : "—";
-  
+  const atDOTWithDate = atDOT.filter(p => p.submitDate);
+  const avgWait = atDOTWithDate.length > 0
+    ? (atDOTWithDate.reduce((s, p) => s + daysBetween(p.submitDate, td), 0) / atDOTWithDate.length).toFixed(1)
+    : "—";
+
+  const atDOTWatch      = atDOTWithDate.filter(p => p.type === 'WATCH');
+  const atDOTStandard   = atDOTWithDate.filter(p => p.type === 'Standard');
+  const atDOTEngineered = atDOTWithDate.filter(p => p.type === 'Engineered');
+  const avgWaitWatch      = atDOTWatch.length      > 0 ? (atDOTWatch.reduce((s, p)      => s + daysBetween(p.submitDate, td), 0) / atDOTWatch.length).toFixed(1)      : "—";
+  const avgWaitStandard   = atDOTStandard.length   > 0 ? (atDOTStandard.reduce((s, p)   => s + daysBetween(p.submitDate, td), 0) / atDOTStandard.length).toFixed(1)   : "—";
+  const avgWaitEngineered = atDOTEngineered.length > 0 ? (atDOTEngineered.reduce((s, p) => s + daysBetween(p.submitDate, td), 0) / atDOTEngineered.length).toFixed(1) : "—";
+
+  const atDotWaitMetric = {
+    total: avgWait,
+    breakdown: [
+      { type: 'W', value: avgWaitWatch,      color: '#3B82F6' },
+      { type: 'S', value: avgWaitStandard,   color: '#10B981' },
+      { type: 'E', value: avgWaitEngineered, color: '#F59E0B' },
+    ]
+  };
+
   const turnaroundMetric = {
     total: avgTurn,
     breakdown: [
@@ -136,5 +163,5 @@ export const calcMetrics = (plans: any[], LEADS: string[], td: string, TODAY: Da
 
   const leadLoad: any = {};
   LEADS.forEach(l => { const t = plans.filter(p=>p.lead===l).length; const pe = plans.filter(p=>p.lead===l&&!COMPLETED_STAGES.includes(p.stage)).length; if(t>0) leadLoad[l]={total:t,pending:pe}; });
-  return { total: plans.length, active: active.length, atDOT: atDOT.length, atRisk: atRisk.length, overdue: overdue.length, past20: past20.length, turnaroundMetric, overageMetric, avgWaiting: avgWait, avgDrafting, leadLoad };
+  return { total: plans.length, active: active.length, atDOT: atDOT.length, atRisk: atRisk.length, overdue: overdue.length, past20: past20.length, turnaroundMetric, overageMetric, atDotWaitMetric, avgWaiting: avgWait, avgDrafting, leadLoad };
 };

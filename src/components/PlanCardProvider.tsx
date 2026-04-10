@@ -1,6 +1,6 @@
 import React, { ReactNode } from 'react';
 import { PlanCardContext } from './PlanCardContextDef';
-import { Plan, UserRole, User } from '../types';
+import { Plan, UserRole, User, NoiseVariance, PDFExportOptions } from '../types';
 
 export interface PlanData {
   selectedPlan: Plan;
@@ -20,7 +20,7 @@ export interface PlanActions {
   discardDraft: () => void;
   updateStage: (pid: string, ns: string, date: string, reviewCycles?: import('../types').ReviewCycle[], implementationWindow?: import('../types').ImplementationWindow | null) => Promise<void>;
   handleDOTCommentsRec: (pid: string) => void;
-  handleExportPlanToPDF: (plan: Plan) => void;
+  handleExportPlanToPDF: (plan: Plan, options?: PDFExportOptions) => void;
   setStatusDate: (date: string) => void;
   addLogEntry: (pid: string, entry: string, attachments?: File[], field?: string, previousValue?: any, newValue?: any) => void;
   deleteLogEntry: (pid: string, logEntryUniqueId: string) => void;
@@ -57,6 +57,7 @@ export interface PlanUtils {
   getLocalDateString: () => string;
   getStageDurations: (plan: Plan, stages: any[], getLocalDateString: () => string) => any[];
   daysBetween: (start: string, end: string) => number;
+  libraryVariances: NoiseVariance[];
 }
 
 export interface PlanCardContextType {

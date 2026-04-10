@@ -10,7 +10,8 @@ import { formatFileSize } from '../utils/plans';
 import { usePermissions } from '../hooks/usePermissions';
 import { useApp } from '../hooks/useApp';
 import { getTurnaroundStats } from '../utils/planStats';
-import { User, ReportTemplate, LoadingState, PlanForm, WorkHours, UserRole } from '../types';
+import { User, ReportTemplate, LoadingState, PlanForm, WorkHours, UserRole, DrivewayProperty } from '../types';
+import { subscribeToDrivewayProperties } from '../services/drivewayPropertyService';
 
 // Workflow path info — updates live as plan type changes
 const WORKFLOW_INFO: Record<string, { label: string; color: string; steps: string; description: string }> = {
@@ -69,6 +70,8 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
   const { planTypes } = useAppLists();
   const { firestoreData } = useApp();
   const [validationErrors, setValidationErrors] = React.useState<string[]>([]);
+  const [properties, setProperties] = React.useState<DrivewayProperty[]>([]);
+  React.useEffect(() => subscribeToDrivewayProperties(setProperties), []);
 
   const turnaroundStats = React.useMemo(
     () => getTurnaroundStats(form.type, firestoreData.plans),
@@ -341,6 +344,10 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
             <ComplianceBanner
               form={form}
               onJustificationChange={val => update('phe_justification', val)}
+              properties={properties}
+              plans={firestoreData.plans}
+              drivewayAddresses={(form.driveway_addresses as Array<{ address: string; propertyId?: string }>) ?? []}
+              onDrivewayAddressesChange={addrs => update('driveway_addresses', addrs)}
             />
           </CollapsibleSection>
 

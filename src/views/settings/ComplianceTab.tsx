@@ -112,6 +112,74 @@ export const ComplianceTab: React.FC<ComplianceTabProps> = ({ form, setForm, sav
       </div>
     </div>
 
+    {/* ── Driveway Impact Letter Pre-fill ── */}
+    <div>
+      <h2 className="text-base font-bold text-slate-800 dark:text-slate-200 mb-1">Driveway Impact Letter Pre-fill</h2>
+      <p className="text-xs text-slate-500 dark:text-slate-400 mb-5">
+        These values auto-populate the <strong>Draft Letter</strong> modal in the CR Queue.
+        The contact here is typically your Metro CR representative — distinct from the PHE contractor contact.
+      </p>
+
+      <div className="space-y-4">
+        {/* Project + Business name */}
+        <div className="grid grid-cols-2 gap-4">
+          {[
+            { key: 'driveway_projectName',  label: 'Project Name' },
+            { key: 'driveway_businessName', label: 'Business / Organization Name' },
+          ].map(f => (
+            <div key={f.key}>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{f.label}</label>
+              <input
+                value={(form as any)[f.key] || ''}
+                onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 outline-none focus:border-blue-400"
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* CR Contact fields */}
+        <div className="rounded-xl border border-slate-200 dark:border-slate-600 p-4 space-y-4">
+          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">CR Contact (shown on letter)</p>
+          <div className="grid grid-cols-2 gap-4">
+            {[
+              { key: 'driveway_contactName',  label: 'Contact Name',  placeholder: 'e.g. Alex Rodriguez' },
+              { key: 'driveway_contactTitle', label: 'Contact Title', placeholder: 'e.g. Community Relations Manager' },
+              { key: 'driveway_contactPhone', label: 'Contact Phone', placeholder: 'e.g. (213) 555-0100' },
+              { key: 'driveway_contactEmail', label: 'Contact Email', placeholder: 'e.g. alex.rodriguez@metro.net' },
+            ].map(f => (
+              <div key={f.key}>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">{f.label}</label>
+                <input
+                  value={(form as any)[f.key] || ''}
+                  onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
+                  placeholder={f.placeholder}
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 outline-none focus:border-blue-400 placeholder:text-slate-300"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Default work hours */}
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+            Default Work Hours Description
+          </label>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-2">
+            Pre-fills the "Work Hours" field in every new draft letter. Edit per-letter as needed.
+          </p>
+          <textarea
+            value={form.driveway_defaultWorkHours || ''}
+            onChange={e => setForm(p => ({ ...p, driveway_defaultWorkHours: e.target.value }))}
+            rows={2}
+            placeholder="e.g. nighttime hours (9:00 PM to 6:00 AM), Monday through Friday, excluding holidays"
+            className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 outline-none focus:border-blue-400 resize-none placeholder:text-slate-300"
+          />
+        </div>
+      </div>
+    </div>
+
     <div className="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-700">
       <button
         onClick={handleSave}

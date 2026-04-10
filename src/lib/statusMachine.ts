@@ -207,6 +207,9 @@ export function getNextActions(stage: string, workflowType: PlanWorkflowType): N
     case 'closed':
       return []; // permanently closed — no further actions
 
+    case 'cancelled':
+      return []; // permanently cancelled — no further actions
+
     default:
       return [];
   }
@@ -241,6 +244,7 @@ export function getStatusSubLabel(stage: string, reviewCycles: { cycleType: stri
     return `Review Cycle #${cycleCount}`;
   }
   if (s === 'expired') return 'Expired';
+  if (s === 'cancelled') return 'Cancelled';
   return null;
 }
 

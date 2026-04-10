@@ -36,6 +36,7 @@ export const ALL_STAGES = [
   { key: "resubmit_review",   label: "Resubmit Review Cycle",  color: "#EF4444" },
   { key: "tcp_approved_final",label: "TCP Approved (Final)",   color: "#10B981" },
   { key: "closed",            label: "Closed Out",             color: "#64748B" },
+  { key: "cancelled",         label: "Cancelled",              color: "#94A3B8" },
   // Legacy aliases — existing plans use these keys
   { key: "submitted",         label: "Submitted to DOT",       color: "#F59E0B" },
   { key: "approved",          label: "Plan Approved",          color: "#10B981" },
@@ -69,7 +70,9 @@ export const LEGACY_STAGE_MAP: Record<string, string> = {
   approved:  "plan_approved",
 };
 
-export const COMPLETED_STAGES = ["approved", "implemented", "plan_approved", "tcp_approved_final"]; // tcp_approved_final kept for legacy data only
+export const COMPLETED_STAGES = ["approved", "implemented", "plan_approved", "tcp_approved_final", "expired", "closed", "cancelled"]; // terminal stages — stop the active/wait counter
+// Stages where the plan was genuinely approved (show ✓ in wait column)
+export const APPROVED_STAGES = ["approved", "implemented", "plan_approved", "tcp_approved_final"];
 export const AT_DOT_STAGES = ["submitted", "in_review", "submitted_to_dot", "dot_review"];
 
 // Clock targets (in calendar days) per plan type per phase
@@ -105,6 +108,10 @@ export const DEFAULT_APP_CONFIG = {
   atRiskDays: 14,
   overdueDays: 7,
   clockTargets: CLOCK_TARGETS,
+  driveway_metroSLADays:  5,
+  driveway_metroWarnDays: 3,
+  driveway_leadTimeDays:  10,
+  driveway_reissueDays:   5,
 };
 
 export const PLAN_TYPES = ["WATCH", "Standard", "Engineered"];

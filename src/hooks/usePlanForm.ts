@@ -28,6 +28,8 @@ const EMPTY_FORM: PlanForm = {
   impact_transit: false,
   work_hours: undefined,
   phe_justification: '',
+  planDurationDays: undefined,
+  driveway_addresses: [],
   attachments: [],
   approvedTCPs: [],
   approvedLOCs: [],

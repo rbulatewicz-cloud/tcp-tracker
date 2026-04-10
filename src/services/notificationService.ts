@@ -107,6 +107,64 @@ export async function writeNotification(
   }
 }
 
+/** Notify all watchers (except the commenter) when a new comment is posted on a feedback request. */
+export async function writeFeedbackCommentNotification(
+  watchers: string[],
+  actorEmail: string,
+  actorName: string,
+  requestId: string,
+  commentText: string,
+): Promise<void> {
+  const recipients = watchers.filter(w => w !== actorEmail);
+  if (recipients.length === 0) return;
+  const snippet = commentText.length > 80 ? commentText.slice(0, 80) + '…' : commentText;
+  const batch = writeBatch(db);
+  for (const email of recipients) {
+    const notif: Omit<AppNotification, 'id'> = {
+      userId: email,
+      type: 'feedback_comment',
+      title: `New comment on request ${requestId}`,
+      body: `${actorName}: ${snippet}`,
+      read: false,
+      createdAt: new Date().toISOString(),
+    };
+    batch.set(doc(collection(db, COL)), notif);
+  }
+  try {
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, COL);
+  }
+}
+
+/** Notify a feedback requester when an admin changes their request status. */
+export async function writeFeedbackNotification(
+  recipientEmail: string,
+  actorEmail: string,
+  newStatus: 'completed' | 'pending',
+  requestId: string,
+  description: string,
+): Promise<void> {
+  if (recipientEmail === actorEmail) return; // don't notify yourself
+  const title = newStatus === 'completed'
+    ? '✓ Your app request has been completed'
+    : 'Your app request has been reopened';
+  const snippet = description.length > 80 ? description.slice(0, 80) + '…' : description;
+  const notif: Omit<AppNotification, 'id'> = {
+    userId: recipientEmail,
+    type: 'feedback_updated',
+    title,
+    body: `${requestId} · ${snippet}`,
+    read: false,
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    await addDoc(collection(db, COL), notif);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, COL);
+  }
+}
+
 // ── Mark read ────────────────────────────────────────────────────────────────
 
 export async function markNotificationRead(notificationId: string): Promise<void> {

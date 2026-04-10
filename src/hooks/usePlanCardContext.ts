@@ -36,7 +36,7 @@ export const usePlanCardContext = (
       discardDraft,
       updateStage,
       handleDOTCommentsRec,
-      handleExportPlanToPDF: (plan: any) => import('../services/pdfService').then(service => service.exportPlanToPDF(plan, firestoreData.reportTemplate, STAGES, () => {}, libraryVariances)),
+      handleExportPlanToPDF: (plan: any, options?: import('../types').PDFExportOptions) => import('../services/pdfService').then(service => service.exportPlanToPDF(plan, firestoreData.reportTemplate, STAGES, () => {}, libraryVariances, options)),
       setStatusDate,
       addLogEntry,
       deleteLogEntry,
@@ -71,7 +71,8 @@ export const usePlanCardContext = (
       IMPACT_FIELDS,
       getLocalDateString,
       getStageDurations,
-      daysBetween
+      daysBetween,
+      libraryVariances,
     }
   }), [
     selectedPlan, isDirty, statusDate, handleClosePlanCard, deletePlan, updatePlanField, saveDraft, discardDraft, updateStage,

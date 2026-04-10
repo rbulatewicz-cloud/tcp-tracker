@@ -1,4 +1,4 @@
-import { collection, doc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 
 export const subscribeToPlans = (callback: (data: any[]) => void) => {
@@ -43,6 +43,15 @@ export const subscribeToUsers = (role: string, callback: (data: any[]) => void) 
     unsubPublic();
     if (unsubPrivate) unsubPrivate();
   };
+};
+
+/** Subscribe to only this user's submitted feedback requests (for "My Requests" modal). */
+export const subscribeToMyFeedback = (email: string, callback: (data: any[]) => void) => {
+  const q = query(collection(db, 'app_feedback'), where('userEmail', '==', email));
+  return onSnapshot(q, (snapshot) => {
+    const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+    callback(data.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+  }, (error) => handleFirestoreError(error, OperationType.LIST, 'app_feedback'));
 };
 
 export const subscribeToAppFeedback = (callback: (data: any[]) => void) => {

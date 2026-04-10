@@ -1,15 +1,12 @@
 import { jsPDF } from 'jspdf';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { showToast } from '../lib/toast';
-import type { NoiseVariance } from '../types';
+import { ref as storageRef, getBytes } from 'firebase/storage';
+import { storage, auth } from '../firebase';
+import { showToast, showPersistentToast, dismissToast } from '../lib/toast';
+import type { NoiseVariance, PDFExportOptions } from '../types';
+import { fmtDate } from '../utils/plans';
 
 // ── Formatting helpers ──────────────────────────────────────────────────────
-
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const d = new Date(iso + 'T00:00:00');
-  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
 
 function fmt12(time: string): string {
   const [h, m] = time.split(':').map(Number);
@@ -133,9 +130,11 @@ export const exportPlanToPDF = async (
   reportTemplate: any,
   STAGES: any[],
   setLoading: (loading: (prev: any) => any) => void,
-  libraryVariances?: NoiseVariance[]
+  libraryVariances?: NoiseVariance[],
+  options?: PDFExportOptions
 ) => {
   setLoading(prev => ({ ...prev, export: true }));
+  const toastId = showPersistentToast('Building PDF — fetching documents…');
   try {
     const doc = new jsPDF();
     const margin = 15;
@@ -233,12 +232,15 @@ export const exportPlanToPDF = async (
     const leftRows  = [['Plan Type', plan.type], ['Priority', plan.priority], ['Lead', plan.lead], ['Requested By', plan.requestedBy]];
     const rightRows = [['Requested', fmtDate(plan.dateRequested || plan.requestDate)], ['Need By', fmtDate(plan.needByDate)], ['Submitted', fmtDate(plan.submitDate)], ['Approved', fmtDate(plan.approvedDate)]];
 
-    const gridStartY = y;
-    leftRows.forEach(([l, v]) => { drawTitleInfoCell(l, v, col1x); y += 11; });
-    y = gridStartY;
-    rightRows.forEach(([l, v]) => { drawTitleInfoCell(l, v, col2x); y += 11; });
-
-    y += 8;
+    if (!options || options.includeMetadata) {
+      const gridStartY = y;
+      leftRows.forEach(([l, v]) => { drawTitleInfoCell(l, v, col1x); y += 11; });
+      y = gridStartY;
+      rightRows.forEach(([l, v]) => { drawTitleInfoCell(l, v, col2x); y += 11; });
+      y += 8;
+    } else {
+      y += 4;
+    }
 
     // Separator
     doc.setDrawColor(226, 232, 240);
@@ -311,15 +313,17 @@ export const exportPlanToPDF = async (
 
     drawSectionHeader(`PLAN SUMMARY — ${plan.loc || plan.id}`);
     drawMetaRow('Location', `${plan.street1}${plan.street2 ? ` / ${plan.street2}` : ''}`, 'Segment', plan.segment);
-    drawMetaRow('Plan Type', plan.type, 'Priority', plan.priority);
-    drawMetaRow('Lead', plan.lead, 'Requested By', plan.requestedBy);
-    drawMetaRow('Requested', fmtDate(plan.dateRequested || plan.requestDate), 'Need By', fmtDate(plan.needByDate));
-    drawMetaRow('Submitted', fmtDate(plan.submitDate), 'Approved', fmtDate(plan.approvedDate));
+    if (!options || options.includeMetadata) {
+      drawMetaRow('Plan Type', plan.type, 'Priority', plan.priority);
+      drawMetaRow('Lead', plan.lead, 'Requested By', plan.requestedBy);
+      drawMetaRow('Requested', fmtDate(plan.dateRequested || plan.requestDate), 'Need By', fmtDate(plan.needByDate));
+      drawMetaRow('Submitted', fmtDate(plan.submitDate), 'Approved', fmtDate(plan.approvedDate));
+    }
     drawMetaRow('Status', stage?.label || plan.stage || '—', 'Critical Path', plan.isCriticalPath ? 'Yes' : 'No');
     y += 4;
 
     // Scope & Notes
-    if (plan.scope || plan.notes) {
+    if ((!options || options.includeScopeNotes) && (plan.scope || plan.notes)) {
       drawSubHeader('SCOPE & NOTES');
       if (plan.scope) {
         checkPage(10);
@@ -351,7 +355,7 @@ export const exportPlanToPDF = async (
     }
 
     // Hours of Work
-    if (plan.work_hours) {
+    if ((!options || options.includeWorkHours) && plan.work_hours) {
       checkPage(16);
       drawSubHeader('HOURS OF WORK');
       doc.setFont('helvetica', 'normal');
@@ -369,7 +373,7 @@ export const exportPlanToPDF = async (
       plan.impact_busStop      && 'Bus Stop Affected',
       plan.impact_transit      && 'Transit Impact',
     ].filter(Boolean) as string[];
-    if (impacts.length > 0) {
+    if ((!options || options.includeImpacts) && impacts.length > 0) {
       checkPage(16);
       drawSubHeader('IMPACTS');
       doc.setFont('helvetica', 'normal');
@@ -384,7 +388,7 @@ export const exportPlanToPDF = async (
     const comp = plan.compliance;
     const hasCompliance = comp && (comp.phe || comp.noiseVariance || comp.cdConcurrence || comp.drivewayNotices);
 
-    if (hasCompliance) {
+    if ((!options || options.includeCompliance) && hasCompliance) {
       checkPage(20);
       y += 4;
       drawSectionHeader('COMPLIANCE SUMMARY');
@@ -470,6 +474,7 @@ export const exportPlanToPDF = async (
 
     // ── ACTIVITY LOG ───────────────────────────────────────────────────────
 
+    if (!options || options.includeActivityLog) {
     checkPage(20);
     y += 2;
     drawSectionHeader('ACTIVITY LOG');
@@ -502,6 +507,7 @@ export const exportPlanToPDF = async (
         doc.line(margin, y - 2, pageW - margin, y - 2);
       });
     }
+    } // end includeActivityLog
 
     // ── FOOTER on all jsPDF pages ───────────────────────────────────────────
 
@@ -533,64 +539,136 @@ export const exportPlanToPDF = async (
     // Build attachment list: TCPs → LOCs → NV (if linked and has a file)
     const linkedVariance = libraryVariances?.find(v => v.id === plan.compliance?.noiseVariance?.linkedVarianceId);
 
+    const STAGE_DOC_LABELS: Record<string, string> = {
+      tcp_drawings:     'TCP DRAWINGS',
+      loc_draft:        'LOC DRAFT',
+      loc_signed:       'LETTER OF CONCURRENCE',
+      dot_comments:     'DOT COMMENTS',
+      revision_package: 'REVISION PACKAGE',
+      approval_letter:  'APPROVAL LETTER',
+      other:            'DOCUMENT',
+    };
+
+    const fmtStageKey = (s: string) =>
+      s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+       .replace(/\bDot\b/, 'DOT').replace(/\bLoc\b/, 'LOC');
+
     const attachments: { url: string; label: string; subtitle: string }[] = [
-      ...(plan.approvedTCPs || []).map((f: any) => ({
-        url:      f.url,
-        label:    'TCP DRAWING',
-        subtitle: `Rev ${f.version ?? '—'}  ·  ${plan.loc || plan.id}`,
-      })),
-      ...(plan.approvedLOCs || []).map((f: any) => ({
-        url:      f.url,
-        label:    'LETTER OF CONCURRENCE',
-        subtitle: `Rev ${f.version ?? '—'}  ·  ${plan.loc || plan.id}`,
-      })),
-      ...(linkedVariance?.fileUrl ? [{
+      ...(plan.approvedTCPs || [])
+        .filter((f: any) => !options || options.includedTCPUrls.includes(f.url))
+        .map((f: any) => ({
+          url:      f.url,
+          label:    'TCP DRAWING',
+          subtitle: `Rev ${f.version ?? '—'}  ·  ${plan.loc || plan.id}`,
+        })),
+      ...(plan.approvedLOCs || [])
+        .filter((f: any) => !options || options.includedLOCUrls.includes(f.url))
+        .map((f: any) => ({
+          url:      f.url,
+          label:    'LETTER OF CONCURRENCE',
+          subtitle: `Rev ${f.version ?? '—'}  ·  ${plan.loc || plan.id}`,
+        })),
+      ...(plan.stageAttachments || [])
+        .filter((f: any) => !options || options.includedStageAttachmentUrls.includes(f.url))
+        .map((f: any) => ({
+          url:      f.url,
+          label:    STAGE_DOC_LABELS[f.documentType] || 'DOCUMENT',
+          subtitle: `${fmtStageKey(f.stage)}  ·  ${plan.loc || plan.id}`,
+        })),
+      ...(!options || options.includeNoiseVariance) && linkedVariance?.fileUrl ? [{
         url:      linkedVariance.fileUrl,
         label:    'NOISE VARIANCE',
         subtitle: `Permit ${linkedVariance.permitNumber}  ·  Valid Through ${fmtDate(linkedVariance.validThrough)}`,
-      }] : []),
+      }] : [],
     ];
 
-    for (const att of attachments) {
-      if (!att.url) continue;
+    // ── Fetch all attachments in parallel, then embed in order ────────────────
+    const validAttachments = attachments.filter(att => att.url);
 
-      // Light divider page
+    // Parse bucket and path from a Firebase Storage download URL
+    const parseStorageUrl = (url: string): { bucket: string; path: string } | null => {
+      try {
+        const bucketMatch = url.match(/\/v0\/b\/([^/]+)\/o\//);
+        const pathMatch   = url.match(/\/o\/([^?#]+)/);
+        if (!bucketMatch || !pathMatch) return null;
+        return {
+          bucket: decodeURIComponent(bucketMatch[1]),
+          path:   decodeURIComponent(pathMatch[1]),
+        };
+      } catch { return null; }
+    };
+
+    const fetched = await Promise.all(
+      validAttachments.map(async (att) => {
+        let lastErr: unknown;
+
+        // ── Attempt 1: Firebase SDK getBytes (uses internal auth, no CORS issues) ──
+        try {
+          const parsed = parseStorageUrl(att.url);
+          const uint8  = await getBytes(storageRef(storage, parsed?.path ?? att.url));
+          const bytes  = uint8.buffer.slice(uint8.byteOffset, uint8.byteOffset + uint8.byteLength);
+          return { att, fileBytes: bytes as ArrayBuffer, error: null };
+        } catch (e1) { lastErr = e1; }
+
+        // ── Attempt 2: Authenticated REST fetch using Firebase ID token ────────────
+        try {
+          const parsed  = parseStorageUrl(att.url);
+          const idToken = await auth.currentUser?.getIdToken();
+          if (parsed && idToken) {
+            const apiUrl = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(parsed.bucket)}/o/${encodeURIComponent(parsed.path)}?alt=media`;
+            const resp   = await fetch(apiUrl, { headers: { Authorization: `Bearer ${idToken}` } });
+            if (!resp.ok) throw new Error(`Storage responded ${resp.status}: ${await resp.text()}`);
+            return { att, fileBytes: await resp.arrayBuffer(), error: null };
+          }
+        } catch (e2) { lastErr = e2; }
+
+        // ── Attempt 3: Plain fetch (works if CORS is configured on the bucket) ─────
+        try {
+          const resp = await fetch(att.url);
+          if (!resp.ok) throw new Error(`Fetch responded ${resp.status}`);
+          return { att, fileBytes: await resp.arrayBuffer(), error: null };
+        } catch (e3) { lastErr = e3; }
+
+        console.error(`[PDF] All fetch attempts failed for "${att.label}":`, lastErr);
+        return { att, fileBytes: null as ArrayBuffer | null, error: lastErr };
+      })
+    );
+
+    let failCount = 0;
+    for (const { att, fileBytes, error } of fetched) {
+      // Always add the divider page so order is preserved
       addDividerPage(mergedPdf, boldFont, regularFont, att.label, att.subtitle);
 
+      if (error || !fileBytes) { failCount++; continue; }
+
+      // Try loading as PDF
+      let mergedAsDoc = false;
       try {
-        const response  = await fetch(att.url);
-        const fileBytes = await response.arrayBuffer();
+        const extDoc   = await PDFDocument.load(fileBytes, { ignoreEncryption: true });
+        const extPages = await mergedPdf.copyPages(extDoc, extDoc.getPageIndices());
+        extPages.forEach(p => mergedPdf.addPage(p));
+        mergedAsDoc = true;
+      } catch { /* not a PDF — try image below */ }
 
-        // Try loading as PDF
-        let mergedAsDoc = false;
+      // Fallback: try embedding as image
+      if (!mergedAsDoc) {
         try {
-          const extDoc   = await PDFDocument.load(fileBytes);
-          const extPages = await mergedPdf.copyPages(extDoc, extDoc.getPageIndices());
-          extPages.forEach(p => mergedPdf.addPage(p));
-          mergedAsDoc = true;
-        } catch { /* not a PDF — try image below */ }
-
-        // Fallback: try embedding as image
-        if (!mergedAsDoc) {
-          try {
-            const uint8 = new Uint8Array(fileBytes);
-            const isJpeg = uint8[0] === 0xFF && uint8[1] === 0xD8;
-            const image  = isJpeg ? await mergedPdf.embedJpg(fileBytes) : await mergedPdf.embedPng(fileBytes);
-            const imgPage = mergedPdf.addPage([595.28, 841.89]);
-            const { width, height } = imgPage.getSize();
-            const scaled = image.scaleToFit(width - 60, height - 60);
-            imgPage.drawImage(image, {
-              x: (width  - scaled.width)  / 2,
-              y: (height - scaled.height) / 2,
-              width:  scaled.width,
-              height: scaled.height,
-            });
-          } catch (imgErr) {
-            console.error(`Could not embed ${att.label} as image:`, imgErr);
-          }
+          const uint8  = new Uint8Array(fileBytes);
+          const isJpeg = uint8[0] === 0xFF && uint8[1] === 0xD8;
+          const image  = isJpeg ? await mergedPdf.embedJpg(fileBytes) : await mergedPdf.embedPng(fileBytes);
+          const imgPage = mergedPdf.addPage([595.28, 841.89]);
+          const { width, height } = imgPage.getSize();
+          const scaled = image.scaleToFit(width - 60, height - 60);
+          imgPage.drawImage(image, {
+            x: (width  - scaled.width)  / 2,
+            y: (height - scaled.height) / 2,
+            width:  scaled.width,
+            height: scaled.height,
+          });
+        } catch (imgErr) {
+          console.error(`Could not embed ${att.label} as image:`, imgErr);
+          failCount++;
         }
-      } catch (fetchErr) {
-        console.error(`Failed to fetch attachment for ${att.label}:`, fetchErr);
       }
     }
 
@@ -604,8 +682,18 @@ export const exportPlanToPDF = async (
     link.click();
     URL.revokeObjectURL(url);
 
+    dismissToast(toastId);
+    if (failCount > 0) {
+      const firstFail = fetched.find(f => f.error);
+      const hint = firstFail?.error instanceof Error ? ` (${firstFail.error.message.slice(0, 60)})` : '';
+      showToast(`PDF saved — ${failCount} attachment${failCount > 1 ? 's' : ''} could not be loaded.${hint}`, 'warning');
+    } else {
+      showToast('PDF ready — check your downloads.', 'success');
+    }
+
   } catch (error) {
     console.error('Error exporting to PDF:', error);
+    dismissToast(toastId);
     showToast('Failed to export PDF.', 'error');
   } finally {
     setLoading(prev => ({ ...prev, export: false }));

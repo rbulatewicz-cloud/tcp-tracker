@@ -121,6 +121,7 @@ export const updatePlanStage = async (
 
     setStatusDate(date);
 
+    // Build the full in-memory plan update (used for draft + local state)
     const updateData: Partial<Plan> & { stage: string; log: LogEntry[] } = {
       ...plan,
       stage: ns,
@@ -140,7 +141,21 @@ export const updatePlanStage = async (
       setSelectedPlan(updateData as Plan);
       setIsDirty(true);
     } else {
-      await updateDoc(doc(db, 'plans', plan.id), updateData);
+      // Write ONLY the fields that changed — never spread the full plan into updateDoc.
+      // Writing the full plan object risks Firestore rejecting the write if any nested
+      // field contains `undefined`, which would fail silently and leave the stage unchanged.
+      const firestoreWrite: Record<string, unknown> = {
+        stage: ns,
+        log: newLog,
+        statusHistory: newStatusHistory,
+      };
+      if (reviewCycles !== undefined) firestoreWrite.reviewCycles = reviewCycles;
+      if (implementationWindow !== undefined) firestoreWrite.implementationWindow = implementationWindow;
+      if (ns === 'requested') firestoreWrite.dateRequested = date;
+      if (ns === 'submitted' || ns === 'submitted_to_dot') firestoreWrite.submitDate = date;
+      if (ns === 'approved' || ns === 'plan_approved') firestoreWrite.approvedDate = date;
+
+      await updateDoc(doc(db, 'plans', plan.id), firestoreWrite);
       if (selectedPlan?.id === plan.id) {
         setSelectedPlan({ ...plan, ...updateData } as Plan);
       }
@@ -151,6 +166,7 @@ export const updatePlanStage = async (
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `plans/${plan.id}`);
+    throw error;
   }
 };
 
@@ -196,6 +212,17 @@ export const submitPlan = async (
     const formAny = form as Record<string, unknown>;
     if (compliance.phe && formAny.phe_justification) {
       (compliance.phe as PHETrack).peakHourJustification = formAny.phe_justification as string;
+    }
+
+    // Seed driveway addresses entered at request time
+    const drivewayAddrEntries = (formAny.driveway_addresses as Array<{ address: string; propertyId?: string }> | undefined) ?? [];
+    if (compliance.drivewayNotices && drivewayAddrEntries.length > 0) {
+      compliance.drivewayNotices.addresses = drivewayAddrEntries.map((entry, i) => ({
+        id: `addr_${Date.now()}_${i}`,
+        address: entry.address,
+        propertyId: entry.propertyId,
+        letterStatus: 'not_drafted' as const,
+      }));
     }
 
     const np: Partial<Plan> = {
