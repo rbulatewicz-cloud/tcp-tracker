@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Nav Restructure Sketch</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #F8FAFC; color: #1E293B; padding: 32px; }
+  h1 { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+  .sub { color: #64748B; font-size: 14px; margin-bottom: 40px; }
+  .section { margin-bottom: 48px; }
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #94A3B8; margin-bottom: 12px; }
+  .label { font-size: 12px; font-weight: 600; color: #64748B; margin-bottom: 8px; }
+  .tag { font-size: 10px; padding: 2px 7px; border-radius: 4px; font-weight: 700; }
+  .tag-blue { background: #DBEAFE; color: #1E40AF; }
+
+  /* MOCK HEADER */
+  .header { background: #fff; border: 1px solid #E2E8F0; border-radius: 12px; overflow: visible; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .header-top { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid #F1F5F9; }
+  .logo-row { display: flex; align-items: center; gap: 10px; }
+  .logo-box { width: 32px; height: 32px; background: linear-gradient(135deg,#F59E0B,#D97706); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 14px; flex-shrink:0; }
+  .app-name { font-size: 13px; font-weight: 700; }
+  .app-sub  { font-size: 10px; color: #94A3B8; font-weight: 500; letter-spacing: 0.4px; }
+  .actions  { display: flex; align-items: center; gap: 6px; }
+  .icon-btn { width: 30px; height: 30px; border-radius: 8px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #64748B; font-size: 13px; }
+  .new-btn  { padding: 5px 12px; background: #F59E0B; color: #fff; border-radius: 8px; border: none; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .avatar   { width: 30px; height: 30px; background: #3B82F6; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 700; }
+
+  .header-search { display: flex; align-items: center; gap: 10px; padding: 8px 20px 10px; }
+  .search-box { flex: 0 0 260px; height: 32px; background: #F1F5F9; border-radius: 8px; border: 1px solid #E2E8F0; display: flex; align-items: center; padding: 0 10px; gap: 6px; font-size: 12px; color: #94A3B8; }
+
+  /* TABS */
+  .tabs { display: flex; align-items: center; gap: 2px; background: #F1F5F9; border-radius: 8px; padding: 3px; margin-left: auto; flex-shrink: 0; }
+  .tab { padding: 5px 11px; border-radius: 6px; font-size: 12px; font-weight: 500; color: #64748B; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap; border: none; background: transparent; }
+  .tab.active { background: #fff; color: #1E293B; font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+  /* MORE DROPDOWN */
+  .more-wrap { position: relative; display: inline-block; }
+  .more-btn { padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; color: #64748B; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .more-dropdown { position: absolute; top: calc(100% + 6px); right: 0; background: #fff; border: 1px solid #E2E8F0; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); width: 200px; padding: 6px; z-index: 100; }
+  .dropdown-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; color: #374151; cursor: pointer; }
+  .dropdown-item:hover { background: #F8FAFC; }
+  .dropdown-divider { border: none; border-top: 1px solid #F1F5F9; margin: 4px 0; }
+  .dropdown-section-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #94A3B8; padding: 4px 10px 2px; }
+  .divider-bar { width: 1px; height: 20px; background: #E2E8F0; margin: 0 3px; }
+
+  /* 2-TIER NAV */
+  .group-bar { display: flex; align-items: center; padding: 0 20px; background: #F8FAFC; border-bottom: 1px solid #F1F5F9; }
+  .group-tab { padding: 9px 16px; font-size: 12px; font-weight: 500; border: none; background: transparent; border-bottom: 2px solid transparent; color: #64748B; cursor: pointer; }
+  .group-tab.active { border-bottom-color: #3B82F6; color: #1D4ED8; font-weight: 700; }
+
+  /* SIDEBAR RAIL MOCK */
+  .sidebar-layout { display: flex; background: #fff; border: 1px solid #E2E8F0; border-radius: 12px; overflow: hidden; min-height: 220px; }
+  .rail { width: 52px; background: #1E293B; display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 3px; flex-shrink: 0; }
+  .rail-logo { width: 32px; height: 32px; background: linear-gradient(135deg,#F59E0B,#D97706); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 13px; margin-bottom: 10px; }
+  .rail-icon { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #475569; font-size: 15px; }
+  .rail-icon.active { background: rgba(59,130,246,0.3); color: #93C5FD; }
+  .rail-divider { width: 26px; height: 1px; background: #334155; margin: 5px 0; }
+  .rail-content { flex: 1; padding: 20px; }
+
+  /* COMPARISON GRID */
+  .compare { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .option-card { background: #fff; border: 1px solid #E2E8F0; border-radius: 10px; padding: 16px; }
+  .option-card.recommended { border-color: #3B82F6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+  .option-title { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+  .option-desc { font-size: 12px; color: #64748B; line-height: 1.5; margin-bottom: 10px; }
+  .pro { font-size: 12px; color: #166534; margin: 3px 0; }
+  .con { font-size: 12px; color: #991B1B; margin: 3px 0; }
+  .pro::before { content: "✓  "; }
+  .con::before { content: "✗  "; }
+
+  /* VERDICT */
+  .verdict { background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px; padding: 16px 20px; margin-top: 32px; }
+  .verdict-title { font-size: 14px; font-weight: 700; color: #1D4ED8; margin-bottom: 8px; }
+  .verdict-body { font-size: 13px; color: #1E40AF; line-height: 1.7; }
+  .verdict-body strong { color: #1D4ED8; }
+
+  /* PENDING LIST */
+  .pending-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .pending-card { background: #fff; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 14px; }
+  .pending-title { font-size: 12px; font-weight: 700; margin-bottom: 3px; }
+  .pending-desc { font-size: 11px; color: #64748B; line-height: 1.5; }
+  .badge { font-size: 10px; padding: 2px 7px; border-radius: 4px; font-weight: 600; margin-left: 6px; vertical-align: middle; }
+  .badge-soon { background: #FEF3C7; color: #92400E; }
+  .badge-later { background: #F1F5F9; color: #64748B; }
+</style>
+</head>
+<body>
+
+<h1>Navigation Restructure Sketch</h1>
+<p class="sub">Three options to reduce clutter from 12 visible tabs to a clean, scannable bar</p>
+
+<!-- ============================================================ OPTION A -->
+<div class="section">
+  <div class="section-title">Option A &mdash; 5 Primary Tabs + "More &#9660;" Overflow &nbsp;<span class="tag tag-blue">RECOMMENDED</span></div>
+  <p class="label">Keep the 5 most-used tabs always visible. Everything else is one click away in a grouped dropdown.</p>
+
+  <div class="header">
+    <div class="header-top">
+      <div class="logo-row">
+        <div class="logo-box">T</div>
+        <div>
+          <div class="app-name">ESFV LRT &mdash; TCP Tracker</div>
+          <div class="app-sub">San Fernando Transit Constructors</div>
+        </div>
+      </div>
+      <div class="actions">
+        <div class="icon-btn">?</div>
+        <div class="icon-btn">&#9790;</div>
+        <div class="icon-btn">&#128276;</div>
+        <button class="new-btn">+ New Request</button>
+        <div class="avatar">RB</div>
+      </div>
+    </div>
+    <div class="header-search">
+      <div class="search-box">&#128269;&nbsp; Search plans&hellip;</div>
+      <div class="tabs">
+        <button class="tab active">&#9783; Dashboard</button>
+        <button class="tab">&#128203; Plans</button>
+        <button class="tab">&#128506; Map</button>
+        <button class="tab">&#128197; Calendar</button>
+        <button class="tab">&#127915; Requests</button>
+        <div class="divider-bar"></div>
+        <div class="more-wrap">
+          <button class="more-btn">More &#9660;</button>
+          <div class="more-dropdown">
+            <div class="dropdown-section-label">Analysis</div>
+            <div class="dropdown-item">&#128200; Timeline</div>
+            <div class="dropdown-item">&#128196; Reports</div>
+            <hr class="dropdown-divider">
+            <div class="dropdown-section-label">Compliance</div>
+            <div class="dropdown-item">&#128737; Compliance</div>
+            <div class="dropdown-item">&#128218; Library</div>
+            <div class="dropdown-item">&#128214; Reference</div>
+            <hr class="dropdown-divider">
+            <div class="dropdown-section-label">Admin</div>
+            <div class="dropdown-item">&#128196; System Log</div>
+            <div class="dropdown-item">&#128101; Team</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p style="font-size:11px;color:#64748B;margin-top:8px;">
+    Bonus: when you are inside an overflow view, the button label updates &mdash; e.g. <strong>Reports &#9660;</strong> &mdash; so you always know where you are.
+  </p>
+</div>
+
+<!-- ============================================================ OPTION B -->
+<div class="section">
+  <div class="section-title">Option B &mdash; 2-Tier Grouped Nav</div>
+  <p class="label">Top row selects a group; second row shows tabs within that group. Very clear mental model.</p>
+
+  <div class="header">
+    <div class="header-top">
+      <div class="logo-row">
+        <div class="logo-box">T</div>
+        <div>
+          <div class="app-name">ESFV LRT &mdash; TCP Tracker</div>
+          <div class="app-sub">San Fernando Transit Constructors</div>
+        </div>
+      </div>
+      <div class="actions">
+        <div class="icon-btn">?</div>
+        <div class="icon-btn">&#9790;</div>
+        <div class="icon-btn">&#128276;</div>
+        <button class="new-btn">+ New Request</button>
+        <div class="avatar">RB</div>
+      </div>
+    </div>
+    <div class="group-bar">
+      <button class="group-tab active">Operations</button>
+      <button class="group-tab">Analysis</button>
+      <button class="group-tab">Compliance</button>
+      <button class="group-tab">Admin</button>
+    </div>
+    <div class="header-search">
+      <div class="search-box">&#128269;&nbsp; Search plans&hellip;</div>
+      <div class="tabs" style="margin-left:auto;">
+        <button class="tab">&#9783; Dashboard</button>
+        <button class="tab active">&#128203; Plans</button>
+        <button class="tab">&#128506; Map</button>
+        <button class="tab">&#128197; Calendar</button>
+        <button class="tab">&#127915; Requests</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ OPTION C -->
+<div class="section">
+  <div class="section-title">Option C &mdash; Left Icon Rail (Sidebar)</div>
+  <p class="label">Vertical icon rail on the left. Frees horizontal space in every view but requires the biggest refactor.</p>
+
+  <div class="sidebar-layout">
+    <div class="rail">
+      <div class="rail-logo">T</div>
+      <div class="rail-icon active" title="Dashboard">&#9783;</div>
+      <div class="rail-icon" title="Plans">&#128203;</div>
+      <div class="rail-icon" title="Map">&#128506;</div>
+      <div class="rail-icon" title="Calendar">&#128197;</div>
+      <div class="rail-icon" title="Requests">&#127915;</div>
+      <div class="rail-divider"></div>
+      <div class="rail-icon" title="Timeline">&#128200;</div>
+      <div class="rail-icon" title="Reports">&#128196;</div>
+      <div class="rail-icon" title="Compliance">&#128737;</div>
+      <div class="rail-icon" title="Library">&#128218;</div>
+    </div>
+    <div class="rail-content">
+      <div style="font-size:13px;font-weight:700;color:#1E293B;margin-bottom:6px;">Content area spans full width</div>
+      <div style="font-size:12px;color:#64748B;line-height:1.6;">Gains ~52px of horizontal space in every view &mdash; most noticeable in Plans table and Timeline.<br>Hover over icons shows tooltip label. Requires wrapping the entire app in a flex row container.</div>
+      <br>
+      <div style="font-size:11px;background:#FEF9C3;color:#92400E;border-radius:6px;padding:8px 10px;">&#9888; Biggest layout refactor of the three options. Icon-only is less discoverable for new users.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ COMPARISON -->
+<div class="section">
+  <div class="section-title">Side-by-Side Comparison</div>
+  <div class="compare">
+    <div class="option-card recommended">
+      <div class="option-title">Option A &mdash; 5 + More &#9660; &nbsp;<span class="tag tag-blue">Recommended</span></div>
+      <div class="option-desc">5 always-visible primary tabs. Everything else grouped in a single dropdown, organized by section.</div>
+      <p class="pro">Minimal code change (~40 lines)</p>
+      <p class="pro">Familiar UX pattern (Chrome, Notion, Linear)</p>
+      <p class="pro">Dropdown sections keep things organized</p>
+      <p class="pro">Active overflow view reflected in button label</p>
+      <p class="pro">No layout restructure needed</p>
+      <p class="con">Overflow items slightly less discoverable at first</p>
+    </div>
+    <div class="option-card">
+      <div class="option-title">Option B &mdash; 2-Tier Grouped</div>
+      <div class="option-desc">Top row picks a group; bottom row picks a view within that group. Very explicit mental model.</div>
+      <p class="pro">Best information architecture long-term</p>
+      <p class="pro">Scales easily as features are added</p>
+      <p class="con">Two rows of chrome = less vertical content space</p>
+      <p class="con">Extra click to switch between groups</p>
+      <p class="con">Moderate refactor + new group-state logic</p>
+    </div>
+    <div class="option-card">
+      <div class="option-title">Option C &mdash; Left Rail</div>
+      <div class="option-desc">Vertical icon rail on the left. Most horizontal space, most modern feel.</div>
+      <p class="pro">Most horizontal space for content</p>
+      <p class="pro">Very clean, professional look</p>
+      <p class="con">Largest refactor &mdash; wraps entire app</p>
+      <p class="con">Icon-only harder to scan for new users</p>
+      <p class="con">Breaks current sticky-header layout</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ VERDICT -->
+<div class="verdict">
+  <div class="verdict-title">Recommendation &mdash; Option A with smart grouping</div>
+  <div class="verdict-body">
+    Keep <strong>5 primary tabs always visible</strong>: Dashboard &nbsp;&bull;&nbsp; Plans &nbsp;&bull;&nbsp; Map &nbsp;&bull;&nbsp; Calendar &nbsp;&bull;&nbsp; Requests<br><br>
+    Move everything else into a <strong>More &#9660; dropdown</strong> with labeled sections:<br>
+    &nbsp;&nbsp;&bull; <em>Analysis</em> &rarr; Timeline, Reports<br>
+    &nbsp;&nbsp;&bull; <em>Compliance</em> &rarr; Compliance, Library, Reference<br>
+    &nbsp;&nbsp;&bull; <em>Admin</em> &rarr; System Log, Team<br><br>
+    When you are inside an overflow view the button label shows the active view name (e.g. <strong>Reports &#9660;</strong>),
+    so you never lose your position. This is the smallest change with the biggest visual impact &mdash; tab bar goes
+    from 12 items down to 6 (5 tabs + 1 button).
+  </div>
+</div>
+
+<!-- ============================================================ PENDING BACKLOG -->
+<div class="section" style="margin-top:48px;">
+  <div class="section-title">Remaining Backlog (for reference)</div>
+  <div class="pending-grid">
+    <div class="pending-card">
+      <div class="pending-title">Library expansion <span class="badge badge-soon">Soon</span></div>
+      <div class="pending-desc">Add PHE Permits + CD Concurrences as sub-sections alongside Noise Variances. Same upload + AI scan pattern.</div>
+    </div>
+    <div class="pending-card">
+      <div class="pending-title">Reports Phase 2 <span class="badge badge-soon">Soon</span></div>
+      <div class="pending-desc">Plan snapshot image on title page, stage attachments with dividers, user-configurable include/exclude toggles before generating.</div>
+    </div>
+    <div class="pending-card">
+      <div class="pending-title">PHE PDF assembly <span class="badge badge-later">Later</span></div>
+      <div class="pending-desc">Pre-fill BOE Peak Hour Exemption form from plan + settings data, package with exhibit attachments.</div>
+    </div>
+    <div class="pending-card">
+      <div class="pending-title">Noise Variance letter auto-generation <span class="badge badge-later">Later</span></div>
+      <div class="pending-desc">Foundation in place (NVPanel, NoiseVarianceTrack type). Auto-letter generation not yet built.</div>
+    </div>
+    <div class="pending-card">
+      <div class="pending-title">Metro role + scoped view <span class="badge badge-later">Later</span></div>
+      <div class="pending-desc">Metro gets read/approve access to Library only. Multi-day effort touching auth, Firestore rules, and a simplified Metro-facing view.</div>
+    </div>
+    <div class="pending-card">
+      <div class="pending-title">Team Management redesign <span class="badge badge-later">Later</span></div>
+      <div class="pending-desc">Current UserManagementView works but needs a design rethink. No design started yet.</div>
+    </div>
+    <div class="pending-card">
+      <div class="pending-title">Holiday compliance rules <span class="badge badge-later">Later</span></div>
+      <div class="pending-desc">Holidays follow Saturday noise restrictions. Need list of applicable LA City holidays from user before building.</div>
+    </div>
+    <div class="pending-card">
+      <div class="pending-title">Custom domain <span class="badge badge-later">Later</span></div>
+      <div class="pending-desc">tcptracker.sftcllc.com &mdash; domain not yet registered. Parked for later.</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

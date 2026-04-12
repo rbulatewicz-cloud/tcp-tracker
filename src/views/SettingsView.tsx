@@ -10,6 +10,7 @@ import { ListsTab }       from './settings/ListsTab';
 import { DataTab }        from './settings/DataTab';
 import { ComplianceTab }  from './settings/ComplianceTab';
 import { SystemTab }      from './settings/SystemTab';
+import { AccessTab }      from './settings/AccessTab';
 
 interface SettingsViewProps {
   appConfig: AppConfig;
@@ -21,7 +22,7 @@ interface SettingsViewProps {
   onExportCSV: () => void;
 }
 
-type Tab = 'branding' | 'workflow' | 'lists' | 'data' | 'compliance' | 'system';
+type Tab = 'branding' | 'workflow' | 'lists' | 'data' | 'compliance' | 'system' | 'access';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'branding',   label: 'Branding' },
@@ -29,6 +30,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'lists',      label: 'Managed Lists' },
   { key: 'data',       label: 'Data' },
   { key: 'compliance', label: 'Compliance' },
+  { key: 'access',     label: 'Team Access' },
   { key: 'system',     label: 'System' },
 ];
 
@@ -82,6 +84,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {tab === 'lists'       && <ListsTab      form={form} setForm={setForm} saving={saving} handleSave={handleSave} />}
         {tab === 'data'        && <DataTab       role={role} setClearPlansConfirm={setClearPlansConfirm} onOpenImport={onOpenImport} onExportCSV={onExportCSV} />}
         {tab === 'compliance'  && <ComplianceTab form={form} setForm={setForm} saving={saving} handleSave={handleSave} />}
+        {tab === 'access'      && <AccessTab     form={form} setForm={setForm} />}
         {tab === 'system'      && <SystemTab     users={users} />}
 
         {/* Shared save button for tabs that don't have their own */}

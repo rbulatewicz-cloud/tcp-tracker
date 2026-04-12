@@ -221,8 +221,52 @@ export interface ComplianceTriggers {
   nvReasons:        string[];
   cdConcurrence:    boolean;
   cdReasons:        string[];
+  suggestedCDs?:    ('CD2' | 'CD6' | 'CD7')[];  // derived from street location
   drivewayNotices:  boolean;
   drivewayReasons:  string[];
+}
+
+// ── Council District street-range suggestion ──────────────────────────────────
+
+/**
+ * Given the primary and cross streets from a plan, suggest which council
+ * districts are likely applicable along the Van Nuys Blvd corridor.
+ *
+ * Boundaries (approximate, post-2022 redistricting):
+ *   CD 7  — north:  Sylmar / Mission Hills / Pacoima
+ *                   (north of ~Hubbard St / Arleta Ave on Van Nuys Blvd)
+ *   CD 6  — middle: Arleta / North Hills / Panorama City / northern Van Nuys
+ *                   (Hubbard St south to ~Vanowen St)
+ *   CD 2  — south:  Van Nuys (south of Vanowen), toward G Line / Oxnard
+ *
+ * Returns all matching districts; defaults to all three if nothing matches.
+ */
+export function suggestCDsFromStreets(
+  street1 = '',
+  street2 = ''
+): ('CD2' | 'CD6' | 'CD7')[] {
+  const text = `${street1} ${street2}`.toLowerCase();
+  const cds = new Set<'CD2' | 'CD6' | 'CD7'>();
+
+  // CD 7 keywords — Pacoima, Sylmar, Mission Hills, northern corridor
+  if (/pacoima|sylmar|mission hills|glenoaks|osborne|laurel canyon|san fernando rd|san fernando road|maclay|paxton|hubbard|foothill/i.test(text)) {
+    cds.add('CD7');
+  }
+
+  // CD 6 keywords — Arleta, North Hills, Panorama City, central Van Nuys
+  if (/arleta|north hills|panorama city|panorama|woodman|nordhoff|roscoe|sherman way|van nuys metrolink|chase|strathern/i.test(text)) {
+    cds.add('CD6');
+  }
+
+  // CD 2 keywords — southern Van Nuys, toward the G Line
+  if (/victory|vanowen|oxnard|g line|saticoy|magnolia|burbank|erwin|bessemer/i.test(text)) {
+    cds.add('CD2');
+  }
+
+  // If nothing matched, suggest all three (let the user decide)
+  if (cds.size === 0) return ['CD2', 'CD6', 'CD7'];
+
+  return Array.from(cds);
 }
 
 type PlanLike = Partial<PlanForm> | Partial<Plan>;
@@ -261,6 +305,11 @@ export function detectComplianceTriggers(plan: PlanLike): ComplianceTriggers {
   // Deduplicate CD reasons
   const uniqueCdReasons = [...new Set(cdReasons)];
 
+  const suggestedCDs = suggestCDsFromStreets(
+    (plan as any).street1 ?? '',
+    (plan as any).street2 ?? ''
+  );
+
   return {
     phe:             pheReasons.length > 0,
     pheReasons,
@@ -268,6 +317,7 @@ export function detectComplianceTriggers(plan: PlanLike): ComplianceTriggers {
     nvReasons,
     cdConcurrence:   uniqueCdReasons.length > 0,
     cdReasons:       uniqueCdReasons,
+    suggestedCDs,
     drivewayNotices: drivewayReasons.length > 0,
     drivewayReasons,
   };
@@ -345,14 +395,16 @@ export function initializeComplianceTracks(
   }
 
   if (triggers.cdConcurrence && !compliance.cdConcurrence) {
+    // Auto-suggest applicable districts based on streets; default all true if no match
+    const suggested = triggers.suggestedCDs ?? ['CD2', 'CD6', 'CD7'];
     compliance.cdConcurrence = {
       status: 'not_started',
       triggeredBy: triggers.cdReasons,
-      cds: [
-        { cd: 'CD2', applicable: true, status: 'pending' },
-        { cd: 'CD6', applicable: true, status: 'pending' },
-        { cd: 'CD7', applicable: true, status: 'pending' },
-      ],
+      cds: ((['CD2', 'CD6', 'CD7'] as const)).map(cd => ({
+        cd,
+        applicable: suggested.includes(cd),
+        status: suggested.includes(cd) ? 'pending' : 'na',
+      })),
     } as CDConcurrenceTrack;
   }
 
@@ -424,6 +476,7 @@ export const CD_STATUS_LABELS: Record<string, string> = {
   pending:            'Pending',
   presentation_sent:  'Presentation Sent',
   meeting_scheduled:  'Meeting Scheduled',
+  follow_up_sent:     'Follow-Up Sent',
   concurred:          'Concurred',
   declined:           'Declined',
   na:                 'N/A',

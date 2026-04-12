@@ -78,7 +78,6 @@ export function DrivewayPropertiesSection({
           ownerPhone: addForm.ownerPhone.trim() || undefined,
           ownerEmail: addForm.ownerEmail.trim() || undefined,
           segment: addForm.segment.trim() || undefined,
-          createdBy: currentUser?.email ?? 'Unknown',
         },
         currentUser?.email ?? 'Unknown'
       );
@@ -380,7 +379,7 @@ export function DrivewayPropertiesSection({
                                 {letter.address || letter.planLoc || 'Untitled letter'}
                                 {plan && (
                                   <span className="ml-1.5 font-normal text-slate-400">
-                                    · {plan.id}{plan.street1 ? ` (${plan.street1}${plan.street2 ? ` & ${plan.street2}` : ''})` : ''}
+                                    · {plan.loc || plan.id}{plan.street1 ? ` (${plan.street1}${plan.street2 ? ` & ${plan.street2}` : ''})` : ''}
                                   </span>
                                 )}
                               </div>

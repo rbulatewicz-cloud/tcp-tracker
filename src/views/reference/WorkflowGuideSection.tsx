@@ -372,11 +372,11 @@ export default function WorkflowGuideSection() {
       const totalAvg = watchStats.avgDays !== null && standardStats.avgDays !== null
         ? Math.round(((watchStats.avgDays * watchStats.sampleSize) + (standardStats.avgDays * standardStats.sampleSize)) / totalN * 10) / 10
         : (watchStats.avgDays ?? standardStats.avgDays);
-      return { avgDays: totalAvg, sampleSize: totalN, inProgress: watchStats.inProgress + standardStats.inProgress };
+      return { avgDays: totalAvg, sampleSize: totalN, inProgress: watchStats.inProgress + standardStats.inProgress, contributingLocs: [...watchStats.contributingLocs, ...standardStats.contributingLocs] };
     }
     if (watchStats.sampleSize > 0) return watchStats;
     if (standardStats.sampleSize > 0) return standardStats;
-    return { avgDays: null, sampleSize: 0, inProgress: watchStats.inProgress + standardStats.inProgress };
+    return { avgDays: null, sampleSize: 0, inProgress: watchStats.inProgress + standardStats.inProgress, contributingLocs: [] };
   }, [watchStats, standardStats]);
 
   return (

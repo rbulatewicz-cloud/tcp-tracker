@@ -320,6 +320,7 @@ interface LetterCardProps {
   currentUserEmail: string;
   metroSLADays: number;
   metroWarnDays: number;
+  parentLetter?: DrivewayLetter;  // Prior letter this is a re-notice of (for display only)
   onSubmitToMetro: (date: string) => void;
   onMetroApprove: (date: string) => void;
   onMetroRevision: (comment: string) => void;
@@ -365,7 +366,7 @@ function useActionConfirm() {
 
 function LetterCard({
   letter, canApprove, currentUserEmail,
-  metroSLADays, metroWarnDays,
+  metroSLADays, metroWarnDays, parentLetter,
   onSubmitToMetro, onMetroApprove, onMetroRevision, onResubmit,
   onDirectApprove, onMarkSent, onRevert, onEditSentDate, onDelete, onDownload, onAddMetroComment,
   onRescan, properties, onLinkProperty, onUnlinkProperty,
@@ -445,6 +446,15 @@ function LetterCard({
             {(letter.metroRevisionCount ?? 0) > 0 && (
               <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-orange-50 text-orange-600 border border-orange-200">
                 Rev ×{letter.metroRevisionCount}
+              </span>
+            )}
+            {/* Re-notice chain badge */}
+            {letter.parentLetterId && (
+              <span
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-teal-50 text-teal-700 border border-teal-200"
+                title={parentLetter ? `Re-notice of ${parentLetter.planLoc} letter` : 'Re-notice of a prior plan'}
+              >
+                ↻ Re-notice{parentLetter ? ` · ${parentLetter.planLoc}` : ''}
               </span>
             )}
           </div>
@@ -826,7 +836,7 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
   useEffect(() => subscribeToDrivewayProperties(setProperties), []);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const canApprove = currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN;
+  const canApprove = currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.CR;
   const currentUserEmail = currentUser?.email ?? 'Unknown';
 
   const metroSLADays  = appConfig.driveway_metroSLADays  ?? 5;
@@ -1188,6 +1198,7 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
             <LetterCard
               key={letter.id}
               letter={letter}
+              parentLetter={letter.parentLetterId ? letters.find(l => l.id === letter.parentLetterId) : undefined}
               canApprove={canApprove}
               currentUserEmail={currentUserEmail}
               metroSLADays={metroSLADays}

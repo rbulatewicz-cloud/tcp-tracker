@@ -1,5 +1,5 @@
 import React from 'react';
-import { Train, Info } from 'lucide-react';
+import { Train, Info, X } from 'lucide-react';
 import type { Plan } from '../types';
 import {
   CORRIDOR_STREETS,
@@ -8,6 +8,7 @@ import {
   getStagePill,
 } from '../utils/corridor';
 import { ALL_STAGES } from '../constants';
+import { fmtDate } from '../utils/plans';
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 const SLOT_W    = 68;   // px per cross-street slot
@@ -83,6 +84,264 @@ function segmentSpans() {
   return spans;
 }
 const SEGMENT_SPANS = segmentSpans();
+
+// ── CD status color helper ────────────────────────────────────────────────────
+function getCDStatusStyle(status: string): { bg: string; text: string; border: string } {
+  switch (status) {
+    case 'pending':           return { bg: '#F1F5F9', text: '#475569', border: '#CBD5E1' };
+    case 'presentation_sent': return { bg: '#DBEAFE', text: '#1D4ED8', border: '#93C5FD' };
+    case 'meeting_scheduled': return { bg: '#EDE9FE', text: '#6D28D9', border: '#C4B5FD' };
+    case 'follow_up_sent':    return { bg: '#FEF3C7', text: '#B45309', border: '#FCD34D' };
+    case 'concurred':         return { bg: '#DCFCE7', text: '#15803D', border: '#86EFAC' };
+    case 'declined':          return { bg: '#FEE2E2', text: '#B91C1C', border: '#FCA5A5' };
+    default:                  return { bg: '#F8FAFC', text: '#94A3B8', border: '#E2E8F0' };
+  }
+}
+
+// ── MapSidePanel component ────────────────────────────────────────────────────
+interface MapSidePanelProps {
+  plan: Plan;
+  onClose: () => void;
+  onOpenFull: (plan: Plan) => void;
+  monoFont: string;
+}
+
+function MapSidePanel({ plan, onClose, onOpenFull, monoFont }: MapSidePanelProps) {
+  const stageStyle = getStagePill(plan.stage);
+  const stageLabel = STAGE_LABELS[plan.stage] ?? plan.stage;
+  const now = Date.now();
+
+  // Compliance data
+  const cdTrack = plan.compliance?.cdConcurrence;
+  const pheTrack = plan.compliance?.phe;
+  const nvTrack = plan.compliance?.noiseVariance;
+  const hasCompliance = !!(cdTrack || pheTrack || nvTrack);
+
+  // At-risk check: needByDate within 14 days and not approved
+  const approvedStages = new Set(['approved', 'plan_approved', 'tcp_approved_final', 'implemented']);
+  const isApproved = approvedStages.has(plan.stage);
+  const daysToNeedBy = plan.needByDate
+    ? (new Date(plan.needByDate + 'T00:00:00').getTime() - now) / 86_400_000
+    : null;
+  const isAtRisk = !isApproved && daysToNeedBy !== null && daysToNeedBy >= 0 && daysToNeedBy <= 14;
+
+  // Plan type pill color
+  const typeColors: Record<string, { bg: string; text: string }> = {
+    'WATCH':      { bg: '#FEF3C7', text: '#B45309' },
+    'Standard':   { bg: '#DBEAFE', text: '#1D4ED8' },
+    'Engineered': { bg: '#EDE9FE', text: '#6D28D9' },
+  };
+  const typeStyle = typeColors[plan.type] ?? { bg: '#F1F5F9', text: '#475569' };
+
+  return (
+    <div style={{
+      width: 300,
+      flexShrink: 0,
+      background: '#FFFFFF',
+      borderRadius: 12,
+      border: '1px solid #E2E8F0',
+      padding: 20,
+      position: 'sticky',
+      top: 80,
+    }}>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, position: 'relative', paddingRight: 24 }}>
+        <span style={{
+          fontFamily: monoFont,
+          fontSize: 12,
+          fontWeight: 700,
+          color: '#B45309',
+          background: '#FEF3C7',
+          border: '1px solid #FCD34D',
+          borderRadius: 4,
+          padding: '2px 7px',
+        }}>
+          {plan.loc || plan.id}
+        </span>
+        <span style={{
+          fontSize: 10,
+          fontWeight: 600,
+          color: stageStyle.text,
+          background: stageStyle.bg,
+          border: `1px solid ${stageStyle.border}`,
+          borderRadius: 4,
+          padding: '2px 7px',
+        }}>
+          {stageLabel}
+        </span>
+        {/* X close button */}
+        <button
+          onClick={onClose}
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: 0,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 2,
+            color: '#94A3B8',
+            display: 'flex',
+            alignItems: 'center',
+          }}
+          title="Close"
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Plan type tag */}
+      <div style={{ marginBottom: 8 }}>
+        <span style={{
+          fontSize: 10,
+          fontWeight: 600,
+          color: typeStyle.text,
+          background: typeStyle.bg,
+          borderRadius: 4,
+          padding: '2px 7px',
+        }}>
+          {plan.type}
+        </span>
+      </div>
+
+      {/* Street location */}
+      <div style={{ fontSize: 13, fontWeight: 500, color: '#334155', marginBottom: 10 }}>
+        {plan.street1}{plan.street2 ? ` / ${plan.street2}` : ''}
+      </div>
+
+      {/* Lead + Need-by date row */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 }}>Lead</div>
+          <div style={{ fontSize: 12, color: '#1E293B', fontWeight: 500 }}>{plan.lead || '—'}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 }}>Need By</div>
+          <div style={{ fontSize: 12, color: '#1E293B', fontWeight: 500 }}>{fmtDate(plan.needByDate)}</div>
+        </div>
+      </div>
+
+      {/* Compliance badges */}
+      {hasCompliance && (
+        <div style={{ marginBottom: 10, padding: '8px 10px', background: '#F8FAFC', borderRadius: 8, border: '1px solid #E2E8F0' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6 }}>Compliance</div>
+
+          {/* PHE */}
+          {pheTrack && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: '#64748B', width: 28 }}>PHE</span>
+              <span style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: pheTrack.status === 'approved' ? '#15803D' : pheTrack.status === 'submitted' ? '#1D4ED8' : '#B45309',
+              }}>
+                {pheTrack.status.replace(/_/g, ' ')}
+              </span>
+            </div>
+          )}
+
+          {/* NV */}
+          {nvTrack && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: '#64748B', width: 28 }}>NV</span>
+              <span style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: nvTrack.status === 'approved' ? '#15803D' : nvTrack.status === 'submitted' ? '#1D4ED8' : '#B45309',
+              }}>
+                {nvTrack.status.replace(/_/g, ' ')}
+              </span>
+            </div>
+          )}
+
+          {/* CD entries */}
+          {cdTrack && cdTrack.cds.filter(cd => cd.applicable && cd.status !== 'na').map(cdEntry => {
+            const cdStyle = getCDStatusStyle(cdEntry.status);
+            const daysOverdue = cdEntry.sentDate
+              ? (now - new Date(cdEntry.sentDate + 'T00:00:00').getTime()) / 86_400_000
+              : null;
+            const isOverdue = daysOverdue !== null && daysOverdue > 21 && cdEntry.status !== 'concurred' && cdEntry.status !== 'declined';
+            return (
+              <div key={cdEntry.cd} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 10, fontWeight: 600, color: '#64748B', width: 28 }}>{cdEntry.cd}</span>
+                <span style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: cdStyle.text,
+                  background: cdStyle.bg,
+                  border: `1px solid ${cdStyle.border}`,
+                  borderRadius: 4,
+                  padding: '1px 5px',
+                }}>
+                  {cdEntry.status.replace(/_/g, ' ')}
+                </span>
+                {isOverdue && (
+                  <span style={{ fontSize: 9, fontWeight: 700, color: '#B91C1C', background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 4, padding: '1px 5px' }}>
+                    ⚠ {Math.floor(daysOverdue! - 21)}d overdue
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* At-risk warning */}
+      {isAtRisk && (
+        <div style={{
+          marginBottom: 10,
+          padding: '6px 10px',
+          background: '#FFFBEB',
+          border: '1px solid #FCD34D',
+          borderRadius: 6,
+          fontSize: 11,
+          fontWeight: 600,
+          color: '#B45309',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+        }}>
+          ⚠ Need-by in {Math.ceil(daysToNeedBy!)} day{Math.ceil(daysToNeedBy!) !== 1 ? 's' : ''}
+        </div>
+      )}
+
+      {/* Notes preview */}
+      {plan.notes && (
+        <div style={{
+          marginBottom: 12,
+          fontSize: 11,
+          color: '#64748B',
+          fontStyle: 'italic',
+          lineHeight: 1.4,
+        }}>
+          {plan.notes.slice(0, 80)}{plan.notes.length > 80 ? '…' : ''}
+        </div>
+      )}
+
+      {/* Open Full Plan button */}
+      <button
+        onClick={() => onOpenFull(plan)}
+        style={{
+          width: '100%',
+          padding: '9px 12px',
+          background: '#1E293B',
+          color: '#FFFFFF',
+          border: 'none',
+          borderRadius: 8,
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: 'pointer',
+          textAlign: 'center',
+          letterSpacing: 0.3,
+        }}
+        onMouseEnter={e => (e.currentTarget.style.background = '#0F172A')}
+        onMouseLeave={e => (e.currentTarget.style.background = '#1E293B')}
+      >
+        Open Full Plan →
+      </button>
+    </div>
+  );
+}
 
 // ── Pill component ────────────────────────────────────────────────────────────
 function Pill({
@@ -190,10 +449,12 @@ function Lane({
 interface CorridorMapViewProps {
   plans: Plan[];
   setSelectedPlan: (plan: Plan) => void;
+  monoFont: string;
 }
 
-export default function CorridorMapView({ plans, setSelectedPlan }: CorridorMapViewProps) {
+export default function CorridorMapView({ plans, setSelectedPlan, monoFont }: CorridorMapViewProps) {
   const [hideClosed, setHideClosed] = React.useState(true);
+  const [activePanel, setActivePanel] = React.useState<Plan | null>(null);
 
   const visiblePlans = React.useMemo(
     () => hideClosed ? plans.filter(p => p.stage !== 'closed' && p.stage !== 'plan_approved' && p.stage !== 'approved') : plans,
@@ -211,8 +472,12 @@ export default function CorridorMapView({ plans, setSelectedPlan }: CorridorMapV
     });
   }, [visiblePlans]);
 
-  return (
-    <div>
+  const handlePillClick = (plan: Plan) => {
+    setActivePanel(plan);
+  };
+
+  const corridorContent = (
+    <div style={{ flex: 1, minWidth: 0 }}>
       {/* Header bar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <div>
@@ -306,7 +571,7 @@ export default function CorridorMapView({ plans, setSelectedPlan }: CorridorMapV
 
           {/* ── NB Lane ──────────────────────────────────────────────────── */}
           <div style={{ borderBottom: '1px solid #E2E8F0', background: '#FAFCFF' }}>
-            <Lane pills={nbPills} label="NB" arrowDir="↑" onPillClick={setSelectedPlan} />
+            <Lane pills={nbPills} label="NB" arrowDir="↑" onPillClick={handlePillClick} />
           </div>
 
           {/* ── Cross street tick marks + labels ─────────────────────────── */}
@@ -357,7 +622,7 @@ export default function CorridorMapView({ plans, setSelectedPlan }: CorridorMapV
 
           {/* ── SB Lane ──────────────────────────────────────────────────── */}
           <div style={{ background: '#FFFDF5' }}>
-            <Lane pills={sbPills} label="SB" arrowDir="↓" onPillClick={setSelectedPlan} />
+            <Lane pills={sbPills} label="SB" arrowDir="↓" onPillClick={handlePillClick} />
           </div>
 
         </div>
@@ -423,6 +688,23 @@ export default function CorridorMapView({ plans, setSelectedPlan }: CorridorMapV
             </span>
           </div>
         </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      {corridorContent}
+      {activePanel !== null && (
+        <MapSidePanel
+          plan={activePanel}
+          onClose={() => setActivePanel(null)}
+          onOpenFull={(plan) => {
+            setActivePanel(null);
+            setSelectedPlan(plan);
+          }}
+          monoFont={monoFont}
+        />
       )}
     </div>
   );

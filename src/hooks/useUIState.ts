@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { LoadingState } from '../types';
 
 export const useUIState = () => {
-  const [view, setView] = useState("table");
+  const [view, setView] = useState("metrics");
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showAppRequestModal, setShowAppRequestModal] = useState(false);

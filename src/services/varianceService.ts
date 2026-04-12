@@ -1,7 +1,7 @@
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, getDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
-import { NoiseVariance, VarianceExpiryStatus } from '../types';
+import { NoiseVariance, VarianceExpiryStatus, Plan, PlanCompliance } from '../types';
 import { SEGMENT_STREETS, SCOPES } from '../constants';
 import { showToast } from '../lib/toast';
 
@@ -52,6 +52,8 @@ export async function uploadAndScanVariance(
     isGeneric: true,
     coveredScopes: [],
     scopeLanguage: '',
+    coveredStreets: [],
+    corridors: [],
     fileUrl,
     fileName: file.name,
     uploadedAt: new Date().toISOString(),
@@ -118,6 +120,8 @@ export async function uploadRevision(
     isGeneric: active?.isGeneric ?? true,
     coveredScopes: active?.coveredScopes ?? [],
     scopeLanguage: active?.scopeLanguage ?? '',
+    coveredStreets: active?.coveredStreets ?? [],
+    corridors: active?.corridors ?? [],
     fileUrl,
     fileName: file.name,
     uploadedAt: new Date().toISOString(),
@@ -138,6 +142,119 @@ export async function uploadRevision(
 }
 
 // ── Gemini AI scan ────────────────────────────────────────────────────────────
+
+function buildVariancePrompt(segRef: string, scopeList: string): string {
+  return `You are analyzing a noise variance permit document for the ESFV Light Rail Transit construction project in Los Angeles.
+
+Extract the information below and return ONLY valid JSON — no markdown fences, no extra text.
+
+Segment reference (map streets/locations in the document to these codes):
+${segRef}
+
+Return this exact JSON structure:
+{
+  "title": "Concise title WITHOUT street names or dates — e.g. 'Nighttime Noise Variance — Segment A1' or '24/7 Noise Variance — ESFV Light Rail Transit'. Street limits and validity dates are captured in separate fields so do not repeat them in the title.",
+  "permitNumber": "The variance or permit number/identifier from the document, or empty string if not found",
+  "validFrom": "Start date as YYYY-MM-DD, or empty string if not found",
+  "validThrough": "Expiration date as YYYY-MM-DD, or empty string if not found",
+  "applicableHours": "One of: nighttime, 24_7, both — what work hours this variance covers",
+  "coveredSegments": ["Array of segment codes from: A1, A2, B1, B2, B3, C1, C2, C3"],
+  "corridors": [
+    { "mainStreet": "The primary corridor street, e.g. 'Van Nuys Blvd'", "from": "Starting cross street, e.g. 'Oxnard St'", "to": "Ending cross street, e.g. 'Sherman Way'" }
+  ],
+  "coveredStreets": ["COMPREHENSIVE list of ALL streets in the work area. CRITICAL: For corridor descriptions like 'Van Nuys Blvd from Oxnard St to Sherman Way', you MUST include Van Nuys Blvd PLUS every named cross street that intersects that corridor between the two endpoints. Use your knowledge of Los Angeles streets to enumerate all named intersections within the stated limits — do not just list the two endpoints. Example: if the corridor is Van Nuys Blvd from Oxnard St to Sherman Way, include Oxnard St, Vanowen St, Keswick St, Hartland St, Hamlin St, Kittridge St, Saticoy St, Sherman Way, and Van Nuys Blvd itself. The goal is that any construction plan at any cross street within this corridor will match this variance."],
+  "isGeneric": true,
+  "coveredScopes": [],
+  "scopeLanguage": "The exact verbatim sentence(s) from the document describing the scope of work covered. If there are no scope restrictions, use 'No specific scope restrictions — all construction work types covered.'"
+}
+
+Important rules:
+- corridors: extract one entry per corridor range described. If the document covers multiple corridors or segments, include one entry per corridor. Use empty array [] if no corridor range is described.
+- Set isGeneric to true if the variance covers ALL work types with no specific restrictions. Set to false if it restricts to specific types of work.
+- If isGeneric is false, populate coveredScopes with applicable values from: ${scopeList}
+- If isGeneric is false, populate coveredScopes with applicable values and leave it empty if isGeneric is true.
+- For coveredStreets: the enumerated cross streets are used to match this variance to specific construction plans — completeness is more important than brevity.`;
+}
+
+/** Re-scan an already-stored variance to refresh all AI-extracted fields (adds coveredStreets and refreshes all metadata). Preserves submission tracking fields. */
+export async function rescanVarianceFromUrl(variance: NoiseVariance): Promise<void> {
+  try {
+    await updateDoc(doc(db, 'variances', variance.id), { scanStatus: 'scanning' });
+
+    // Fetch API key
+    const aiSnap = await getDoc(doc(db, 'settings', 'aiConfig'));
+    const apiKey: string | undefined = aiSnap.exists() ? aiSnap.data().geminiApiKey : undefined;
+    if (!apiKey) throw new Error('No Gemini API key configured.');
+
+    // Fetch PDF from storage URL
+    const pdfResponse = await fetch(variance.fileUrl);
+    if (!pdfResponse.ok) throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
+    const arrayBuffer = await pdfResponse.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    const base64 = btoa(binary);
+
+    // Build prompt
+    const segRef = Object.entries(SEGMENT_STREETS)
+      .map(([seg, streets]) => `  ${seg}: ${streets.join(', ')}`)
+      .join('\n');
+    const scopeList = SCOPES.join(', ');
+    const prompt = buildVariancePrompt(segRef, scopeList);
+
+    // Call Gemini
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [
+            { inline_data: { mime_type: 'application/pdf', data: base64 } },
+            { text: prompt },
+          ]}],
+          generationConfig: { temperature: 0.1 },
+        }),
+      }
+    );
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Gemini API ${response.status}: ${errText.slice(0, 500)}`);
+    }
+
+    const data = await response.json();
+    const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error(`No JSON in AI response: ${text.slice(0, 300)}`);
+    const extracted = JSON.parse(jsonMatch[0]);
+
+    // Update extracted fields only — never touch submittedDate, approvalDate, checkNumber, etc.
+    await updateDoc(doc(db, 'variances', variance.id), {
+      title:           extracted.title           || variance.title,
+      permitNumber:    extracted.permitNumber     || variance.permitNumber,
+      validFrom:       extracted.validFrom        || variance.validFrom,
+      validThrough:    extracted.validThrough     || variance.validThrough,
+      applicableHours: (['nighttime', '24_7', 'both'].includes(extracted.applicableHours)
+                         ? extracted.applicableHours : variance.applicableHours),
+      coveredSegments: Array.isArray(extracted.coveredSegments) ? extracted.coveredSegments : variance.coveredSegments,
+      coveredStreets:  Array.isArray(extracted.coveredStreets)  ? extracted.coveredStreets  : [],
+      corridors:       Array.isArray(extracted.corridors)       ? extracted.corridors        : [],
+      isGeneric:       extracted.isGeneric === false ? false : true,
+      coveredScopes:   Array.isArray(extracted.coveredScopes)   ? extracted.coveredScopes   : variance.coveredScopes,
+      scopeLanguage:   extracted.scopeLanguage    || variance.scopeLanguage,
+      scanStatus:      'complete',
+      scanError:       null,
+    });
+
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await updateDoc(doc(db, 'variances', variance.id), { scanStatus: 'error', scanError: message });
+    throw err;
+  }
+}
 
 async function scanWithGemini(id: string, file: File): Promise<void> {
   try {
@@ -171,30 +288,7 @@ async function scanWithGemini(id: string, file: File): Promise<void> {
 
     const scopeList = SCOPES.join(', ');
 
-    const prompt = `You are analyzing a noise variance permit document for the ESFV Light Rail Transit construction project in Los Angeles.
-
-Extract the information below and return ONLY valid JSON — no markdown fences, no extra text.
-
-Segment reference (map streets/locations in the document to these codes):
-${segRef}
-
-Return this exact JSON structure:
-{
-  "title": "Concise descriptive title, e.g. 'Nighttime Noise Variance — Segments A1–A2, valid through Dec 2026'",
-  "permitNumber": "The variance or permit number/identifier from the document, or empty string if not found",
-  "validFrom": "Start date as YYYY-MM-DD, or empty string if not found",
-  "validThrough": "Expiration date as YYYY-MM-DD, or empty string if not found",
-  "applicableHours": "One of: nighttime, 24_7, both — what work hours this variance covers",
-  "coveredSegments": ["Array of segment codes from: A1, A2, B1, B2, B3, C1, C2, C3"],
-  "isGeneric": true,
-  "coveredScopes": [],
-  "scopeLanguage": "The exact verbatim sentence(s) from the document describing the scope of work covered. If there are no scope restrictions, use 'No specific scope restrictions — all construction work types covered.'"
-}
-
-Important rules:
-- Set isGeneric to true if the variance covers ALL work types with no specific restrictions. Set to false if it restricts to specific types of work.
-- If isGeneric is false, populate coveredScopes with applicable values from: ${scopeList}
-- If isGeneric is false, populate coveredScopes with applicable values and leave it empty if isGeneric is true.`;
+    const prompt = buildVariancePrompt(segRef, scopeList);
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
@@ -244,6 +338,8 @@ Important rules:
       applicableHours: (['nighttime', '24_7', 'both'].includes(extracted.applicableHours)
         ? extracted.applicableHours : 'nighttime'),
       coveredSegments: Array.isArray(extracted.coveredSegments) ? extracted.coveredSegments : [],
+      coveredStreets:  Array.isArray(extracted.coveredStreets)  ? extracted.coveredStreets  : [],
+      corridors:       Array.isArray(extracted.corridors)       ? extracted.corridors        : [],
       isGeneric: extracted.isGeneric === false ? false : true,
       coveredScopes: Array.isArray(extracted.coveredScopes) ? extracted.coveredScopes : [],
       scopeLanguage: extracted.scopeLanguage || '',
@@ -356,6 +452,33 @@ export async function approveAsRevision(
     reviewFlags: null,
   });
   await batch.commit();
+}
+
+// ── Plan ↔ Variance linking ───────────────────────────────────────────────────
+
+/** Remove a variance root ID from a plan's NV compliance track */
+export async function unlinkVarianceFromPlan(plan: Plan, varianceRootId: string): Promise<void> {
+  const currentNV = plan.compliance?.noiseVariance;
+  if (!currentNV) return;
+
+  const existingIds = currentNV.linkedVarianceIds?.length
+    ? currentNV.linkedVarianceIds
+    : currentNV.linkedVarianceId ? [currentNV.linkedVarianceId] : [];
+  const newIds = existingIds.filter(id => id !== varianceRootId);
+
+  // Omit linkedVarianceId entirely when empty (Firestore can't serialize undefined)
+  const { linkedVarianceId: _dropped, ...nvBase } = currentNV;
+  const updatedNV = {
+    ...nvBase,
+    linkedVarianceIds: newIds,
+    status: newIds.length === 0 ? 'not_started' as const : 'linked_existing' as const,
+    ...(newIds.length > 0 ? { linkedVarianceId: newIds[0] } : {}),
+  };
+  const updatedCompliance: PlanCompliance = {
+    ...(plan.compliance ?? {}),
+    noiseVariance: updatedNV,
+  };
+  await updateDoc(doc(db, 'plans', plan.id), { compliance: updatedCompliance });
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────

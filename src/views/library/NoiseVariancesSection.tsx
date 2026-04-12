@@ -2,17 +2,18 @@ import React, { useEffect, useState, useRef } from 'react';
 import {
   Upload, FileWarning, CheckCircle, AlertTriangle, XCircle,
   ExternalLink, Trash2, RefreshCw, ChevronDown, ChevronUp,
-  Loader, History, RotateCcw, ClipboardCheck, GitMerge, HelpCircle
+  Loader, History, RotateCcw, ClipboardCheck, GitMerge, HelpCircle, X, Plus
 } from 'lucide-react';
 import {
   subscribeToVariances, uploadAndScanVariance, uploadRevision,
   deleteVariance, retryVarianceScan, getVarianceExpiryStatus, daysUntilExpiry,
-  approveVariance, approveAsRevision, updateVariance,
+  approveVariance, approveAsRevision, updateVariance, unlinkVarianceFromPlan,
 } from '../../services/varianceService';
 import { NoiseVariance, VarianceExpiryStatus, User, UserRole, AppConfig, Plan } from '../../types';
 import { SEGMENT_STREETS, ALL_STAGES, COMPLETED_STAGES } from '../../constants';
 import { VarianceLetterModal } from '../../components/VarianceLetterModal';
 import { fmtDate as fmt } from '../../utils/plans';
+import { sortStreetsByCorridorOrder, findGapsInCoverage, findExtrasOutsideCorridors } from '../../utils/corridor';
 
 const HOURS_LABEL: Record<string, string> = {
   nighttime: 'Nighttime',
@@ -236,12 +237,25 @@ function ReviewQueueItem({ variance: v, allVariances, onApproveNew, onApproveRev
 
 const TERMINAL_STAGES = new Set(COMPLETED_STAGES);
 
+/** True if any active (non-completed) plan is linked to this variance root */
+function hasActiveLinkedPlans(rootId: string, plans: Plan[]): boolean {
+  return plans.some(p => {
+    const track = p.compliance?.noiseVariance;
+    if (!track) return false;
+    const ids = track.linkedVarianceIds?.length
+      ? track.linkedVarianceIds
+      : track.linkedVarianceId ? [track.linkedVarianceId] : [];
+    return ids.includes(rootId) && !TERMINAL_STAGES.has(p.stage);
+  });
+}
+
 type PlanFilter = 'all' | 'active' | 'closed';
 
-function LinkedPlansBadge({ rootId, plans, setSelectedPlan }: { rootId: string; plans: Plan[]; setSelectedPlan: (plan: Plan | null) => void }) {
+function LinkedPlansBadge({ rootId, plans, setSelectedPlan, canManage }: { rootId: string; plans: Plan[]; setSelectedPlan: (plan: Plan | null) => void; canManage: boolean }) {
   const [open, setOpen] = useState(false);
   const [planFilter, setPlanFilter] = useState<PlanFilter>('all');
   const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
+  const [unlinking, setUnlinking] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
@@ -266,7 +280,22 @@ function LinkedPlansBadge({ rootId, plans, setSelectedPlan }: { rootId: string; 
     setOpen(o => !o);
   };
 
-  const linked = plans.filter(p => p.compliance?.noiseVariance?.linkedVarianceId === rootId);
+  const handleUnlink = async (plan: Plan, e: React.MouseEvent) => {
+    e.stopPropagation(); // don't open the plan
+    setUnlinking(plan.id);
+    try {
+      await unlinkVarianceFromPlan(plan, rootId);
+    } finally {
+      setUnlinking(null);
+    }
+  };
+
+  const linked = plans.filter(p => {
+    const track = p.compliance?.noiseVariance;
+    if (!track) return false;
+    const ids = track.linkedVarianceIds?.length ? track.linkedVarianceIds : track.linkedVarianceId ? [track.linkedVarianceId] : [];
+    return ids.includes(rootId);
+  });
   const count = linked.length;
   const activeCount = linked.filter(p => !TERMINAL_STAGES.has(p.stage)).length;
   const closedCount = linked.filter(p => TERMINAL_STAGES.has(p.stage)).length;
@@ -331,30 +360,45 @@ function LinkedPlansBadge({ rootId, plans, setSelectedPlan }: { rootId: string; 
               </div>
             ) : displayed.map(p => {
               const stageInfo = ALL_STAGES.find(s => s.key === p.stage) ?? { label: p.stage, color: '#94A3B8' };
+              const isUnlinking = unlinking === p.id;
               return (
-                <button
-                  key={p.id}
-                  onClick={() => { setSelectedPlan(p); setOpen(false); }}
-                  className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">
-                        {p.loc ? `LOC-${p.loc}` : '—'}
-                        {p.street1 ? <span className="font-normal text-slate-500 dark:text-slate-400"> · {p.street1}</span> : null}
+                <div key={p.id} className="flex items-center gap-1 pr-1 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
+                  <button
+                    onClick={() => { setSelectedPlan(p); setOpen(false); }}
+                    className="flex-1 min-w-0 text-left px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">
+                          {p.loc ? `LOC-${p.loc}` : '—'}
+                          {p.street1 ? <span className="font-normal text-slate-500 dark:text-slate-400"> · {p.street1}</span> : null}
+                        </div>
+                        {p.requestedBy && (
+                          <div className="text-[10px] text-slate-400 truncate mt-0.5">{p.requestedBy}</div>
+                        )}
                       </div>
-                      {p.requestedBy && (
-                        <div className="text-[10px] text-slate-400 truncate mt-0.5">{p.requestedBy}</div>
-                      )}
+                      <span
+                        className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold whitespace-nowrap"
+                        style={{ background: stageInfo.color + '22', color: stageInfo.color }}
+                      >
+                        {stageInfo.label}
+                      </span>
                     </div>
-                    <span
-                      className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold whitespace-nowrap"
-                      style={{ background: stageInfo.color + '22', color: stageInfo.color }}
+                  </button>
+                  {canManage && (
+                    <button
+                      onClick={e => handleUnlink(p, e)}
+                      disabled={isUnlinking}
+                      title="Unlink this plan"
+                      className="flex-shrink-0 p-1 rounded text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-40 opacity-0 group-hover:opacity-100"
                     >
-                      {stageInfo.label}
-                    </span>
-                  </div>
-                </button>
+                      {isUnlinking
+                        ? <Loader size={11} className="animate-spin" />
+                        : <X size={11} />
+                      }
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -383,6 +427,7 @@ function VarianceCard({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [scopeExpanded, setScopeExpanded] = useState(false);
   const [renewalModalOpen, setRenewalModalOpen] = useState(false);
+  const [streetInput, setStreetInput] = useState('');
 
   const expiryStatus = getVarianceExpiryStatus(active);
   const days = daysUntilExpiry(active);
@@ -390,11 +435,14 @@ function VarianceCard({
   const isError = active.scanStatus === 'error';
   const rootId = active.parentVarianceId ?? active.id;
 
+  // Only surface expiry urgency when this NV is actually backing active plans
+  const activelyLinked = hasActiveLinkedPlans(rootId, plans);
+
   const borderColor =
-    expiryStatus === 'expired' ? 'border-red-300' :
-    expiryStatus === 'critical' ? 'border-red-200' :
-    expiryStatus === 'warning' ? 'border-amber-200' :
     isError ? 'border-red-200' :
+    (activelyLinked && expiryStatus === 'expired')  ? 'border-red-300' :
+    (activelyLinked && expiryStatus === 'critical') ? 'border-red-200' :
+    (activelyLinked && expiryStatus === 'warning')  ? 'border-amber-200' :
     'border-slate-200';
 
   return (
@@ -431,16 +479,23 @@ function VarianceCard({
       <div className="p-4">
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug mb-0.5">
-              {active.title || active.fileName}
-            </div>
-            {active.permitNumber && (
-              <div className="text-[10px] font-mono font-semibold text-slate-400">
-                {active.permitNumber}
+            {/* Permit number is the primary identifier */}
+            {active.permitNumber ? (
+              <>
+                <div className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug mb-0.5">
+                  {active.permitNumber}
+                </div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug line-clamp-2">
+                  {active.title || active.fileName}
+                </div>
+              </>
+            ) : (
+              <div className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug mb-0.5">
+                {active.title || active.fileName}
               </div>
             )}
           </div>
-          <ExpiryBadge status={expiryStatus} days={days} />
+          <ExpiryBadge status={activelyLinked ? expiryStatus : 'valid'} days={days} />
         </div>
         {!isScanning && active.scanStatus === 'complete' && (
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-3">
@@ -475,6 +530,192 @@ function VarianceCard({
                   </div>
               }
             </div>
+            {/* Street Limits — corridor range label + full editable chip list */}
+            {((active.corridors ?? []).length > 0 || (active.coveredStreets ?? []).length > 0 || canManage) && (
+              <div className="col-span-2">
+                <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Street Limits</div>
+
+                {/* Corridor range label */}
+                {(active.corridors ?? []).length > 0 && (
+                  <div className="flex flex-col gap-0.5 mb-1.5">
+                    {active.corridors!.map((c, i) => (
+                      <div key={i} className="flex items-center gap-1 text-[10px]">
+                        <span className="font-bold text-sky-700 dark:text-sky-300">{c.mainStreet}</span>
+                        <span className="text-slate-400">from</span>
+                        <span className="font-semibold text-sky-600">{c.from}</span>
+                        <span className="text-slate-400">to</span>
+                        <span className="font-semibold text-sky-600">{c.to}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Full street list — four-way classification: verified (green) / in-range (blue) / extra (violet) / gap (amber) */}
+                {(() => {
+                  const rawStreets = active.coveredStreets ?? [];
+                  const corridors = active.corridors ?? [];
+                  const hasCorridors = corridors.length > 0;
+                  const verifiedSet = new Set((active.verifiedStreets ?? []).map(s => s.toLowerCase()));
+
+                  const gaps   = findGapsInCoverage(corridors, rawStreets);
+                  const extras = findExtrasOutsideCorridors(corridors, rawStreets);
+                  const extraSet = new Set(extras.map(s => s.toLowerCase()));
+
+                  // Verified streets come first (green) — may be from any category
+                  const verifiedList = sortStreetsByCorridorOrder(active.verifiedStreets ?? []);
+                  // In-range = covered streets NOT in extras and NOT already verified
+                  const inRange = sortStreetsByCorridorOrder(
+                    rawStreets.filter(s => !extraSet.has(s.toLowerCase()) && !verifiedSet.has(s.toLowerCase()))
+                  );
+                  // Extras outside range, not yet verified
+                  const extrasSorted = sortStreetsByCorridorOrder(
+                    extras.filter(s => !verifiedSet.has(s.toLowerCase()))
+                  );
+                  // Gaps not yet verified
+                  const unverifiedGaps = gaps.filter(s => !verifiedSet.has(s.toLowerCase()));
+
+                  const removeStreet = (st: string) =>
+                    updateVariance(active.id, { coveredStreets: rawStreets.filter(s => s !== st) });
+
+                  const verifyStreet = (st: string) =>
+                    updateVariance(active.id, { verifiedStreets: [...(active.verifiedStreets ?? []), st] });
+
+                  const unverifyStreet = (st: string) =>
+                    updateVariance(active.id, { verifiedStreets: (active.verifiedStreets ?? []).filter(s => s !== st) });
+
+                  // Banner counts exclude already-verified streets
+                  const unverifiedExtras = extras.filter(s => !verifiedSet.has(s.toLowerCase()));
+
+                  return (
+                    <>
+                      {/* Warning banners — only show for unverified issues */}
+                      {unverifiedExtras.length > 0 && (
+                        <div className="flex items-center gap-1.5 mb-1.5 px-2 py-1 bg-violet-50 border border-violet-200 rounded-lg">
+                          <AlertTriangle size={10} className="text-violet-500 flex-shrink-0" />
+                          <span className="text-[10px] font-semibold text-violet-700">
+                            {unverifiedExtras.length} street{unverifiedExtras.length !== 1 ? 's' : ''} outside the stated corridor range — may be AI over-extraction
+                          </span>
+                          <a href={active.fileUrl} target="_blank" rel="noopener noreferrer"
+                            className="ml-auto text-[10px] font-bold text-violet-600 hover:text-violet-800 flex items-center gap-0.5 flex-shrink-0">
+                            <ExternalLink size={9} /> Verify PDF
+                          </a>
+                        </div>
+                      )}
+                      {unverifiedGaps.length > 0 && (
+                        <div className="flex items-center gap-1.5 mb-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg">
+                          <AlertTriangle size={10} className="text-amber-500 flex-shrink-0" />
+                          <span className="text-[10px] font-semibold text-amber-700">
+                            {unverifiedGaps.length} street{unverifiedGaps.length !== 1 ? 's' : ''} missing from stated range — may be AI under-extraction
+                          </span>
+                          <a href={active.fileUrl} target="_blank" rel="noopener noreferrer"
+                            className="ml-auto text-[10px] font-bold text-amber-600 hover:text-amber-800 flex items-center gap-0.5 flex-shrink-0">
+                            <ExternalLink size={9} /> Verify PDF
+                          </a>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-1 items-center">
+                        {/* Verified chips — solid green with ✓, shown first */}
+                        {verifiedList.map((st, i) => (
+                          <span key={`verified-${i}`}
+                            className="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-300 group"
+                            title="Manually verified from PDF"
+                          >
+                            <CheckCircle size={8} className="flex-shrink-0 text-emerald-500" />
+                            {st}
+                            {canManage && (
+                              <button onClick={() => unverifyStreet(st)}
+                                className="opacity-0 group-hover:opacity-100 text-emerald-400 hover:text-red-500 transition-opacity ml-0.5" title="Remove verification">
+                                <X size={9} />
+                              </button>
+                            )}
+                          </span>
+                        ))}
+
+                        {/* In-range chips — blue, sorted south→north */}
+                        {inRange.map((st, i) => (
+                          <span key={i}
+                            className="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] font-semibold bg-sky-50 text-sky-700 border border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-700 group"
+                          >
+                            {st}
+                            {canManage && (
+                              <button onClick={() => removeStreet(st)}
+                                className="opacity-0 group-hover:opacity-100 text-sky-400 hover:text-red-500 transition-opacity ml-0.5" title="Remove">
+                                <X size={9} />
+                              </button>
+                            )}
+                          </span>
+                        ))}
+
+                        {/* Extra chips — violet dashed, outside stated range */}
+                        {hasCorridors && extrasSorted.map((st, i) => (
+                          <span key={`extra-${i}`}
+                            className="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] font-semibold bg-violet-50 text-violet-600 border border-dashed border-violet-300 group"
+                            title="Outside stated corridor range — verify in PDF"
+                          >
+                            <AlertTriangle size={8} className="flex-shrink-0 opacity-60" />
+                            {st}
+                            {canManage && (<>
+                              <button onClick={() => verifyStreet(st)}
+                                className="opacity-0 group-hover:opacity-100 text-violet-400 hover:text-emerald-600 transition-opacity" title="Mark as verified from PDF">
+                                <CheckCircle size={9} />
+                              </button>
+                              <button onClick={() => removeStreet(st)}
+                                className="opacity-0 group-hover:opacity-100 text-violet-400 hover:text-red-500 transition-opacity" title="Remove">
+                                <X size={9} />
+                              </button>
+                            </>)}
+                          </span>
+                        ))}
+
+                        {/* Gap chips — amber dashed, missing from range */}
+                        {unverifiedGaps.map((st, i) => (
+                          <span key={`gap-${i}`}
+                            className="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-600 border border-dashed border-amber-300 group"
+                            title="Within stated range but not extracted — verify in PDF"
+                          >
+                            <AlertTriangle size={8} className="flex-shrink-0" />
+                            {st}
+                            {canManage && (
+                              <button onClick={() => verifyStreet(st)}
+                                className="opacity-0 group-hover:opacity-100 text-amber-400 hover:text-emerald-600 transition-opacity ml-0.5" title="Mark as verified from PDF">
+                                <CheckCircle size={9} />
+                              </button>
+                            )}
+                          </span>
+                        ))}
+
+                        {/* Inline add-street form */}
+                        {canManage && (
+                          <form onSubmit={e => {
+                            e.preventDefault();
+                            const val = streetInput.trim();
+                            if (!val) return;
+                            updateVariance(active.id, { coveredStreets: [...rawStreets, val] });
+                            setStreetInput('');
+                          }} className="inline-flex items-center gap-1">
+                            <input type="text" value={streetInput} onChange={e => setStreetInput(e.target.value)}
+                              placeholder="Add street…"
+                              className="px-1.5 py-0.5 rounded text-[10px] border border-dashed border-sky-300 text-sky-600 placeholder-sky-300 focus:outline-none focus:border-sky-500 w-24 bg-transparent"
+                            />
+                            {streetInput.trim() && (
+                              <button type="submit"
+                                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-600 text-white hover:bg-sky-700 transition-colors">
+                                <Plus size={9} /> Add
+                              </button>
+                            )}
+                          </form>
+                        )}
+
+                        {rawStreets.length === 0 && gaps.length === 0 && !canManage && (
+                          <span className="text-[10px] text-slate-400 italic">No streets extracted yet — run Rescan</span>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         )}
         {!isScanning && active.scanStatus === 'complete' && canManage && (
@@ -546,7 +787,7 @@ function VarianceCard({
         )}
         <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-700">
           <div className="flex items-center gap-3">
-            <LinkedPlansBadge rootId={rootId} plans={plans} setSelectedPlan={setSelectedPlan} />
+            <LinkedPlansBadge rootId={rootId} plans={plans} setSelectedPlan={setSelectedPlan} canManage={canManage} />
             <span className="text-[10px] text-slate-400">
               Uploaded {fmt(active.uploadedAt.slice(0, 10))} · {active.uploadedBy.split(' ')[0]}
             </span>
@@ -703,7 +944,13 @@ export const NoiseVariancesSection: React.FC<NoiseVariancesSectionProps> = ({ cu
   const pendingReview = variances.filter(v => v.scanStatus === 'pending_review');
   const alerts = families
     .map(f => f.active)
-    .filter(v => { const s = getVarianceExpiryStatus(v); return s === 'warning' || s === 'critical' || s === 'expired'; });
+    .filter(v => {
+      const s = getVarianceExpiryStatus(v);
+      if (s !== 'warning' && s !== 'critical' && s !== 'expired') return false;
+      // Only flag if this NV is actively backing at least one non-completed plan
+      const rootId = v.parentVarianceId ?? v.id;
+      return hasActiveLinkedPlans(rootId, plans);
+    });
   const scanning = variances.filter(v => v.scanStatus === 'scanning').length;
   const errors   = variances.filter(v => v.scanStatus === 'error').length;
 

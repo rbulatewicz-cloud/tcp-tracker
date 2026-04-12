@@ -182,7 +182,10 @@ export const submitPlan = async (
   if (!locNumber) {
     throw new Error("LOC # is required.");
   }
-  if (plans.some(p => p.id === locNumber || p.loc === locNumber)) {
+  // Use p.loc as the canonical LOC identifier; fall back to p.id only for plans
+  // that predate the loc field (legacy). This ensures a plan whose Firestore doc ID
+  // is "LOC-508" but whose loc was renamed to "LOC-431" does NOT block new LOC-508.
+  if (plans.some(p => (p.loc || p.id) === locNumber)) {
     throw new Error(`LOC # "${locNumber}" already exists. Please use a unique LOC number.`);
   }
 
@@ -225,8 +228,11 @@ export const submitPlan = async (
       }));
     }
 
+    // Strip transient file fields that must not be written to Firestore
+    const { cd_slide_file: cdSlideFile, ...formWithoutTransient } = form as Record<string, unknown>;
+
     const np: Partial<Plan> = {
-      ...form,
+      ...(formWithoutTransient as Partial<Plan>),
       attachments: uploadedAttachments,
       id: locNumber,
       loc: locNumber,
@@ -249,6 +255,28 @@ export const submitPlan = async (
     };
 
     await setDoc(doc(db, 'plans', locNumber), stripUndefined(np) as Plan);
+
+    // If a CD slide was attached at request time, upload it now that we have the plan ID
+    if (cdSlideFile instanceof File && compliance.cdConcurrence) {
+      try {
+        const ext = (cdSlideFile as File).name.split('.').pop() ?? 'pptx';
+        const slidePath = `cd-slides/${locNumber}/${Date.now()}_${(cdSlideFile as File).name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const slideRef = ref(storage, slidePath);
+        await uploadBytes(slideRef, cdSlideFile as File);
+        const slideUrl = await getDownloadURL(slideRef);
+        await updateDoc(doc(db, 'plans', locNumber), {
+          'compliance.cdConcurrence.presentationAttachment': {
+            name: (cdSlideFile as File).name,
+            url: slideUrl,
+            uploadedAt: new Date().toISOString(),
+            uploadedBy: getUserLabel(),
+          },
+        });
+      } catch {
+        // Non-fatal — slide can be uploaded from plan card
+      }
+    }
+
     return { queuePos, id: locNumber };
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `plans/${locNumber}`);

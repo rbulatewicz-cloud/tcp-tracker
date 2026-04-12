@@ -10,6 +10,8 @@ export interface TurnaroundStats {
   sampleSize: number;
   /** Plans of this type currently in active stages (not completed/closed) */
   inProgress: number;
+  /** LOC identifiers of the plans contributing to the average (for admin review) */
+  contributingLocs: string[];
 }
 
 /**
@@ -27,7 +29,7 @@ export function getTurnaroundStats(
   plans: Plan[],
   windowDays = 60
 ): TurnaroundStats {
-  if (!type || !plans.length) return { avgDays: null, sampleSize: 0, inProgress: 0 };
+  if (!type || !plans.length) return { avgDays: null, sampleSize: 0, inProgress: 0, contributingLocs: [] };
 
   const cutoff = Date.now() - windowDays * 24 * 60 * 60 * 1000;
 
@@ -38,6 +40,7 @@ export function getTurnaroundStats(
 
   // Qualifying completed plans
   const days: number[] = [];
+  const contributingLocs: string[] = [];
   for (const p of plans) {
     if (p.type !== type)         continue;
     if (!COMPLETED_STAGES.has(p.stage)) continue;
@@ -62,15 +65,19 @@ export function getTurnaroundStats(
 
     const elapsed = (approvedMs - reqMs) / (1000 * 60 * 60 * 24);
     // Sanity bounds: ignore negatives or suspiciously large values (>1 year)
-    if (elapsed >= 0 && elapsed <= 365) days.push(elapsed);
+    if (elapsed >= 0 && elapsed <= 365) {
+      days.push(elapsed);
+      contributingLocs.push(p.loc || p.id);
+    }
   }
 
-  if (!days.length) return { avgDays: null, sampleSize: 0, inProgress };
+  if (!days.length) return { avgDays: null, sampleSize: 0, inProgress, contributingLocs: [] };
 
   const avg = days.reduce((a, b) => a + b, 0) / days.length;
   return {
     avgDays:    Math.round(avg * 10) / 10,
     sampleSize: days.length,
     inProgress,
+    contributingLocs,
   };
 }

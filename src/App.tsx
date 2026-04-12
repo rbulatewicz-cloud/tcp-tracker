@@ -9,6 +9,7 @@
  */
 
 import { bulkUpdate } from './services/planService';
+import * as XLSX from 'xlsx';
 import { ImportWizard } from './components/ImportWizard';
 import { useState, useEffect, useMemo, useCallback } from "react";
 import ReactDOM from "react-dom";
@@ -33,16 +34,19 @@ import { TicketsView } from './views/TicketsView';
 import { LocManagerPortalView } from './views/LocManagerPortalView';
 import { ComplianceView } from './views/ComplianceView';
 import VarianceLibraryView from './views/VarianceLibraryView';
+import { CRHubView } from './views/CRHubView';
 import CorridorMapView from './views/CorridorMapView';
 import ReferenceView from './views/ReferenceView';
 import { AppFeedbackView } from './views/AppFeedbackView';
+import { GanttView } from './views/GanttView';
+import { ReportsView } from './views/ReportsView';
 import { MyRequestsModal } from './views/MyRequestsModal';
 import { daysBetween, formatFileSize, calcMetrics, getLocalDateString } from './utils/plans';
 import { TodoSidebar } from './components/TodoSidebar';
 import { AppRequestSidebar } from './features/appRequests/AppRequestSidebar';
 import { ToastContainer } from './components/ToastContainer';
 import { showToast } from './lib/toast';
-import { UserRole, Plan, NoiseVariance } from './types';
+import { UserRole, Plan, NoiseVariance, FilterState } from './types';
 import {
   STAGES, PLAN_TYPES, PRIORITIES, LEADS, STREET_NAMES,
   FONT as font, MONO_FONT as monoFont,
@@ -227,6 +231,37 @@ function AppContent() {
     if(filter.requestedBy!=="all"&&p.requestedBy!==filter.requestedBy) return false;
     if(filter.scope!=="all"&&p.scope!==filter.scope) return false;
 
+    // Quick filter pills
+    if (filter.quickFilter === 'my_plans') {
+      const userName = currentUser?.name || '';
+      const firstName = userName.split(' ')[0];
+      if (p.lead !== userName && p.lead !== firstName) return false;
+    }
+    if (filter.quickFilter === 'at_risk') {
+      const INACTIVE = ['approved','plan_approved','implemented','tcp_approved_final','closed','cancelled','expired'];
+      if (INACTIVE.includes(p.stage)) return false;
+      if (!p.needByDate) return false;
+      const daysLeft = Math.ceil((new Date(p.needByDate + 'T00:00:00').getTime() - TODAY.getTime()) / 86_400_000);
+      if (daysLeft > 14) return false;
+    }
+    if (filter.quickFilter === 'needs_compliance') {
+      const phe = p.compliance?.phe;
+      const nv  = p.compliance?.noiseVariance;
+      const cd  = p.compliance?.cdConcurrence;
+      const phePending = phe && !['approved','not_started','expired'].includes(phe.status);
+      const nvPending  = nv  && !['approved','linked_existing','not_started'].includes(nv.status);
+      const cdPending  = cd  && (cd.cds ?? []).some((c: any) =>
+        c.applicable && c.status !== 'na' && c.status !== 'concurred'
+      );
+      if (!phePending && !nvPending && !cdPending) return false;
+    }
+    if (filter.quickFilter === 'overdue_dot') {
+      const AT_DOT = ['submitted_to_dot','dot_review','resubmit_review','loc_review'];
+      if (!AT_DOT.includes(p.stage)) return false;
+      if (!p.submitDate) return false;
+      if (daysBetween(p.submitDate, td) <= 20) return false;
+    }
+
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       const stageLabel = stageLabelMap.get(p.stage) || p.stage;
@@ -246,7 +281,7 @@ function AppContent() {
     }
 
     return true;
-  }), [plans, filter, searchQuery, stageLabelMap]);
+  }), [plans, filter, searchQuery, stageLabelMap, currentUser, TODAY, td]);
 
   const toggleSelectAll = useCallback(() => {
     if (selectedPlanIds.length === filtered.length) {
@@ -427,6 +462,68 @@ function AppContent() {
     }, 1000);
   }, [sortedData, stageLabelMap, td, setLoading]);
 
+  const exportToExcel = useCallback(() => {
+    setLoading(prev => ({ ...prev, export: true }));
+    setTimeout(() => {
+      const headers = [
+        '✓', 'LOC #', 'Type', 'Scope', 'Segment', 'Location',
+        'Lead', 'Status', 'Need By', 'PHE', 'NV', 'DN Sent', 'Notes',
+      ];
+
+      const rows = sortedData.map(plan => {
+        const stage = stageLabelMap.get(plan.stage) || plan.stage;
+        const dn = plan.compliance?.drivewayNotices;
+        const dnSent = dn
+          ? `${dn.addresses.filter((a: any) => a.noticeSent).length}/${dn.addresses.length}`
+          : '';
+        return [
+          '',                                                              // checkbox
+          plan.loc || plan.id,
+          plan.type        || '',
+          plan.scope       || '',
+          plan.segment     || '',
+          `${plan.street1 || ''}${plan.street2 ? ` / ${plan.street2}` : ''}`,
+          plan.lead        || '',
+          stage,
+          plan.needByDate  || '',
+          plan.compliance?.phe?.status             || '',
+          plan.compliance?.noiseVariance?.status   || '',
+          dnSent,
+          '',                                                              // Notes — blank for filling in
+        ];
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+      // Column widths
+      ws['!cols'] = [
+        { wch: 3  },  // ✓
+        { wch: 12 },  // LOC #
+        { wch: 14 },  // Type
+        { wch: 16 },  // Scope
+        { wch: 9  },  // Segment
+        { wch: 32 },  // Location
+        { wch: 12 },  // Lead
+        { wch: 22 },  // Status
+        { wch: 12 },  // Need By
+        { wch: 12 },  // PHE
+        { wch: 12 },  // NV
+        { wch: 9  },  // DN Sent
+        { wch: 36 },  // Notes
+      ];
+
+      // Freeze header row so it stays visible when scrolling
+      ws['!views'] = [{ state: 'frozen', ySplit: 1 }];
+
+      const wb = XLSX.utils.book_new();
+      const dateStr = new Date().toISOString().split('T')[0];
+      const sheetName = `Plans ${dateStr}`;
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      XLSX.writeFile(wb, `TCP_Plans_${dateStr}.xlsx`);
+      setLoading(prev => ({ ...prev, export: false }));
+    }, 100);
+  }, [sortedData, stageLabelMap, setLoading]);
+
   const submitLOC = async () => {
     if (!locForm.locNumber || !locForm.startDate || !locForm.endDate) {
       showToast("Please fill in all required fields.", "warning");
@@ -498,15 +595,30 @@ function AppContent() {
     }
     return permissions.view.includes(role);
   };
-  const canViewMetrics = true;
-  const canViewLogs = role === UserRole.MOT || role === UserRole.ADMIN;
-  const [planViewMode, setPlanViewMode] = useState<'table' | 'map'>('table');
-  const canViewTickets = role === UserRole.MOT || role === UserRole.ADMIN;
-  const canEditPlan = role !== UserRole.GUEST;
+  // Resolve which tabs this role can see — config-driven with hardcoded defaults as fallback
+  const _defaultTabVis: Record<string, string[]> = {
+    GUEST:  ['table', 'corridor', 'calendar'],
+    SFTC:   ['table', 'corridor', 'calendar', 'metrics', 'plan_requests', 'timeline', 'reports', 'compliance', 'variances', 'reference'],
+    MOT:    ['table', 'corridor', 'calendar', 'metrics', 'plan_requests', 'timeline', 'reports', 'compliance', 'variances', 'reference', 'users', 'log'],
+    CR:     ['table', 'corridor', 'calendar', 'cr_hub', 'compliance', 'variances', 'reference'],
+    DOT:    ['table', 'corridor', 'calendar', 'variances', 'reference'],
+    METRO:  ['table', 'corridor', 'calendar', 'compliance', 'variances', 'reference'],
+    ADMIN:  ['table', 'corridor', 'calendar', 'metrics', 'plan_requests', 'timeline', 'reports', 'cr_hub', 'compliance', 'variances', 'reference', 'users', 'log'],
+  };
+  const _effectiveTabs: string[] = role === UserRole.ADMIN
+    ? _defaultTabVis.ADMIN
+    : (appConfig.tabVisibility?.[role ?? ''] ?? _defaultTabVis[role ?? ''] ?? ['table']);
+  const canViewTab = (key: string) => role === UserRole.ADMIN || _effectiveTabs.includes(key);
+
+  const canViewMetrics = canViewTab('metrics');
+  const canViewLogs = canViewTab('log');
+  const canViewTickets = canViewTab('plan_requests');
+  const canEditPlan = role !== UserRole.GUEST && role !== UserRole.DOT && role !== UserRole.METRO;
   const canCreateRequest = role === UserRole.SFTC || role === UserRole.MOT || role === UserRole.ADMIN;
   const canManageUsers = role === UserRole.MOT || role === UserRole.ADMIN;
   const canRequestAppChange = role === UserRole.MOT || role === UserRole.ADMIN;
-  const canViewCompliance = role === UserRole.MOT || role === UserRole.ADMIN || role === UserRole.SFTC || role === UserRole.CR;
+  const canViewCompliance = canViewTab('compliance');
+  const canViewCRHub = canViewTab('cr_hub');
   const canExport = role === UserRole.SFTC || role === UserRole.MOT || role === UserRole.ADMIN;
 
   useEffect(() => {
@@ -517,8 +629,15 @@ function AppContent() {
 
   // Notification click → navigate to the relevant item
   const handleNotifNavigate = (n: import('./types').AppNotification) => {
-    if (n.planId) {
-      // Plan-based notification — open the plan card
+    if (n.type === 'cd_overdue' || n.type === 'cd_warning' || n.type === 'missing_slide') {
+      // Go to CR Hub → CD Concurrence tab
+      setView(canViewCRHub ? 'cr_hub' : 'variances');
+      // If there's a planId, also open the plan card
+      if (n.planId) {
+        const plan = plans.find(p => p.id === n.planId);
+        if (plan) setSelectedPlan(plan);
+      }
+    } else if (n.planId) {
       const plan = plans.find(p => p.id === n.planId);
       if (plan) {
         setView('table');
@@ -527,6 +646,8 @@ function AppContent() {
     } else if (n.type === 'feedback_comment' || n.type === 'feedback_updated') {
       // App request notification — go to the feedback view
       if (canManageApp) setView('app_feedback');
+    } else {
+      setView('metrics');
     }
   };
 
@@ -575,6 +696,8 @@ function AppContent() {
         canManageUsers={canManageUsers}
         canManageApp={canManageApp}
         canViewCompliance={canViewCompliance}
+        canViewCRHub={canViewCRHub}
+        canViewTab={canViewTab}
         canCreateRequest={canCreateRequest}
         canRequestAppChange={canRequestAppChange}
         setShowForm={setShowForm}
@@ -595,19 +718,40 @@ function AppContent() {
         onNotifNavigate={handleNotifNavigate}
       />
 
-      {/* SUMMARY STATS BAR */}
+      {/* PLAN VIEW TOOLBAR — pills + view toggle, shown for both table and corridor sub-views */}
       {view === "table" && (
-        <SummaryStatsBar
-          metrics={metrics}
-          hoveredMetricIndex={hoveredMetricIndex}
-          setHoveredMetricIndex={setHoveredMetricIndex}
-          currentUser={currentUser}
-          plans={plans}
-          td={td}
-          TODAY={TODAY}
-          filter={filter}
-          setFilter={setFilter}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 28px', borderBottom: '1px solid var(--border-subtle)', flexWrap: 'wrap', background: 'var(--bg-surface)' }}>
+          {/* Quick-filter pills */}
+          {([
+            { key: 'all',              label: 'All Plans',        emoji: '📋', activeColor: '#1E293B', activeBg: '#F1F5F9' },
+            { key: 'my_plans',         label: 'My Plans',         emoji: '👤', activeColor: '#1D4ED8', activeBg: '#DBEAFE' },
+            { key: 'at_risk',          label: 'At Risk',          emoji: '⚠️', activeColor: '#D97706', activeBg: '#FEF3C7' },
+            { key: 'needs_compliance', label: 'Needs Compliance', emoji: '🏛', activeColor: '#7C3AED', activeBg: '#EDE9FE' },
+            { key: 'overdue_dot',      label: 'Overdue at DOT',   emoji: '🕐', activeColor: '#DC2626', activeBg: '#FEE2E2' },
+          ] as { key: FilterState['quickFilter']; label: string; emoji: string; activeColor: string; activeBg: string }[]).map(p => {
+            const active = (filter.quickFilter ?? 'all') === p.key;
+            return (
+              <button
+                key={p.key}
+                onClick={() => setFilter(pr => ({ ...pr, quickFilter: p.key }))}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '5px 12px', borderRadius: 999,
+                  border: active ? `1.5px solid ${p.activeColor}40` : '1.5px solid var(--border)',
+                  background: active ? p.activeBg : 'var(--bg-surface)',
+                  color: active ? p.activeColor : 'var(--text-muted)',
+                  fontSize: 12, fontWeight: active ? 700 : 500,
+                  cursor: 'pointer', transition: 'all .15s',
+                  fontFamily: font,
+                }}
+              >
+                <span style={{ fontSize: 13 }}>{p.emoji}</span>
+                {p.label}
+              </button>
+            );
+          })}
+
+        </div>
       )}
 
       <div style={{padding:"20px 28px"}}>
@@ -697,6 +841,11 @@ function AppContent() {
           />
         )}
 
+        {/* CORRIDOR MAP — standalone nav view */}
+        {view === "corridor" && (
+          <CorridorMapView plans={filtered} setSelectedPlan={setSelectedPlan} monoFont={monoFont} />
+        )}
+
         {/* COMPLIANCE VIEW */}
         {view==="compliance" && canViewCompliance && (
           <ComplianceView
@@ -708,15 +857,47 @@ function AppContent() {
         )}
 
         {/* VARIANCE LIBRARY */}
-        {view === "variances" && (
+        {view === "variances" && canViewTab('variances') && (
           <VarianceLibraryView currentUser={currentUser} appConfig={appConfig} plans={plans} setSelectedPlan={setSelectedPlan} />
         )}
 
+        {/* CR HUB */}
+        {view === "cr_hub" && canViewCRHub && (
+          <CRHubView
+            currentUser={currentUser}
+            appConfig={appConfig}
+            plans={plans}
+            setSelectedPlan={setSelectedPlan}
+            setView={setView}
+          />
+        )}
+
         {/* REFERENCE */}
-        {view === 'reference' && (
+        {view === 'reference' && canViewTab('reference') && (
           <ReferenceView
             role={role}
             uploadedBy={currentUser?.displayName || currentUser?.email || 'Unknown'}
+          />
+        )}
+
+        {/* TIMELINE (GANTT) VIEW */}
+        {view === "timeline" && canViewTab('timeline') && (
+          <GanttView
+            plans={filtered}
+            monoFont={monoFont}
+            setSelectedPlan={setSelectedPlan}
+          />
+        )}
+
+        {/* REPORTS VIEW */}
+        {view === "reports" && canViewTab('reports') && (
+          <ReportsView
+            plans={plans}
+            filtered={filtered}
+            currentUser={currentUser}
+            monoFont={monoFont}
+            setSelectedPlan={setSelectedPlan}
+            setView={setView}
           />
         )}
 
@@ -753,46 +934,9 @@ function AppContent() {
           />
         )}
 
-        {/* TABLE / CORRIDOR TOGGLE */}
-        {view === "table" && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-            <div style={{ display: 'flex', border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
-              <button
-                onClick={() => setPlanViewMode('table')}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px',
-                  fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none',
-                  background: planViewMode === 'table' ? '#1E293B' : '#FFFFFF',
-                  color:      planViewMode === 'table' ? '#FFFFFF' : '#64748B',
-                  transition: 'background 0.15s',
-                }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                Table
-              </button>
-              <button
-                onClick={() => setPlanViewMode('map')}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px',
-                  fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none',
-                  borderLeft: '1px solid #E2E8F0',
-                  background: planViewMode === 'map' ? '#1E293B' : '#FFFFFF',
-                  color:      planViewMode === 'map' ? '#FFFFFF' : '#64748B',
-                  transition: 'background 0.15s',
-                }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 3 20 8 17 13 20 18 17 21 19 21 5 18 3 13 6 8 3 3 6"/><line x1="8" y1="3" x2="8" y2="17"/><line x1="13" y1="6" x2="13" y2="20"/></svg>
-                Corridor
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* TABLE VIEW */}
-        {view==="table" && planViewMode === 'map' && (
-          <CorridorMapView plans={filtered} setSelectedPlan={setSelectedPlan} />
-        )}
-        {view==="table" && planViewMode === 'table' && (
+        {view==="table" && (
           <TableView
             STAGES={STAGES}
             plans={plans}
@@ -806,6 +950,7 @@ function AppContent() {
             PRIORITIES={PRIORITIES}
             canExport={canExport}
             exportToCSV={exportToCSV}
+            exportToExcel={exportToExcel}
             loading={loading}
             canEditPlan={canEditPlan}
             selectedPlanIds={selectedPlanIds}
@@ -850,7 +995,6 @@ function AppContent() {
                 setShowNeedByWarningModal(false);
               }} style={{width:"100%", background:"#F59E0B", color:"#fff", border:"none", padding:"10px", borderRadius:8, fontWeight:700, cursor:"pointer"}}>Is this Critical Path Item?</button>
               <button onClick={()=>{
-                setForm(f => ({...f, needByDate: ""}));
                 setShowNeedByWarningModal(false);
               }} style={{width:"100%", background:"#DC2626", color:"#fff", border:"none", padding:"10px", borderRadius:8, fontWeight:700, cursor:"pointer"}}>Acknowledge</button>
             </div>

@@ -17,7 +17,7 @@ export function subscribeToDrivewayProperties(
 }
 
 export async function createDrivewayProperty(
-  data: Omit<DrivewayProperty, 'id' | 'createdAt'>,
+  data: Omit<DrivewayProperty, 'id' | 'createdAt' | 'createdBy'>,
   createdBy: string
 ): Promise<string> {
   const ref = await addDoc(collection(db, COL), {

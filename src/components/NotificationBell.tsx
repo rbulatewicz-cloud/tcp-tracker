@@ -19,6 +19,10 @@ function getNotifStyle(type: NotifyEvent): NotifStyle {
     case 'nv_expiring':       return { icon: <AlertTriangle size={13} />, color: '#7C3AED', bg: 'rgba(124,58,237,0.1)' };
     case 'feedback_updated':  return { icon: <Wrench size={13} />,        color: '#10B981', bg: 'rgba(16,185,129,0.1)' };
     case 'feedback_comment':  return { icon: <MessageSquare size={13} />, color: '#6366F1', bg: 'rgba(99,102,241,0.1)' };
+    case 'cd_overdue':        return { icon: <AlertTriangle size={13} />, color: '#EF4444', bg: 'rgba(239,68,68,0.1)' };
+    case 'cd_warning':        return { icon: <Clock size={13} />,         color: '#F59E0B', bg: 'rgba(245,158,11,0.1)' };
+    case 'phe_deadline':      return { icon: <Clock size={13} />,         color: '#F97316', bg: 'rgba(249,115,22,0.1)' };
+    case 'missing_slide':     return { icon: <FileText size={13} />,      color: '#8B5CF6', bg: 'rgba(139,92,246,0.1)' };
     default:                  return { icon: <Bell size={13} />,          color: '#64748B', bg: 'rgba(100,116,139,0.1)' };
   }
 }

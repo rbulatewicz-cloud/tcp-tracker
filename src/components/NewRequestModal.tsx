@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { IMPACT_FIELDS, FIELD_REGISTRY } from '../constants';
 import { useAppLists } from '../context/AppListsContext';
 import { CollapsibleSection } from './CollapsibleSection';
@@ -70,6 +70,8 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
   const { planTypes } = useAppLists();
   const { firestoreData } = useApp();
   const [validationErrors, setValidationErrors] = React.useState<string[]>([]);
+  // CD slide file attached at request time — uploaded after plan creation
+  const [cdSlideFile, setCdSlideFile] = useState<File | null>(null);
   const [properties, setProperties] = React.useState<DrivewayProperty[]>([]);
   React.useEffect(() => subscribeToDrivewayProperties(setProperties), []);
 
@@ -117,6 +119,10 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
       return;
     }
     setValidationErrors([]);
+    // Attach the CD slide file to form state so planService can upload it post-creation
+    if (cdSlideFile) {
+      setForm(f => ({ ...f, cd_slide_file: cdSlideFile } as typeof f));
+    }
     handleSubmit();
   };
 
@@ -251,6 +257,11 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
                         </span>
                       )}
                     </div>
+                    {turnaroundStats.sampleSize > 0 && turnaroundStats.sampleSize <= 3 && (
+                      <div className="mt-1 text-[10px] text-amber-600">
+                        ⚠ Small sample — contributing plans: {turnaroundStats.contributingLocs.join(', ')}. If any were imported/trued-up, mark them as Historical on the plan card to exclude them.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -315,7 +326,11 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
                     setForm(f => ({
                       ...f,
                       impact_krail: checked,
-                      ...(checked ? { work_hours: { shift: 'continuous' as const, days: [] } } : {}),
+                      // Checking Krail forces continuous shift; unchecking clears it
+                      // so compliance triggers reset correctly
+                      work_hours: checked
+                        ? { shift: 'continuous' as const, days: [] }
+                        : undefined,
                     }));
                   }}
                   className="rounded border-slate-300 accent-violet-600"
@@ -348,6 +363,8 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
               plans={firestoreData.plans}
               drivewayAddresses={(form.driveway_addresses as Array<{ address: string; propertyId?: string }>) ?? []}
               onDrivewayAddressesChange={addrs => update('driveway_addresses', addrs)}
+              cdSlideFile={cdSlideFile}
+              onCdSlideChange={setCdSlideFile}
             />
           </CollapsibleSection>
 

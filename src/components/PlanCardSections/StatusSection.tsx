@@ -709,11 +709,13 @@ export const StatusSection: React.FC = React.memo(() => {
                 <button
                   onClick={async () => {
                     if (!editStart || !editEnd) { showToast('Both start and end dates are required.', 'warning'); return; }
+                    // isDraft=false: write directly to Firestore so saveDraft (which skips
+                    // implementationWindow as a STAGE_MANAGED_FIELD) can't revert the change.
                     await updatePlanField(selectedPlan.id, 'implementationWindow', {
                       startDate: editStart,
                       endDate: editEnd,
                       isExpired: false,
-                    });
+                    }, false);
                     setEditingWindow(false);
                     showToast('Implementation dates saved.', 'success');
                   }}

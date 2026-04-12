@@ -58,18 +58,31 @@ export const RequestFormFields: React.FC<RequestFormFieldsProps> = ({
           <input
             type="date"
             value={(form[formKey] as string) || ""}
-            onChange={e => {
-              const newDate = e.target.value;
-              update(formKey, newDate);
-              if (k === 'needByDate' && reportTemplate?.needByThresholds) {
-                const threshold = reportTemplate.needByThresholds[form.type as keyof typeof reportTemplate.needByThresholds] || 0;
-                const daysToNeed = Math.ceil((new Date(newDate).getTime() - TODAY.getTime()) / (1000 * 60 * 60 * 24));
-                if (daysToNeed < threshold) {
-                  setWarningMessage(`The selected need-by date is less than the threshold of ${threshold} days for ${form.type} plans.`);
-                  setShowNeedByWarningModal(true);
-                }
+            onChange={e => update(formKey, e.target.value)}
+            ref={k === 'needByDate' ? (el: HTMLInputElement | null) => {
+              // React's synthetic onChange fires on every input event — including calendar
+              // navigation arrows. The native DOM 'change' event fires only when the user
+              // actually commits a date selection (clicks a date cell or types + tabs away).
+              // We use a callback ref so the handler always captures the latest closure values.
+              if (!el) return;
+              if ((el as any).__thresholdHandler) {
+                el.removeEventListener('change', (el as any).__thresholdHandler);
               }
-            }}
+              const handler = (evt: Event) => {
+                const date = (evt.target as HTMLInputElement).value;
+                if (!date || !reportTemplate?.needByThresholds) return;
+                const threshold = reportTemplate.needByThresholds[form.type as keyof typeof reportTemplate.needByThresholds] || 0;
+                if (threshold > 0) {
+                  const daysToNeed = Math.ceil((new Date(date + 'T00:00:00').getTime() - TODAY.getTime()) / (1000 * 60 * 60 * 24));
+                  if (daysToNeed < threshold) {
+                    setWarningMessage(`The selected need-by date is less than the threshold of ${threshold} days for ${form.type} plans.`);
+                    setShowNeedByWarningModal(true);
+                  }
+                }
+              };
+              (el as any).__thresholdHandler = handler;
+              el.addEventListener('change', handler);
+            } : undefined}
             className="text-xs font-semibold text-slate-900 bg-white border border-slate-200 rounded-md p-2 w-full"
           />
         ) : k === 'streetFrom' || k === 'streetTo' ? (

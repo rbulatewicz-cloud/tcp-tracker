@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TCP Tracker — Feature Sketches</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; font-size: 14px; }
+
+  /* ── Nav ── */
+  .top-nav { background: #0f172a; padding: 0 24px; display: flex; align-items: center; gap: 4px; height: 48px; }
+  .top-nav .brand { color: #fff; font-weight: 800; font-size: 15px; margin-right: 20px; letter-spacing: -0.3px; }
+  .top-nav .brand span { color: #38bdf8; }
+  .tab-btn { padding: 6px 14px; border-radius: 6px; border: none; background: transparent; color: #94a3b8; font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; }
+  .tab-btn:hover { background: #1e293b; color: #e2e8f0; }
+  .tab-btn.active { background: #1d4ed8; color: #fff; }
+
+  /* ── Layout ── */
+  .page { display: none; padding: 24px; max-width: 1200px; margin: 0 auto; }
+  .page.active { display: block; }
+  h2 { font-size: 18px; font-weight: 800; color: #0f172a; margin-bottom: 4px; }
+  .subtitle { font-size: 12px; color: #64748b; margin-bottom: 20px; }
+
+  /* ── Cards ── */
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; }
+  .card-sm { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; }
+
+  /* ── Grid helpers ── */
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-65 { display: grid; grid-template-columns: 1fr 340px; gap: 16px; }
+
+  /* ── KPI card ── */
+  .kpi { padding: 16px 20px; }
+  .kpi .label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
+  .kpi .value { font-size: 32px; font-weight: 800; line-height: 1.1; margin: 4px 0 2px; }
+  .kpi .delta { font-size: 11px; }
+  .kpi .delta.up { color: #ef4444; }
+  .kpi .delta.down { color: #10b981; }
+  .kpi .delta.neutral { color: #94a3b8; }
+  .kpi.blue .value { color: #1d4ed8; }
+  .kpi.amber .value { color: #d97706; }
+  .kpi.red .value { color: #dc2626; }
+  .kpi.green .value { color: #059669; }
+  .kpi .bar { height: 3px; border-radius: 2px; margin-top: 10px; background: #f1f5f9; overflow: hidden; }
+  .kpi .bar-fill { height: 100%; border-radius: 2px; }
+
+  /* ── Section label ── */
+  .section-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
+
+  /* ── Badge ── */
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; }
+  .badge.green  { background: #d1fae5; color: #065f46; }
+  .badge.amber  { background: #fef3c7; color: #92400e; }
+  .badge.red    { background: #fee2e2; color: #991b1b; }
+  .badge.blue   { background: #dbeafe; color: #1e40af; }
+  .badge.slate  { background: #f1f5f9; color: #475569; }
+  .badge.violet { background: #ede9fe; color: #5b21b6; }
+
+  /* ── Status dot ── */
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot.green  { background: #10b981; }
+  .dot.amber  { background: #f59e0b; }
+  .dot.red    { background: #ef4444; }
+  .dot.blue   { background: #3b82f6; }
+  .dot.slate  { background: #94a3b8; }
+
+  /* ── Progress bar ── */
+  .prog-wrap { height: 6px; background: #f1f5f9; border-radius: 3px; overflow: hidden; }
+  .prog-fill { height: 100%; border-radius: 3px; }
+  .prog-fill.blue   { background: #3b82f6; }
+  .prog-fill.green  { background: #10b981; }
+  .prog-fill.amber  { background: #f59e0b; }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .4px; padding: 6px 10px; text-align: left; }
+  td { padding: 9px 10px; border-top: 1px solid #f1f5f9; font-size: 12px; }
+  tr:hover td { background: #f8fafc; }
+  .mono { font-family: monospace; font-size: 11px; }
+
+  /* ── Map mockup ── */
+  .map-area { background: #e8f0e8; border-radius: 10px; height: 420px; position: relative; overflow: hidden; }
+  .map-bg { position: absolute; inset: 0; }
+  .road { position: absolute; background: #fff; }
+  .road.h { height: 6px; left: 0; right: 0; transform: translateY(-50%); }
+  .road.v { width: 6px; top: 0; bottom: 0; transform: translateX(-50%); }
+  .road.arterial { background: #fcd34d; }
+  .road-label { position: absolute; font-size: 9px; font-weight: 700; color: #374151; background: rgba(255,255,255,.85); padding: 1px 4px; border-radius: 3px; white-space: nowrap; }
+  .map-pin { position: absolute; width: 20px; height: 20px; border-radius: 50%; border: 2px solid #fff; transform: translate(-50%, -50%); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 800; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); transition: transform .15s; }
+  .map-pin:hover { transform: translate(-50%, -50%) scale(1.3); z-index: 10; }
+  .map-pin.green  { background: #10b981; }
+  .map-pin.amber  { background: #f59e0b; }
+  .map-pin.red    { background: #ef4444; }
+  .map-pin.blue   { background: #3b82f6; }
+  .map-legend { position: absolute; bottom: 12px; left: 12px; background: rgba(255,255,255,.95); border-radius: 8px; padding: 8px 12px; font-size: 10px; display: flex; flex-direction: column; gap: 4px; border: 1px solid #e2e8f0; }
+  .map-legend-item { display: flex; align-items: center; gap: 6px; color: #475569; font-weight: 600; }
+  .map-controls { position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 4px; }
+  .map-btn { background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+
+  /* ── Timeline ── */
+  .gantt-wrap { overflow-x: auto; }
+  .gantt { min-width: 700px; }
+  .gantt-header { display: flex; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 4px; }
+  .gantt-label-col { width: 130px; flex-shrink: 0; font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; }
+  .gantt-months { flex: 1; display: flex; }
+  .gantt-month { flex: 1; font-size: 10px; font-weight: 600; color: #94a3b8; text-align: center; }
+  .gantt-row { display: flex; align-items: center; padding: 5px 0; border-bottom: 1px solid #f8fafc; position: relative; }
+  .gantt-row:hover { background: #f8fafc; }
+  .gantt-row-label { width: 130px; flex-shrink: 0; }
+  .gantt-row-label .loc { font-size: 12px; font-weight: 700; color: #0f172a; }
+  .gantt-row-label .st { font-size: 10px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+  .gantt-track { flex: 1; position: relative; height: 24px; }
+  .gantt-bar { position: absolute; height: 18px; border-radius: 4px; top: 3px; display: flex; align-items: center; padding: 0 6px; font-size: 10px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; cursor: pointer; transition: opacity .15s; }
+  .gantt-bar:hover { opacity: .85; }
+  .gantt-bar.green  { background: #10b981; }
+  .gantt-bar.amber  { background: #f59e0b; }
+  .gantt-bar.red    { background: #ef4444; }
+  .gantt-bar.blue   { background: #3b82f6; }
+  .gantt-bar.violet { background: #8b5cf6; }
+  .gantt-today { position: absolute; top: 0; bottom: 0; width: 2px; background: #ef4444; opacity: .6; pointer-events: none; }
+  .gantt-today::before { content: 'Today'; position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 9px; color: #ef4444; font-weight: 700; white-space: nowrap; }
+  .conflict-marker { position: absolute; top: 0; bottom: 0; background: rgba(239,68,68,.08); border-left: 1px dashed #fca5a5; border-right: 1px dashed #fca5a5; pointer-events: none; }
+
+  /* ── Reminders ── */
+  .rule-card { border-radius: 10px; border: 1px solid #e2e8f0; background: #fff; padding: 14px 16px; display: flex; align-items: flex-start; gap: 12px; }
+  .rule-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+  .rule-icon.amber { background: #fef3c7; }
+  .rule-icon.red   { background: #fee2e2; }
+  .rule-icon.blue  { background: #dbeafe; }
+  .rule-icon.green { background: #d1fae5; }
+  .rule-info .title { font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 2px; }
+  .rule-info .desc  { font-size: 11px; color: #64748b; line-height: 1.4; }
+  .toggle { width: 36px; height: 20px; border-radius: 999px; border: none; cursor: pointer; position: relative; flex-shrink: 0; margin-left: auto; }
+  .toggle.on  { background: #2563eb; }
+  .toggle.off { background: #cbd5e1; }
+  .toggle::after { content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #fff; top: 2px; transition: left .15s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+  .toggle.on::after  { left: 18px; }
+  .toggle.off::after { left: 2px; }
+  .queue-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: #f8fafc; margin-bottom: 6px; }
+  .queue-item .time { font-size: 10px; color: #94a3b8; font-weight: 600; min-width: 60px; }
+  .queue-item .msg { font-size: 12px; color: #334155; flex: 1; }
+  .sent-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-bottom: 1px solid #f1f5f9; }
+  .sent-item .ago  { font-size: 10px; color: #94a3b8; min-width: 70px; }
+  .sent-item .body { font-size: 11px; color: #475569; flex: 1; }
+
+  /* ── Reports ── */
+  .template-card { border: 2px solid #e2e8f0; border-radius: 10px; padding: 14px; cursor: pointer; transition: all .15s; }
+  .template-card:hover { border-color: #93c5fd; background: #f0f7ff; }
+  .template-card.selected { border-color: #2563eb; background: #eff6ff; }
+  .template-card .icon { font-size: 22px; margin-bottom: 6px; }
+  .template-card .name { font-size: 12px; font-weight: 700; color: #0f172a; margin-bottom: 2px; }
+  .template-card .desc { font-size: 10px; color: #64748b; line-height: 1.4; }
+  .report-preview { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 20px; }
+  .report-preview .rp-header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 14px; }
+  .report-preview .rp-title { font-size: 14px; font-weight: 800; color: #0f172a; }
+  .report-preview .rp-meta { font-size: 10px; color: #64748b; margin-top: 2px; }
+  .report-preview .rp-section { margin-bottom: 12px; }
+  .report-preview .rp-section-title { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 6px; border-bottom: 1px solid #f1f5f9; padding-bottom: 3px; }
+  .report-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 11px; border-bottom: 1px solid #f8fafc; }
+  .report-row .rl { color: #334155; }
+  .report-row .rv { font-weight: 700; color: #0f172a; }
+  .export-btn { display: flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; border: none; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .15s; }
+  .export-btn.primary { background: #1d4ed8; color: #fff; }
+  .export-btn.primary:hover { background: #1e40af; }
+  .export-btn.secondary { background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; }
+  .export-btn.secondary:hover { background: #e2e8f0; }
+
+  /* ── Misc ── */
+  .avatar { width: 22px; height: 22px; border-radius: 50%; background: #dbeafe; color: #1e40af; font-size: 9px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+  .divider { height: 1px; background: #f1f5f9; margin: 14px 0; }
+  .chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; background: #f1f5f9; color: #475569; }
+  .tag { padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+  .tag.blue { background: #dbeafe; color: #1e40af; }
+  .tag.amber { background: #fef3c7; color: #92400e; }
+  .tag.green { background: #d1fae5; color: #065f46; }
+  .tag.red { background: #fee2e2; color: #991b1b; }
+  .tag.violet { background: #ede9fe; color: #5b21b6; }
+  .tag.slate { background: #f1f5f9; color: #475569; }
+
+  .activity-item { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid #f8fafc; align-items: flex-start; }
+  .activity-item .icon { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; margin-top: 1px; }
+  .activity-item .body { flex: 1; }
+  .activity-item .body .text { font-size: 12px; color: #334155; line-height: 1.4; }
+  .activity-item .body .time { font-size: 10px; color: #94a3b8; margin-top: 1px; }
+
+  .note-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 14px; font-size: 11px; color: #92400e; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<nav class="top-nav">
+  <span class="brand">TCP <span>Tracker</span></span>
+  <button class="tab-btn active" onclick="show('dashboard',this)">📊 Dashboard</button>
+  <button class="tab-btn" onclick="show('map',this)">🗺 Map View</button>
+  <button class="tab-btn" onclick="show('timeline',this)">📅 Timeline</button>
+  <button class="tab-btn" onclick="show('reminders',this)">🔔 Reminders</button>
+  <button class="tab-btn" onclick="show('reports',this)">📄 Reports</button>
+  <button class="tab-btn" onclick="show('navrestructure',this)">🗂 Nav Restructure</button>
+</nav>
+
+<!-- ══════════════════ 1. DASHBOARD ══════════════════ -->
+<div id="dashboard" class="page active">
+  <h2>Operations Dashboard</h2>
+  <p class="subtitle">Live snapshot across all active plans — Van Nuys corridor · Updated now</p>
+
+  <!-- KPI row -->
+  <div class="grid-4" style="margin-bottom:16px">
+    <div class="card kpi blue">
+      <div class="label">Active Plans</div>
+      <div class="value">24</div>
+      <div class="delta neutral">↑ 3 this month</div>
+      <div class="bar"><div class="bar-fill blue" style="width:68%;background:#3b82f6"></div></div>
+    </div>
+    <div class="card kpi amber">
+      <div class="label">Pending PHE / NV</div>
+      <div class="value">7</div>
+      <div class="delta up">2 expiring in 14d</div>
+      <div class="bar"><div class="bar-fill" style="width:42%;background:#f59e0b"></div></div>
+    </div>
+    <div class="card kpi red">
+      <div class="label">CD Response Overdue</div>
+      <div class="value">3</div>
+      <div class="delta up">+1 since last week</div>
+      <div class="bar"><div class="bar-fill" style="width:18%;background:#ef4444"></div></div>
+    </div>
+    <div class="card kpi green">
+      <div class="label">Concurred This Month</div>
+      <div class="value">11</div>
+      <div class="delta down">↓ avg 8.2d to concur</div>
+      <div class="bar"><div class="bar-fill" style="width:85%;background:#10b981"></div></div>
+    </div>
+  </div>
+
+  <div class="grid-65">
+    <!-- Left column -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <!-- Compliance health -->
+      <div class="card">
+        <div class="section-label">Compliance Health by Track</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <!-- PHE -->
+          <div class="card-sm">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <span style="font-size:12px;font-weight:700;color:#0f172a">🏛 PHE (BOE)</span>
+              <span class="badge amber">4 active</span>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:6px">
+              <span class="tag blue">2 submitted</span>
+              <span class="tag amber">1 pending</span>
+              <span class="tag green">1 approved</span>
+            </div>
+            <div class="prog-wrap"><div class="prog-fill green" style="width:25%"></div></div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:4px">1 of 4 approved</div>
+          </div>
+          <!-- NV -->
+          <div class="card-sm">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <span style="font-size:12px;font-weight:700;color:#0f172a">🔊 Noise Variance</span>
+              <span class="badge violet">6 active</span>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:6px">
+              <span class="tag violet">3 linked</span>
+              <span class="tag blue">2 submitted</span>
+              <span class="tag slate">1 draft</span>
+            </div>
+            <div class="prog-wrap"><div class="prog-fill blue" style="width:50%"></div></div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:4px">3 of 6 linked to variance</div>
+          </div>
+          <!-- CD -->
+          <div class="card-sm">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <span style="font-size:12px;font-weight:700;color:#0f172a">🏙 CD Concurrence</span>
+              <span class="badge blue">9 active</span>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:6px">
+              <span class="tag green">5 concurred</span>
+              <span class="tag amber">3 waiting</span>
+              <span class="tag red">1 overdue</span>
+            </div>
+            <div class="prog-wrap"><div class="prog-fill amber" style="width:55%"></div></div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:4px">15 of 27 CDs concurred</div>
+          </div>
+          <!-- Driveway -->
+          <div class="card-sm">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <span style="font-size:12px;font-weight:700;color:#0f172a">🏠 Driveway Notices</span>
+              <span class="badge green">12 active</span>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:6px">
+              <span class="tag green">8 all sent</span>
+              <span class="tag blue">2 with Metro</span>
+              <span class="tag slate">2 in progress</span>
+            </div>
+            <div class="prog-wrap"><div class="prog-fill green" style="width:80%"></div></div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:4px">8 of 12 fully sent</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Overdue table -->
+      <div class="card">
+        <div class="section-label">Overdue — Needs Attention Now</div>
+        <table>
+          <thead><tr>
+            <th>LOC</th><th>Location</th><th>Track</th><th>Status</th><th>Days Waiting</th><th>Assigned</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="mono">362.2</span></td>
+              <td style="color:#475569">Van Nuys / Burbank</td>
+              <td><span class="tag amber">CD Concurrence</span></td>
+              <td><span class="badge amber">Presentation Sent</span></td>
+              <td><span style="color:#ef4444;font-weight:700">28d ⚠</span></td>
+              <td><div class="avatar">RB</div></td>
+            </tr>
+            <tr>
+              <td><span class="mono">415</span></td>
+              <td style="color:#475569">Van Nuys / Vanowen</td>
+              <td><span class="tag blue">PHE</span></td>
+              <td><span class="badge blue">Submitted</span></td>
+              <td><span style="color:#f59e0b;font-weight:700">16d</span></td>
+              <td><div class="avatar">MK</div></td>
+            </tr>
+            <tr>
+              <td><span class="mono">388</span></td>
+              <td style="color:#475569">Woodman / Roscoe</td>
+              <td><span class="tag amber">CD Concurrence</span></td>
+              <td><span class="badge amber">Follow-Up Sent</span></td>
+              <td><span style="color:#ef4444;font-weight:700">24d ⚠</span></td>
+              <td><div class="avatar">SP</div></td>
+            </tr>
+            <tr>
+              <td><span class="mono">401</span></td>
+              <td style="color:#475569">Glenoaks / Osborne</td>
+              <td><span class="tag violet">Noise Variance</span></td>
+              <td><span class="badge slate">Not Started</span></td>
+              <td><span style="color:#94a3b8;font-weight:700">—</span></td>
+              <td><div class="avatar">RB</div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Right column: activity feed -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card" style="flex:1">
+        <div class="section-label">Recent Activity</div>
+        <div>
+          <div class="activity-item">
+            <div class="icon" style="background:#d1fae5">✓</div>
+            <div class="body">
+              <div class="text"><strong>LOC 391</strong> — CD6 concurred. Letter uploaded by <strong>R. Bula</strong></div>
+              <div class="time">12 min ago</div>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="icon" style="background:#dbeafe">📎</div>
+            <div class="body">
+              <div class="text"><strong>LOC 362.2</strong> — CD slide uploaded for Van Nuys / Burbank</div>
+              <div class="time">1 hr ago</div>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="icon" style="background:#fef3c7">⏰</div>
+            <div class="body">
+              <div class="text"><strong>Reminder sent</strong> — LOC 388 CD follow-up overdue (24d)</div>
+              <div class="time">3 hr ago</div>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="icon" style="background:#ede9fe">🔊</div>
+            <div class="body">
+              <div class="text"><strong>LOC 421</strong> — Noise variance linked to NV-2024-017</div>
+              <div class="time">Yesterday</div>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="icon" style="background:#d1fae5">📄</div>
+            <div class="body">
+              <div class="text"><strong>LOC 405</strong> — PHE packet generated & submitted to BOE</div>
+              <div class="time">Yesterday</div>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="icon" style="background:#fee2e2">⚠</div>
+            <div class="body">
+              <div class="text"><strong>LOC 362.2</strong> — CD response overdue by 21 days. Auto-reminder triggered.</div>
+              <div class="time">2 days ago</div>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="icon" style="background:#dbeafe">🏙</div>
+            <div class="body">
+              <div class="text"><strong>CD Meeting</strong> — "CD6 Biweekly Apr 14" created with 4 plans</div>
+              <div class="time">3 days ago</div>
+            </div>
+          </div>
+          <div class="activity-item">
+            <div class="icon" style="background:#d1fae5">✓</div>
+            <div class="body">
+              <div class="text"><strong>LOC 377</strong> — All driveway notices sent. Track marked complete.</div>
+              <div class="time">4 days ago</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Avg cycle times -->
+      <div class="card">
+        <div class="section-label">Avg Cycle Times (Last 90 Days)</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+              <span style="color:#475569">PHE: Submission → Approval</span>
+              <span style="font-weight:700;color:#0f172a">18.4 days</span>
+            </div>
+            <div class="prog-wrap"><div class="prog-fill amber" style="width:62%"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+              <span style="color:#475569">CD: Presentation → Concurrence</span>
+              <span style="font-weight:700;color:#0f172a">8.2 days</span>
+            </div>
+            <div class="prog-wrap"><div class="prog-fill green" style="width:27%"></div></div>
+          </div>
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+              <span style="color:#475569">Driveway: Draft → All Sent</span>
+              <span style="font-weight:700;color:#0f172a">11.7 days</span>
+            </div>
+            <div class="prog-wrap"><div class="prog-fill blue" style="width:39%"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 2. MAP VIEW ══════════════════ -->
+<div id="map" class="page">
+  <h2>Corridor Map</h2>
+  <p class="subtitle">All active plans plotted on the Van Nuys corridor — click any pin for details</p>
+
+  <div class="grid-65">
+    <!-- Map -->
+    <div>
+      <!-- Filter bar -->
+      <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+        <button onclick="filterMap(this,'all')" class="map-filter-btn active" style="padding:5px 12px;border-radius:6px;border:1px solid #2563eb;background:#eff6ff;color:#1e40af;font-size:11px;font-weight:700;cursor:pointer">All Plans (24)</button>
+        <button onclick="filterMap(this,'cd')" class="map-filter-btn" style="padding:5px 12px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:11px;font-weight:600;cursor:pointer">CD Pending (9)</button>
+        <button onclick="filterMap(this,'phe')" class="map-filter-btn" style="padding:5px 12px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:11px;font-weight:600;cursor:pointer">PHE Active (4)</button>
+        <button onclick="filterMap(this,'overdue')" class="map-filter-btn" style="padding:5px 12px;border-radius:6px;border:1px solid #fca5a5;background:#fff5f5;color:#dc2626;font-size:11px;font-weight:600;cursor:pointer">⚠ Overdue (3)</button>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+          <span style="font-size:11px;color:#64748b">Show labels</span>
+          <div class="toggle on" style="display:inline-block"></div>
+        </div>
+      </div>
+
+      <div class="map-area">
+        <!-- Street grid approximating Van Nuys corridor -->
+        <!-- Horizontal streets -->
+        <div class="road h arterial" style="top:15%"></div>
+        <div class="road-label" style="top:calc(15% - 9px);left:8px">Roscoe Blvd</div>
+
+        <div class="road h" style="top:28%"></div>
+        <div class="road-label" style="top:calc(28% - 9px);left:8px">Nordhoff St</div>
+
+        <div class="road h arterial" style="top:43%"></div>
+        <div class="road-label" style="top:calc(43% - 9px);left:8px">Sherman Way</div>
+
+        <div class="road h" style="top:57%"></div>
+        <div class="road-label" style="top:calc(57% - 9px);left:8px">Vanowen St</div>
+
+        <div class="road h arterial" style="top:71%"></div>
+        <div class="road-label" style="top:calc(71% - 9px);left:8px">Victory Blvd</div>
+
+        <div class="road h" style="top:84%"></div>
+        <div class="road-label" style="top:calc(84% - 9px);left:8px">Burbank Blvd</div>
+
+        <!-- Vertical streets -->
+        <div class="road v arterial" style="left:25%"></div>
+        <div class="road-label" style="left:calc(25% + 4px);top:4px;transform:none">Van Nuys Blvd</div>
+
+        <div class="road v" style="left:45%"></div>
+        <div class="road-label" style="left:calc(45% + 4px);top:4px;transform:none">Woodman Ave</div>
+
+        <div class="road v" style="left:65%"></div>
+        <div class="road-label" style="left:calc(65% + 4px);top:4px;transform:none">Sepulveda</div>
+
+        <!-- CD boundary lines (subtle) -->
+        <div style="position:absolute;left:0;right:0;top:52%;height:1px;background:rgba(99,102,241,.3);border-top:1px dashed rgba(99,102,241,.4)"></div>
+        <div style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:9px;color:#6366f1;font-weight:700;background:rgba(255,255,255,.8);padding:1px 4px;border-radius:3px">CD6 / CD2 boundary</div>
+
+        <div style="position:absolute;left:0;right:0;top:25%;height:1px;border-top:1px dashed rgba(99,102,241,.4)"></div>
+        <div style="position:absolute;right:10px;top:23%;font-size:9px;color:#6366f1;font-weight:700;background:rgba(255,255,255,.8);padding:1px 4px;border-radius:3px">CD7 / CD6 boundary</div>
+
+        <!-- District labels -->
+        <div style="position:absolute;left:6px;top:6px;font-size:11px;font-weight:800;color:rgba(99,102,241,.5)">CD7</div>
+        <div style="position:absolute;left:6px;top:30%;font-size:11px;font-weight:800;color:rgba(99,102,241,.5)">CD6</div>
+        <div style="position:absolute;left:6px;top:58%;font-size:11px;font-weight:800;color:rgba(99,102,241,.5)">CD2</div>
+
+        <!-- Plan pins -->
+        <div class="map-pin red"    style="left:25%;top:19%"  title="LOC 388 — Overdue 24d">388</div>
+        <div class="map-pin amber"  style="left:27%;top:30%"  title="LOC 412 — CD Pending">412</div>
+        <div class="map-pin green"  style="left:25%;top:45%"  title="LOC 391 — All clear">391</div>
+        <div class="map-pin amber"  style="left:23%;top:57%"  title="LOC 415 — PHE pending">415</div>
+        <div class="map-pin red"    style="left:26%;top:72%"  title="LOC 362.2 — CD overdue 28d">362</div>
+        <div class="map-pin green"  style="left:25%;top:85%"  title="LOC 377 — Complete">377</div>
+        <div class="map-pin blue"   style="left:45%;top:16%"  title="LOC 401 — NV not started">401</div>
+        <div class="map-pin green"  style="left:47%;top:29%"  title="LOC 408 — All clear">408</div>
+        <div class="map-pin amber"  style="left:45%;top:44%"  title="LOC 395 — CD pending">395</div>
+        <div class="map-pin green"  style="left:44%;top:58%"  title="LOC 383 — Complete">383</div>
+        <div class="map-pin amber"  style="left:46%;top:72%"  title="LOC 421 — NV linked">421</div>
+        <div class="map-pin green"  style="left:65%;top:22%"  title="LOC 418 — All clear">418</div>
+        <div class="map-pin amber"  style="left:67%;top:45%"  title="LOC 409 — PHE submitted">409</div>
+        <div class="map-pin green"  style="left:65%;top:60%"  title="LOC 394 — Complete">394</div>
+
+        <div class="map-legend">
+          <div class="map-legend-item"><div class="dot green"></div> All compliance clear</div>
+          <div class="map-legend-item"><div class="dot amber"></div> Action pending</div>
+          <div class="map-legend-item"><div class="dot red"></div> Overdue &gt;21 days</div>
+          <div class="map-legend-item"><div class="dot blue"></div> Track not started</div>
+        </div>
+
+        <div class="map-controls">
+          <div class="map-btn">+</div>
+          <div class="map-btn">−</div>
+          <div class="map-btn">⊙</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Side panel -->
+    <div style="display:flex;flex-direction:column;gap:10px;max-height:500px;overflow-y:auto">
+      <div class="section-label" style="margin-bottom:0">Plans — click to open card</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <!-- overdue -->
+        <div class="card-sm" style="border-color:#fca5a5;background:#fff5f5;cursor:pointer">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="dot red"></div>
+            <span style="font-size:12px;font-weight:700">LOC 362.2</span>
+            <span class="badge red">28d overdue</span>
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px">Van Nuys / Burbank · CD2</div>
+          <div style="display:flex;gap:4px;margin-top:5px">
+            <span class="tag red">CD Overdue</span>
+            <span class="tag blue">PHE OK</span>
+          </div>
+        </div>
+        <div class="card-sm" style="border-color:#fca5a5;background:#fff5f5;cursor:pointer">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="dot red"></div>
+            <span style="font-size:12px;font-weight:700">LOC 388</span>
+            <span class="badge red">24d overdue</span>
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px">Woodman / Roscoe · CD6</div>
+          <div style="display:flex;gap:4px;margin-top:5px">
+            <span class="tag red">Follow-Up Sent</span>
+          </div>
+        </div>
+        <!-- amber -->
+        <div class="card-sm" style="cursor:pointer">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="dot amber"></div>
+            <span style="font-size:12px;font-weight:700">LOC 415</span>
+            <span class="badge amber">16d</span>
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px">Van Nuys / Vanowen · CD2</div>
+          <div style="display:flex;gap:4px;margin-top:5px">
+            <span class="tag amber">PHE Submitted</span>
+            <span class="tag slate">CD Pending</span>
+          </div>
+        </div>
+        <div class="card-sm" style="cursor:pointer">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="dot amber"></div>
+            <span style="font-size:12px;font-weight:700">LOC 395</span>
+            <span class="badge amber">8d</span>
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px">Woodman / Sherman Way · CD6</div>
+          <div style="display:flex;gap:4px;margin-top:5px">
+            <span class="tag blue">Presentation Sent</span>
+          </div>
+        </div>
+        <!-- green -->
+        <div class="card-sm" style="cursor:pointer">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="dot green"></div>
+            <span style="font-size:12px;font-weight:700">LOC 391</span>
+            <span class="badge green">Complete</span>
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px">Van Nuys / Sherman Way · CD6</div>
+          <div style="display:flex;gap:4px;margin-top:5px">
+            <span class="tag green">All concurred</span>
+            <span class="tag green">PHE approved</span>
+          </div>
+        </div>
+        <div class="card-sm" style="cursor:pointer">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="dot green"></div>
+            <span style="font-size:12px;font-weight:700">LOC 377</span>
+            <span class="badge green">Complete</span>
+          </div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px">Van Nuys / Burbank · CD2</div>
+          <div style="display:flex;gap:4px;margin-top:5px">
+            <span class="tag green">All clear</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 3. TIMELINE ══════════════════ -->
+<div id="timeline" class="page">
+  <h2>Construction Timeline</h2>
+  <p class="subtitle">Construction windows across all active plans — spot conflicts before they happen in the field</p>
+
+  <!-- Controls -->
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+    <div style="display:flex;gap:1px;background:#f1f5f9;border-radius:8px;padding:3px">
+      <button style="padding:5px 12px;border-radius:6px;border:none;background:#fff;color:#0f172a;font-size:11px;font-weight:700;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.08)">Monthly</button>
+      <button style="padding:5px 12px;border-radius:6px;border:none;background:transparent;color:#64748b;font-size:11px;font-weight:600;cursor:pointer">Weekly</button>
+      <button style="padding:5px 12px;border-radius:6px;border:none;background:transparent;color:#64748b;font-size:11px;font-weight:600;cursor:pointer">Quarterly</button>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <span style="font-size:11px;color:#64748b">Filter:</span>
+      <button style="padding:4px 10px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;font-size:11px;color:#475569;cursor:pointer">All Plans ▾</button>
+      <button style="padding:4px 10px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;font-size:11px;color:#475569;cursor:pointer">Engineer ▾</button>
+    </div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <span class="badge red" style="gap:4px">⚠ 2 conflicts detected</span>
+    </div>
+  </div>
+
+  <div class="card" style="padding:16px">
+    <div class="gantt-wrap">
+      <div class="gantt">
+        <!-- Header -->
+        <div class="gantt-header">
+          <div class="gantt-label-col">Plan</div>
+          <div class="gantt-months">
+            <div class="gantt-month">Mar</div>
+            <div class="gantt-month">Apr</div>
+            <div class="gantt-month">May</div>
+            <div class="gantt-month">Jun</div>
+            <div class="gantt-month">Jul</div>
+            <div class="gantt-month">Aug</div>
+          </div>
+        </div>
+
+        <!-- Conflict zone overlay (apr-may on van nuys) -->
+        <div style="position:relative">
+          <div class="conflict-marker" style="left:calc(130px + 16.7% + 3%);width:11%;top:0;bottom:0;z-index:0"></div>
+
+          <!-- Today line -->
+          <div class="gantt-today" style="left:calc(130px + 19%)"></div>
+
+          <!-- Rows -->
+          <div class="gantt-row">
+            <div class="gantt-row-label">
+              <div class="loc">LOC 362.2</div>
+              <div class="st">Van Nuys / Burbank</div>
+            </div>
+            <div class="gantt-track">
+              <div class="gantt-bar amber" style="left:18%;width:22%" title="Construction window Apr 10 – May 25">Apr 10 – May 25</div>
+              <span style="position:absolute;right:0;top:5px" class="badge red">CD ⚠</span>
+            </div>
+          </div>
+
+          <div class="gantt-row">
+            <div class="gantt-row-label">
+              <div class="loc">LOC 388</div>
+              <div class="st">Woodman / Roscoe</div>
+            </div>
+            <div class="gantt-track">
+              <div class="gantt-bar red" style="left:5%;width:18%" title="Mar 15 – Apr 30">Mar 15 – Apr 30</div>
+            </div>
+          </div>
+
+          <div class="gantt-row">
+            <div class="gantt-row-label">
+              <div class="loc">LOC 391</div>
+              <div class="st">Van Nuys / Sherman Way</div>
+            </div>
+            <div class="gantt-track">
+              <div class="gantt-bar green" style="left:20%;width:16%">Apr 15 – May 20</div>
+              <span style="position:absolute;right:0;top:5px" class="badge amber">⚠ overlap</span>
+            </div>
+          </div>
+
+          <div class="gantt-row">
+            <div class="gantt-row-label">
+              <div class="loc">LOC 395</div>
+              <div class="st">Woodman / Sherman Way</div>
+            </div>
+            <div class="gantt-track">
+              <div class="gantt-bar blue" style="left:33%;width:20%">May 5 – Jun 10</div>
+            </div>
+          </div>
+
+          <div class="gantt-row">
+            <div class="gantt-row-label">
+              <div class="loc">LOC 401</div>
+              <div class="st">Glenoaks / Osborne</div>
+            </div>
+            <div class="gantt-track">
+              <div class="gantt-bar amber" style="left:38%;width:24%">May 18 – Jun 28</div>
+            </div>
+          </div>
+
+          <div class="gantt-row">
+            <div class="gantt-row-label">
+              <div class="loc">LOC 408</div>
+              <div class="st">Woodman / Nordhoff</div>
+            </div>
+            <div class="gantt-track">
+              <div class="gantt-bar green" style="left:50%;width:18%">Jun 10 – Jul 5</div>
+            </div>
+          </div>
+
+          <div class="gantt-row">
+            <div class="gantt-row-label">
+              <div class="loc">LOC 415</div>
+              <div class="st">Van Nuys / Vanowen</div>
+            </div>
+            <div class="gantt-track">
+              <div class="gantt-bar violet" style="left:55%;width:22%">Jun 22 – Jul 30</div>
+            </div>
+          </div>
+
+          <div class="gantt-row">
+            <div class="gantt-row-label">
+              <div class="loc">LOC 421</div>
+              <div class="st">Van Nuys / Vanowen</div>
+            </div>
+            <div class="gantt-track">
+              <div class="gantt-bar green" style="left:60%;width:20%">Jul 8 – Aug 5</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Conflict callout -->
+    <div style="margin-top:14px;padding:10px 14px;border-radius:8px;background:#fff5f5;border:1px solid #fca5a5;display:flex;align-items:flex-start;gap:10px">
+      <span style="font-size:16px">⚠️</span>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:#991b1b;margin-bottom:2px">2 Concurrent Closures Detected — Van Nuys / Sherman Way Area</div>
+        <div style="font-size:11px;color:#7f1d1d;line-height:1.5">
+          <strong>LOC 362.2</strong> (Van Nuys / Burbank) and <strong>LOC 391</strong> (Van Nuys / Sherman Way) overlap Apr 15 – May 20.
+          Both involve full street closures on Van Nuys Blvd. Review with LADOT before confirming windows.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#475569"><div style="width:14px;height:10px;border-radius:3px;background:#10b981"></div> All compliance clear</div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#475569"><div style="width:14px;height:10px;border-radius:3px;background:#f59e0b"></div> Compliance action pending</div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#475569"><div style="width:14px;height:10px;border-radius:3px;background:#ef4444"></div> Overdue / blocked</div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#475569"><div style="width:14px;height:10px;border-radius:3px;background:#3b82f6"></div> Submitted, awaiting approval</div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#475569"><div style="width:14px;height:10px;border-radius:3px;border:1px dashed #fca5a5;background:rgba(239,68,68,.08)"></div> Conflict zone</div>
+  </div>
+</div>
+
+<!-- ══════════════════ 4. REMINDERS ══════════════════ -->
+<div id="reminders" class="page">
+  <h2>Automated Reminders</h2>
+  <p class="subtitle">Rules fire automatically — no more manually checking aging columns</p>
+
+  <div class="grid-2">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="section-label" style="margin-bottom:0">Alert Rules</div>
+
+      <div class="rule-card">
+        <div class="rule-icon red">🔴</div>
+        <div class="rule-info">
+          <div class="title">CD Response Overdue — Critical</div>
+          <div class="desc">Email engineer + supervisor when a council district has been waiting <strong>&gt;21 days</strong> since presentation sent. Repeats every 3 days until resolved.</div>
+        </div>
+        <div class="toggle on"></div>
+      </div>
+
+      <div class="rule-card">
+        <div class="rule-icon amber">🟡</div>
+        <div class="rule-info">
+          <div class="title">CD Response Warning</div>
+          <div class="desc">Email assigned engineer when CD has been waiting <strong>&gt;10 days</strong> — early heads-up before it goes critical.</div>
+        </div>
+        <div class="toggle on"></div>
+      </div>
+
+      <div class="rule-card">
+        <div class="rule-icon amber">📋</div>
+        <div class="rule-info">
+          <div class="title">PHE Approaching Deadline</div>
+          <div class="desc">Email engineer when PHE application is submitted but not yet approved and the construction window starts in <strong>&lt;14 days</strong>.</div>
+        </div>
+        <div class="toggle on"></div>
+      </div>
+
+      <div class="rule-card">
+        <div class="rule-icon blue">📄</div>
+        <div class="rule-info">
+          <div class="title">Missing CD Slide — New Request</div>
+          <div class="desc">Email engineer 2 days after a plan is created with CD concurrence triggered but <strong>no presentation slide uploaded</strong> yet.</div>
+        </div>
+        <div class="toggle on"></div>
+      </div>
+
+      <div class="rule-card">
+        <div class="rule-icon green">📅</div>
+        <div class="rule-info">
+          <div class="title">Weekly CD Meeting Digest</div>
+          <div class="desc">Every <strong>Monday at 8am</strong>, email management a summary of all open CD concurrences, aging, and any new meetings scheduled that week.</div>
+        </div>
+        <div class="toggle off"></div>
+      </div>
+
+      <div class="rule-card">
+        <div class="rule-icon blue">🔄</div>
+        <div class="rule-info">
+          <div class="title">LOC Renewal Approaching</div>
+          <div class="desc">Alert when an LOC is within <strong>60 days</strong> of its expiration date and no renewal has been started.</div>
+        </div>
+        <div class="toggle off"></div>
+      </div>
+
+      <button style="padding:9px;border-radius:8px;border:1px dashed #cbd5e1;background:transparent;color:#64748b;font-size:12px;font-weight:600;cursor:pointer;width:100%">+ Add Custom Rule</button>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <!-- Upcoming queue -->
+      <div class="card">
+        <div class="section-label">Upcoming — Next 48 Hours</div>
+        <div>
+          <div class="queue-item">
+            <span class="tag red" style="flex-shrink:0">Today</span>
+            <span class="msg">🔴 LOC 362.2 — CD2 overdue 28d. Re-sending critical alert to R. Bula + supervisor</span>
+          </div>
+          <div class="queue-item">
+            <span class="tag amber" style="flex-shrink:0">Today</span>
+            <span class="msg">🟡 LOC 415 — PHE submitted 16d ago, construction starts in 12d. Alert to M. Kim</span>
+          </div>
+          <div class="queue-item">
+            <span class="tag slate" style="flex-shrink:0">Tomorrow</span>
+            <span class="msg">📋 LOC 401 — No CD slide uploaded (3d after creation). Reminder to S. Park</span>
+          </div>
+          <div class="queue-item">
+            <span class="tag slate" style="flex-shrink:0">Tomorrow</span>
+            <span class="msg">🔴 LOC 388 — CD6 overdue 25d. Critical alert + supervisor copy</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sent log -->
+      <div class="card">
+        <div class="section-label">Recently Sent</div>
+        <div>
+          <div class="sent-item">
+            <span class="ago">3 hr ago</span>
+            <div class="tag red" style="flex-shrink:0;margin-right:6px">Critical</div>
+            <span class="body">LOC 388 — CD6 overdue 24d → r.bula@metro.net, supervisor</span>
+          </div>
+          <div class="sent-item">
+            <span class="ago">Yesterday</span>
+            <div class="tag amber" style="flex-shrink:0;margin-right:6px">Warning</div>
+            <span class="body">LOC 415 — PHE 15d old, window starts in 13d → m.kim@metro.net</span>
+          </div>
+          <div class="sent-item">
+            <span class="ago">Yesterday</span>
+            <div class="tag blue" style="flex-shrink:0;margin-right:6px">Info</div>
+            <span class="body">LOC 401 — No slide 2d after creation → s.park@metro.net</span>
+          </div>
+          <div class="sent-item">
+            <span class="ago">2 days ago</span>
+            <div class="tag red" style="flex-shrink:0;margin-right:6px">Critical</div>
+            <span class="body">LOC 362.2 — CD overdue 25d. 3rd notice → r.bula@metro.net</span>
+          </div>
+          <div class="sent-item">
+            <span class="ago">4 days ago</span>
+            <div class="tag amber" style="flex-shrink:0;margin-right:6px">Warning</div>
+            <span class="body">LOC 395 — CD6 waiting 10d → s.park@metro.net</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 5. REPORTS ══════════════════ -->
+<div id="reports" class="page">
+  <h2>Reports & Exports</h2>
+  <p class="subtitle">Management-ready outputs — pick a template, set dates, export</p>
+
+  <div class="grid-2">
+    <!-- Left: template picker + options -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <div class="section-label">Template</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="template-card selected" onclick="selectTemplate(this,'cd-meeting')">
+            <div class="icon">🏙</div>
+            <div class="name">CD Meeting Brief</div>
+            <div class="desc">All plans going to a biweekly CD meeting — status, slides, pending items</div>
+          </div>
+          <div class="template-card" onclick="selectTemplate(this,'compliance-status')">
+            <div class="icon">📋</div>
+            <div class="name">Compliance Status</div>
+            <div class="desc">Full snapshot of all PHE, NV, and CD tracks across active plans</div>
+          </div>
+          <div class="template-card" onclick="selectTemplate(this,'overdue')">
+            <div class="icon">⚠️</div>
+            <div class="name">Overdue Items</div>
+            <div class="desc">All aging items past threshold — ready for management review</div>
+          </div>
+          <div class="template-card" onclick="selectTemplate(this,'cycle-time')">
+            <div class="icon">⏱</div>
+            <div class="name">Cycle Time Analysis</div>
+            <div class="desc">Average days by track type and engineer — process improvement data</div>
+          </div>
+          <div class="template-card" onclick="selectTemplate(this,'loc-summary')">
+            <div class="icon">📁</div>
+            <div class="name">LOC Summary</div>
+            <div class="desc">All plans with dates, engineers, compliance summary — master list</div>
+          </div>
+          <div class="template-card" onclick="selectTemplate(this,'custom')">
+            <div class="icon">✏️</div>
+            <div class="name">Custom</div>
+            <div class="desc">Choose fields, filters, and date ranges manually</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Options</div>
+        <div class="card-sm" style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="font-size:12px;color:#334155;font-weight:600;min-width:90px">Date range</label>
+            <input type="date" value="2026-04-01" style="border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;font-size:12px;outline:none">
+            <span style="font-size:12px;color:#94a3b8">to</span>
+            <input type="date" value="2026-04-11" style="border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;font-size:12px;outline:none">
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="font-size:12px;color:#334155;font-weight:600;min-width:90px">Council District</label>
+            <select style="border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;font-size:12px;outline:none;background:#fff">
+              <option>All Districts</option>
+              <option>CD2 only</option>
+              <option>CD6 only</option>
+              <option>CD7 only</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="font-size:12px;color:#334155;font-weight:600;min-width:90px">Engineer</label>
+            <select style="border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;font-size:12px;outline:none;background:#fff">
+              <option>All Engineers</option>
+              <option>R. Bula</option>
+              <option>M. Kim</option>
+              <option>S. Park</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="font-size:12px;color:#334155;font-weight:600;min-width:90px">Include</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#475569;cursor:pointer">
+              <input type="checkbox" checked> Overdue items only
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button class="export-btn primary">📄 Export PDF</button>
+        <button class="export-btn secondary">📊 Export Excel</button>
+        <button class="export-btn secondary">📝 Export Word</button>
+      </div>
+    </div>
+
+    <!-- Right: live preview -->
+    <div>
+      <div class="section-label">Preview</div>
+      <div class="report-preview">
+        <div class="rp-header">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between">
+            <div>
+              <div class="rp-title">CD Meeting Brief — CD6 Biweekly</div>
+              <div class="rp-meta">Metro SFTC · Van Nuys Corridor · April 14, 2026</div>
+            </div>
+            <div style="font-size:18px;opacity:.6">🚇</div>
+          </div>
+        </div>
+
+        <div class="rp-section">
+          <div class="rp-section-title">Summary</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+            <div class="report-row"><span class="rl">Plans in meeting</span><span class="rv">4</span></div>
+            <div class="report-row"><span class="rl">CD6 pending</span><span class="rv">3</span></div>
+            <div class="report-row"><span class="rl">Slides ready</span><span class="rv">3 / 4</span></div>
+            <div class="report-row"><span class="rl">Avg days waiting</span><span class="rv">12.4d</span></div>
+          </div>
+        </div>
+
+        <div class="rp-section">
+          <div class="rp-section-title">Plans for Presentation</div>
+          <table style="font-size:11px">
+            <thead><tr>
+              <th style="font-size:9px">LOC</th>
+              <th style="font-size:9px">Location</th>
+              <th style="font-size:9px">Status</th>
+              <th style="font-size:9px">Days</th>
+              <th style="font-size:9px">Slide</th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td class="mono">388</td>
+                <td style="color:#475569">Woodman / Roscoe</td>
+                <td><span class="tag red">Follow-Up</span></td>
+                <td style="color:#ef4444;font-weight:700">24d</td>
+                <td>✓</td>
+              </tr>
+              <tr>
+                <td class="mono">395</td>
+                <td style="color:#475569">Woodman / Sherman</td>
+                <td><span class="tag blue">Sent</span></td>
+                <td>8d</td>
+                <td>✓</td>
+              </tr>
+              <tr>
+                <td class="mono">408</td>
+                <td style="color:#475569">Woodman / Nordhoff</td>
+                <td><span class="tag slate">Pending</span></td>
+                <td>—</td>
+                <td>✓</td>
+              </tr>
+              <tr>
+                <td class="mono">421</td>
+                <td style="color:#475569">Van Nuys / Vanowen</td>
+                <td><span class="tag slate">Pending</span></td>
+                <td>—</td>
+                <td style="color:#f59e0b">✕</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="rp-section">
+          <div class="rp-section-title">Action Items</div>
+          <div style="font-size:11px;color:#334155;line-height:1.7">
+            • LOC 421 — CD slide not uploaded (required before meeting)<br>
+            • LOC 388 — Follow-up overdue 24d, escalate if no response today<br>
+            • LOC 395 — Meeting scheduled Apr 14, confirm CD6 attendance
+          </div>
+        </div>
+
+        <div style="margin-top:14px;font-size:9px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:8px;display:flex;justify-content:space-between">
+          <span>Generated by TCP Tracker · April 11, 2026</span>
+          <span>Page 1 of 2</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ 6. NAV RESTRUCTURE ══════════════════ -->
+<div id="navrestructure" class="page">
+  <h2>🗂 Nav Restructure — Proposal</h2>
+  <p class="subtitle">Before/after comparison of primary navigation · Goal: reduce top-level clutter, surface buried features</p>
+
+  <!-- ── BEFORE / AFTER nav mockups ── -->
+  <div class="grid-2" style="margin-bottom:20px">
+
+    <!-- BEFORE -->
+    <div class="card" style="border-color:#fca5a5">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div class="section-label" style="color:#dc2626;margin-bottom:2px">CURRENT STATE</div>
+          <div style="font-size:13px;font-weight:800;color:#0f172a">Current — 9 items for admins</div>
+        </div>
+        <span class="badge red">9 nav items</span>
+      </div>
+
+      <!-- Nav bar mockup -->
+      <div style="background:#0f172a;border-radius:8px;padding:6px 12px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:14px">
+        <span style="color:#fff;font-weight:800;font-size:11px;margin-right:8px;letter-spacing:-.3px">TCP <span style="color:#38bdf8">Tracker</span></span>
+        <span style="padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;background:#1d4ed8;color:#fff">Plans</span>
+        <span style="padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;background:#1e293b;color:#cbd5e1">Requests</span>
+        <span style="padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;background:#1e293b;color:#cbd5e1">Calendar</span>
+        <span style="padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;background:#1e293b;color:#fbbf24">🔒 Compliance</span>
+        <span style="padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;background:#1e293b;color:#cbd5e1">Library</span>
+        <span style="padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;background:#1e293b;color:#cbd5e1">Reference</span>
+        <span style="padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;background:#1e293b;color:#fbbf24">🔒 Metrics</span>
+        <span style="padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;background:#1e293b;color:#fbbf24">🔒 System Log</span>
+        <span style="padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;background:#1e293b;color:#fbbf24">🔒 Team</span>
+      </div>
+
+      <!-- Lock icon legend -->
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px">
+        <span style="font-size:10px;color:#fbbf24">🔒</span>
+        <span style="font-size:10px;color:#64748b">= role-gated · only visible to admins/supervisors</span>
+      </div>
+
+      <!-- Problem notes -->
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:8px 12px;font-size:11px;color:#9a3412;line-height:1.4">
+          ⚠ <strong>CorridorMapView is buried</strong> inside Plans as a Table/Map toggle — most users never find it
+        </div>
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:8px 12px;font-size:11px;color:#9a3412;line-height:1.4">
+          ⚠ <strong>Metrics covers pipeline stages only</strong> — no compliance health visibility
+        </div>
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:8px 12px;font-size:11px;color:#9a3412;line-height:1.4">
+          ⚠ <strong>Compliance is a separate view from Metrics</strong>, creating two places to look for plan health
+        </div>
+      </div>
+    </div>
+
+    <!-- AFTER -->
+    <div class="card" style="border-color:#6ee7b7">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div class="section-label" style="color:#059669;margin-bottom:2px">PROPOSED</div>
+          <div style="font-size:13px;font-weight:800;color:#0f172a">Proposed — 5 primary items + overflow</div>
+        </div>
+        <span class="badge green">5 + ··· overflow</span>
+      </div>
+
+      <!-- Nav bar mockup -->
+      <div style="background:#0f172a;border-radius:8px;padding:6px 12px;display:flex;align-items:center;gap:4px;margin-bottom:14px">
+        <span style="color:#fff;font-weight:800;font-size:11px;margin-right:8px;letter-spacing:-.3px">TCP <span style="color:#38bdf8">Tracker</span></span>
+        <span style="padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;background:#1d4ed8;color:#fff">Dashboard</span>
+        <span style="padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;background:#1e293b;color:#cbd5e1">Plans</span>
+        <span style="padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;background:#1e293b;color:#cbd5e1">Calendar</span>
+        <span style="padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;background:#1e293b;color:#cbd5e1">Library</span>
+        <span style="padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;background:#1e293b;color:#cbd5e1">Reference</span>
+        <span style="padding:4px 10px;border-radius:5px;font-size:10px;font-weight:700;background:#334155;color:#94a3b8;border:1px solid #475569">···</span>
+      </div>
+
+      <!-- Sub-label breakdown -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+        <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:6px;padding:8px 10px">
+          <div style="font-size:11px;font-weight:800;color:#1e40af;margin-bottom:3px">Dashboard</div>
+          <div style="font-size:10px;color:#3b82f6;line-height:1.5">Pipeline · Compliance · Activity</div>
+        </div>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:8px 10px">
+          <div style="font-size:11px;font-weight:800;color:#166534;margin-bottom:3px">Plans</div>
+          <div style="font-size:10px;color:#16a34a;line-height:1.5">Table · Corridor Map</div>
+        </div>
+        <div style="background:#fef9f0;border:1px solid #fde68a;border-radius:6px;padding:8px 10px">
+          <div style="font-size:11px;font-weight:800;color:#92400e;margin-bottom:3px">Library</div>
+          <div style="font-size:10px;color:#d97706;line-height:1.5">Variances · Driveway · CD Concurrence</div>
+        </div>
+      </div>
+
+      <!-- Overflow dropdown preview -->
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <div>
+          <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">··· Overflow contains</div>
+          <div style="background:#1e293b;border-radius:8px;padding:8px 4px;display:inline-flex;flex-direction:column;gap:2px;min-width:140px">
+            <span style="padding:5px 12px;font-size:11px;font-weight:600;color:#e2e8f0">Requests</span>
+            <div style="height:1px;background:#334155;margin:2px 8px"></div>
+            <span style="padding:5px 12px;font-size:11px;font-weight:600;color:#fbbf24">🔒 System Log</span>
+            <span style="padding:5px 12px;font-size:11px;font-weight:600;color:#fbbf24">🔒 Team</span>
+            <span style="padding:5px 12px;font-size:11px;font-weight:600;color:#fbbf24">🔒 Settings</span>
+          </div>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">🔒 lock legend</div>
+          <div style="font-size:10px;color:#64748b;line-height:1.6">
+            Role-gated items are preserved in overflow — still accessible to admins, just not cluttering primary nav for field users.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Change callout cards ── -->
+  <div class="section-label" style="margin-bottom:10px">KEY CHANGES</div>
+  <div class="grid-2" style="margin-bottom:20px">
+
+    <!-- Callout 1: Metrics → Dashboard -->
+    <div style="display:flex;gap:14px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;border-left:4px solid #1d4ed8">
+      <div style="width:36px;height:36px;background:#dbeafe;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">📊</div>
+      <div>
+        <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:4px">
+          Metrics → Dashboard
+          <span class="badge blue" style="margin-left:6px;vertical-align:middle">Rename + Expand</span>
+        </div>
+        <div style="font-size:11px;color:#475569;line-height:1.5">
+          Rename and expand. Add a compliance health section (PHE / NV / CD / Driveway status) alongside existing pipeline charts. <strong>Remove role gate</strong> — all users benefit from seeing corridor health at a glance.
+        </div>
+      </div>
+    </div>
+
+    <!-- Callout 2: Corridor Map surfaces -->
+    <div style="display:flex;gap:14px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;border-left:4px solid #059669">
+      <div style="width:36px;height:36px;background:#d1fae5;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">🗺</div>
+      <div>
+        <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:4px">
+          Corridor Map surfaces
+          <span class="badge green" style="margin-left:6px;vertical-align:middle">Discoverability fix</span>
+        </div>
+        <div style="font-size:11px;color:#475569;line-height:1.5">
+          Move from hidden Table/Map toggle inside Plans to a <strong>visible sub-tab within Plans</strong>. Engineers need spatial context for their corridor — it shouldn't take three clicks to find.
+        </div>
+      </div>
+    </div>
+
+    <!-- Callout 3: Compliance view merges -->
+    <div style="display:flex;gap:14px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;border-left:4px solid #d97706">
+      <div style="width:36px;height:36px;background:#fef3c7;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">🔀</div>
+      <div>
+        <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:4px">
+          Compliance view merges
+          <span class="badge amber" style="margin-left:6px;vertical-align:middle">Consolidation</span>
+        </div>
+        <div style="font-size:11px;color:#475569;line-height:1.5">
+          The separate Compliance view for role-gated users gets <strong>folded into the Dashboard compliance section</strong>. One place to look for PHE, NV, CD, and Driveway health — no more split context.
+        </div>
+      </div>
+    </div>
+
+    <!-- Callout 4: Overflow menu -->
+    <div style="display:flex;gap:14px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;border-left:4px solid #7c3aed">
+      <div style="width:36px;height:36px;background:#ede9fe;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">···</div>
+      <div>
+        <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:4px">
+          Overflow menu
+          <span class="badge violet" style="margin-left:6px;vertical-align:middle">Declutter</span>
+        </div>
+        <div style="font-size:11px;color:#475569;line-height:1.5">
+          Requests, System Log, Team, and Settings — items only relevant to specific roles or infrequent workflows — move into a <strong>··· overflow</strong> rather than occupying permanent slots in primary nav.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── What stays the same ── -->
+  <div class="card" style="border-color:#c7d2fe;background:#f5f3ff08">
+    <div class="section-label" style="margin-bottom:12px">WHAT STAYS THE SAME</div>
+    <div class="grid-4">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="width:28px;height:28px;background:#d1fae5;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">📅</div>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:2px">Calendar</div>
+          <div style="font-size:10px;color:#64748b;line-height:1.4">Well-built, clear distinct purpose. Stays as its own primary nav item.</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="width:28px;height:28px;background:#fef3c7;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">📚</div>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:2px">Library</div>
+          <div style="font-size:10px;color:#64748b;line-height:1.4">Management hub for Variances, Driveway, and CD Concurrence. Stays.</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="width:28px;height:28px;background:#dbeafe;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">📖</div>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:2px">Reference</div>
+          <div style="font-size:10px;color:#64748b;line-height:1.4">Reference docs and rules. Stays in primary nav as-is.</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="width:28px;height:28px;background:#f1f5f9;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">⚙️</div>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:2px">All functionality preserved</div>
+          <div style="font-size:10px;color:#64748b;line-height:1.4">This is nav reorganization only — no features are removed.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function show(id, btn) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    btn.classList.add('active');
+  }
+  function selectTemplate(el, key) {
+    document.querySelectorAll('.template-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+  }
+  function filterMap(btn, filter) {
+    document.querySelectorAll('.map-filter-btn').forEach(b => {
+      b.style.background = '#fff';
+      b.style.color = '#475569';
+      b.style.borderColor = '#e2e8f0';
+    });
+    btn.style.background = '#eff6ff';
+    btn.style.color = '#1e40af';
+    btn.style.borderColor = '#2563eb';
+  }
+</script>
+</body>
+</html>

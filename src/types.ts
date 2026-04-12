@@ -11,6 +11,9 @@ export interface NoiseVariance {
   isGeneric: boolean;                 // true = no scope restrictions
   coveredScopes: string[];            // empty when isGeneric
   scopeLanguage: string;              // verbatim text from document
+  coveredStreets: string[];           // ALL streets in the work area — AI-expanded from corridor descriptions
+  corridors?: { mainStreet: string; from: string; to: string }[]; // structured corridor ranges, e.g. { mainStreet: "Van Nuys Blvd", from: "Oxnard St", to: "Sherman Way" }
+  verifiedStreets?: string[];         // streets manually confirmed from PDF (violet/amber chips that a user verified)
   // Submission tracking (managed on the library card, shared across all linked plans)
   submittedDate?: string;      // ISO date — when submitted to Police Commission
   approvalDate?: string;       // ISO date — when approved
@@ -66,6 +69,10 @@ export interface AppConfig {
     leads?: string[];
     planTypes?: string[];
   };
+  // Tab visibility per role — controls which nav tabs each role can see
+  // Keys are UserRole strings; values are arrays of view keys (e.g. 'table', 'variances')
+  // When absent, falls back to built-in defaults per role
+  tabVisibility?: Record<string, string[]>;
   // Driveway letter workflow settings
   driveway_metroSLADays?: number;    // flag overdue in Metro's court (default 5)
   driveway_metroWarnDays?: number;   // amber warning before SLA breached (default 3)
@@ -97,6 +104,7 @@ export type CDStatus =
   | 'pending'
   | 'presentation_sent'
   | 'meeting_scheduled'
+  | 'follow_up_sent'
   | 'concurred'
   | 'declined'
   | 'na';
@@ -148,23 +156,44 @@ export interface NoiseVarianceTrack {
   approvalDate?: string;
   attachments?: ComplianceAttachment[];
   notes?: string;
-  linkedVarianceId?: string;   // ID of linked NoiseVariance from the library
+  /** @deprecated First linked variance ID — kept for read compat with legacy data. Use linkedVarianceIds. */
+  linkedVarianceId?: string;
+  /** All linked variance root IDs — a plan can span multiple noise variances */
+  linkedVarianceIds?: string[];
 }
 
 export interface CDEntry {
   cd: 'CD2' | 'CD6' | 'CD7';
   applicable: boolean;        // false = N/A for this TCP's section
   status: CDStatus;
-  meetingDate?: string;
+  meetingDate?: string;       // date presentation was given / meeting held
+  sentDate?: string;          // ISO date presentation was sent to this CD
+  followUpDate?: string;      // ISO date Metro last sent a follow-up
+  concurrenceLetter?: ComplianceAttachment;  // signed concurrence letter from CD
   notes?: string;
 }
 
 export interface CDConcurrenceTrack {
   status: ComplianceStatus;
   triggeredBy: string[];
-  presentationAttachment?: ComplianceAttachment;
+  presentationAttachment?: ComplianceAttachment;  // the CD PowerPoint slide
   cds: CDEntry[];
   notes?: string;
+}
+
+/** A batch of plans presented together at a biweekly CD meeting */
+export interface CDMeeting {
+  id: string;
+  name: string;                          // e.g. "CD 6 Biweekly – April 14, 2026"
+  meetingDate: string;                   // ISO date
+  councilDistricts: ('CD2' | 'CD6' | 'CD7')[];
+  planIds: string[];                     // plan doc IDs included in this meeting
+  status: 'draft' | 'presented' | 'awaiting_response' | 'closed';
+  combinedDeckUrl?: string;              // optional uploaded combined presentation
+  combinedDeckName?: string;
+  notes?: string;
+  createdBy: string;                     // user email
+  createdAt: string;                     // ISO timestamp
 }
 
 export type DrivewayLetterStatus =
@@ -229,6 +258,9 @@ export interface DrivewayLetter {
   metroApprovedAt?: string;        // ISO — when Metro approved the letter
   metroRevisionCount?: number;     // how many times Metro has requested revisions
   metroComments?: MetroComment[];  // Metro feedback thread
+
+  // Re-notice chain — set when this letter is a renewal of a prior plan's notice
+  parentLetterId?: string;     // ID of the prior sent/approved letter this is based on
 
   // Audit
   createdAt: string;
@@ -322,11 +354,13 @@ export enum UserRole {
   SFTC = "SFTC",      // Tier 2: All views, new requests
   MOT = "MOT",        // Tier 1: Full access
   CR = "CR",          // Tier 1.5: Community Relations
+  DOT = "DOT",        // External: Dept. of Transportation oversight
+  METRO = "METRO",    // External: Metro client/owner team
   ADMIN = "ADMIN"     // Tier 0: System Admin
 }
 
 // ── Notification / profile types ─────────────────────────────────────────────
-export type NotifyEvent = 'status_change' | 'comment' | 'doc_uploaded' | 'window_expiring' | 'dot_comments' | 'plan_approved' | 'plan_expired' | 'nv_expiring' | 'feedback_updated' | 'feedback_comment';
+export type NotifyEvent = 'status_change' | 'comment' | 'doc_uploaded' | 'window_expiring' | 'dot_comments' | 'plan_approved' | 'plan_expired' | 'nv_expiring' | 'feedback_updated' | 'feedback_comment' | 'cd_overdue' | 'cd_warning' | 'phe_deadline' | 'missing_slide';
 
 export interface FeedbackComment {
   id: string;
@@ -411,6 +445,7 @@ export interface FilterState {
   importStatus: string;
   requestedBy: string;
   scope: string;
+  quickFilter: 'all' | 'my_plans' | 'at_risk' | 'needs_compliance' | 'overdue_dot';
 }
 
 export interface SortConfig {
@@ -621,6 +656,11 @@ export interface Plan {
 
   // Hours of work
   work_hours?: WorkHours;
+
+  /** Streets explicitly covered by this plan — auto-expanded from cross-street range, user-editable.
+   *  Populated when plan.street1 and plan.street2 are both corridor cross streets (e.g. Bessemer → Sylvan)
+   *  and the user clicks "Auto-expand" in the plan card. Used to improve NV match scoring. */
+  expandedStreets?: string[];
 
   // Compliance tracks (PHE, Noise Variance, CD Concurrence)
   compliance?: PlanCompliance;

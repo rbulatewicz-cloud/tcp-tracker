@@ -20,6 +20,7 @@ interface TableViewProps {
   PRIORITIES: string[];
   canExport: boolean;
   exportToCSV: () => void;
+  exportToExcel: () => void;
   loading: LoadingState;
   canEditPlan: boolean;
   selectedPlanIds: string[];
@@ -40,6 +41,18 @@ interface TableViewProps {
   libraryVariances?: NoiseVariance[];
 }
 
+// ── LOC grouping helpers ───────────────────────────────────────────────────────
+function parseLOCBase(loc: string): string {
+  // "LOC-371.2" → "LOC-371",  "LOC-371" → "LOC-371"
+  const m = loc.match(/^(.+?)\.\d+$/);
+  return m ? m[1] : loc;
+}
+function parseLOCRevision(loc: string): number {
+  // "LOC-371.2" → 2,  "LOC-371" → -1 (original, no suffix)
+  const m = loc.match(/\.(\d+)$/);
+  return m ? parseInt(m[1]) : -1;
+}
+
 function TableView({
   STAGES,
   plans,
@@ -53,6 +66,7 @@ function TableView({
   PRIORITIES,
   canExport,
   exportToCSV,
+  exportToExcel,
   loading,
   canEditPlan,
   selectedPlanIds,
@@ -74,6 +88,88 @@ function TableView({
 }: TableViewProps) {
   const [statusDateModal, setStatusDateModal] = React.useState<{ status: string; date: string } | null>(null);
   const [showLegend, setShowLegend] = React.useState(false);
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(new Set());
+
+  // ── LOC-grouped display rows ──────────────────────────────────────────────
+  type DisplayItem = { plan: Plan; isSub: boolean; isGroupPrimary: boolean; subCount: number; groupKey: string | null };
+  const displayItems = React.useMemo<DisplayItem[]>(() => {
+    // Count plans per LOC base across the sorted+filtered data
+    const baseCount = new Map<string, number>();
+    for (const p of sortedData) {
+      const base = parseLOCBase(p.loc || p.id);
+      baseCount.set(base, (baseCount.get(base) ?? 0) + 1);
+    }
+    // Collect + sort members per group (highest revision first)
+    const groupMembers = new Map<string, Plan[]>();
+    for (const p of sortedData) {
+      const base = parseLOCBase(p.loc || p.id);
+      if (!groupMembers.has(base)) groupMembers.set(base, []);
+      groupMembers.get(base)!.push(p);
+    }
+    for (const [, members] of groupMembers) {
+      members.sort((a, b) => parseLOCRevision(b.loc || b.id) - parseLOCRevision(a.loc || a.id));
+    }
+    const seen = new Set<string>();
+    const result: DisplayItem[] = [];
+    for (const plan of sortedData) {
+      const base = parseLOCBase(plan.loc || plan.id);
+      const count = baseCount.get(base) ?? 1;
+      if (count === 1) {
+        result.push({ plan, isSub: false, isGroupPrimary: false, subCount: 0, groupKey: null });
+      } else if (!seen.has(base)) {
+        seen.add(base);
+        const members = groupMembers.get(base)!;
+        const subs = members.slice(1);
+        result.push({ plan: members[0], isSub: false, isGroupPrimary: true, subCount: subs.length, groupKey: base });
+        if (expandedGroups.has(base)) {
+          subs.forEach(sub => result.push({ plan: sub, isSub: true, isGroupPrimary: false, subCount: 0, groupKey: base }));
+        }
+      }
+      // non-primary group members are skipped — already handled above
+    }
+    return result;
+  }, [sortedData, expandedGroups]);
+  const filtersRef = React.useRef<HTMLDivElement>(null);
+
+  // Close filters popover on outside click
+  React.useEffect(() => {
+    if (!filtersOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (filtersRef.current && !filtersRef.current.contains(e.target as Node)) {
+        setFiltersOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [filtersOpen]);
+
+  // Count of active (non-default) filters — for the badge
+  const activeFilterCount = [
+    filter.stage !== 'all',
+    filter.type !== 'all',
+    filter.lead !== 'all',
+    filter.priority !== 'all',
+    filter.importStatus !== 'all',
+    filter.requestedBy !== 'all',
+    filter.scope !== 'all',
+  ].filter(Boolean).length;
+
+  // Inline summary stats (computed from all plans, not filtered)
+  const statsAtDOT    = plans.filter(p => p.stage === 'submitted_to_dot' || p.stage === 'submitted').length;
+  const statsAtRisk   = plans.filter(p => {
+    if (!p.needByDate || COMPLETED_STAGES.includes(p.stage)) return false;
+    const d = daysFromToday(p.needByDate, TODAY);
+    return d <= 14 && d >= 0;
+  }).length;
+  const statsOverdue  = plans.filter(p => {
+    if (!p.needByDate || COMPLETED_STAGES.includes(p.stage)) return false;
+    return daysFromToday(p.needByDate, TODAY) < 0;
+  }).length;
+
+  // Unique requestors and scopes for popover selects
+  const requestorNames = Array.from(new Set(plans.map(p => p.requestedBy).filter(Boolean))).sort() as string[];
+  const scopeNames     = Array.from(new Set(plans.map(p => p.scope).filter(Boolean))).sort() as string[];
 
   // Normalize plan stage for display — handle legacy keys
   const getStage = (stageKey: string) =>
@@ -127,70 +223,169 @@ function TableView({
         </div>
       )}
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select value={filter.stage} onChange={e => setFilter(pr => ({ ...pr, stage: e.target.value }))} style={{ ...inp, width: 'auto', padding: '7px 12px', fontSize: 11, cursor: 'pointer' }}>
-          <option value="all">All Statuses</option>
-          {ALL_STAGES.filter(s => !['submitted', 'approved'].includes(s.key)).map(s => (
-            <option key={s.key} value={s.key}>{s.label}</option>
-          ))}
-        </select>
-        <select value={filter.importStatus || 'all'} onChange={e => setFilter(pr => ({ ...pr, importStatus: e.target.value }))} style={{ ...inp, width: 'auto', padding: '7px 12px', fontSize: 11, cursor: 'pointer' }}>
-          <option value="all">All Records</option>
-          <option value="needs_review">⚑ Needs Review</option>
-          <option value="tbd">⏳ Pending LOC</option>
-        </select>
-        {([
-          { key: 'type', options: PLAN_TYPES, label: 'Type' },
-          { key: 'lead', options: LEADS, label: 'Lead' },
-          { key: 'priority', options: PRIORITIES, label: 'Priority' },
-        ] as { key: keyof FilterState; options: string[]; label: string }[]).map(f => (
-          <select key={f.key} value={filter[f.key] || 'all'} onChange={e => setFilter(pr => ({ ...pr, [f.key]: e.target.value }))} style={{ ...inp, width: 'auto', padding: '7px 12px', fontSize: 11, cursor: 'pointer' }}>
-            <option value="all">All {f.label === 'Priority' ? 'Priorities' : f.label + 's'}</option>
-            {f.options.map(o => <option key={o} value={o}>{o}</option>)}
-          </select>
-        ))}
-        {/* Requested By filter — unique names derived from plans */}
-        {(() => {
-          const names = Array.from(new Set(plans.map(p => p.requestedBy).filter(Boolean))).sort() as string[];
-          return names.length > 0 ? (
-            <select value={filter.requestedBy || 'all'} onChange={e => setFilter(pr => ({ ...pr, requestedBy: e.target.value }))} style={{ ...inp, width: 'auto', padding: '7px 12px', fontSize: 11, cursor: 'pointer' }}>
-              <option value="all">All Requestors</option>
-              {names.map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
-          ) : null;
-        })()}
-        {/* Scope filter — unique scopes derived from plans */}
-        {(() => {
-          const scopes = Array.from(new Set(plans.map(p => p.scope).filter(Boolean))).sort() as string[];
-          return scopes.length > 0 ? (
-            <select value={filter.scope || 'all'} onChange={e => setFilter(pr => ({ ...pr, scope: e.target.value }))} style={{ ...inp, width: 'auto', padding: '7px 12px', fontSize: 11, cursor: 'pointer' }}>
-              <option value="all">All Scopes</option>
-              {scopes.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          ) : null;
-        })()}
-        {(filter.stage !== 'all' || filter.type !== 'all' || filter.lead !== 'all' || filter.priority !== 'all' || filter.importStatus !== 'all' || filter.requestedBy !== 'all' || filter.scope !== 'all') && (
-          <button onClick={() => setFilter({ stage: 'all', type: 'all', lead: 'all', priority: 'all', importStatus: 'all', requestedBy: 'all', scope: 'all' })} style={{ background: 'transparent', color: '#F59E0B', border: '1px solid #FDE68A', borderRadius: 6, padding: '7px 12px', fontSize: 11, cursor: 'pointer', fontFamily: font, fontWeight: 600 }}>Clear</button>
-        )}
-        {canExport && (
-          <button onClick={exportToCSV} disabled={loading.export} style={{ background: 'var(--bg-surface)', color: '#64748B', border: '1px solid var(--border)', padding: '7px 12px', borderRadius: 6, fontSize: 11, cursor: loading.export ? 'not-allowed' : 'pointer', fontFamily: font, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, opacity: loading.export ? 0.7 : 1 }}>
-            {loading.export ? <Spinner size={12} /> : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+      {/* Compact toolbar: Filters button + export + inline stats */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+
+        {/* Filters ▾ button with popover */}
+        <div ref={filtersRef} style={{ position: 'relative' }}>
+          <button
+            onClick={() => setFiltersOpen(p => !p)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px', borderRadius: 6, cursor: 'pointer',
+              border: activeFilterCount > 0 ? '1px solid #3B82F6' : '1px solid var(--border)',
+              background: activeFilterCount > 0 ? '#EFF6FF' : 'var(--bg-surface)',
+              color: activeFilterCount > 0 ? '#1D4ED8' : 'var(--text-secondary)',
+              fontSize: 12, fontWeight: 600, fontFamily: font,
+              transition: 'all 0.15s',
+            }}
+          >
+            <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+            Filters
+            {activeFilterCount > 0 && (
+              <span style={{ background: '#3B82F6', color: '#fff', borderRadius: 999, fontSize: 9, fontWeight: 800, padding: '1px 5px', lineHeight: 1.4 }}>
+                {activeFilterCount}
+              </span>
             )}
-            {loading.export ? 'Exporting...' : 'Export CSV'}
+            <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"
+              style={{ transform: filtersOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
           </button>
+
+          {/* Popover */}
+          {filtersOpen && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 8px)', left: 0, zIndex: 300,
+              background: 'var(--bg-surface)', border: '1px solid var(--border)',
+              borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+              padding: 14, width: 420,
+              display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10,
+            }}>
+              {/* Status */}
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#94A3B8', marginBottom: 4 }}>Status</div>
+                <select value={filter.stage} onChange={e => setFilter(pr => ({ ...pr, stage: e.target.value }))} style={{ ...inp, padding: '6px 10px', fontSize: 12 }}>
+                  <option value="all">All Statuses</option>
+                  {ALL_STAGES.filter(s => !['submitted', 'approved'].includes(s.key)).map(s => (
+                    <option key={s.key} value={s.key}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+              {/* Records */}
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#94A3B8', marginBottom: 4 }}>Records</div>
+                <select value={filter.importStatus || 'all'} onChange={e => setFilter(pr => ({ ...pr, importStatus: e.target.value }))} style={{ ...inp, padding: '6px 10px', fontSize: 12 }}>
+                  <option value="all">All Records</option>
+                  <option value="needs_review">⚑ Needs Review</option>
+                  <option value="tbd">⏳ Pending LOC</option>
+                </select>
+              </div>
+              {/* Type */}
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#94A3B8', marginBottom: 4 }}>Type</div>
+                <select value={filter.type || 'all'} onChange={e => setFilter(pr => ({ ...pr, type: e.target.value }))} style={{ ...inp, padding: '6px 10px', fontSize: 12 }}>
+                  <option value="all">All Types</option>
+                  {PLAN_TYPES.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              {/* Lead */}
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#94A3B8', marginBottom: 4 }}>Lead</div>
+                <select value={filter.lead || 'all'} onChange={e => setFilter(pr => ({ ...pr, lead: e.target.value }))} style={{ ...inp, padding: '6px 10px', fontSize: 12 }}>
+                  <option value="all">All Leads</option>
+                  {LEADS.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              {/* Priority */}
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#94A3B8', marginBottom: 4 }}>Priority</div>
+                <select value={filter.priority || 'all'} onChange={e => setFilter(pr => ({ ...pr, priority: e.target.value }))} style={{ ...inp, padding: '6px 10px', fontSize: 12 }}>
+                  <option value="all">All Priorities</option>
+                  {PRIORITIES.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              {/* Requestor */}
+              {requestorNames.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#94A3B8', marginBottom: 4 }}>Requestor</div>
+                  <select value={filter.requestedBy || 'all'} onChange={e => setFilter(pr => ({ ...pr, requestedBy: e.target.value }))} style={{ ...inp, padding: '6px 10px', fontSize: 12 }}>
+                    <option value="all">All Requestors</option>
+                    {requestorNames.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+              )}
+              {/* Scope — full width if requestors is absent */}
+              {scopeNames.length > 0 && (
+                <div style={{ gridColumn: requestorNames.length > 0 ? 'auto' : '1 / -1' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#94A3B8', marginBottom: 4 }}>Scope</div>
+                  <select value={filter.scope || 'all'} onChange={e => setFilter(pr => ({ ...pr, scope: e.target.value }))} style={{ ...inp, padding: '6px 10px', fontSize: 12 }}>
+                    <option value="all">All Scopes</option>
+                    {scopeNames.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              )}
+              {/* Footer */}
+              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
+                <span style={{ fontSize: 11, color: '#94A3B8' }}>{filtered.length} of {plans.length} plans shown</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {activeFilterCount > 0 && (
+                    <button
+                      onClick={() => { setFilter({ stage: 'all', type: 'all', lead: 'all', priority: 'all', importStatus: 'all', requestedBy: 'all', scope: 'all', quickFilter: filter.quickFilter }); }}
+                      style={{ background: 'transparent', color: '#D97706', border: '1px solid #FDE68A', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer', fontFamily: font, fontWeight: 600 }}
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setFiltersOpen(false)}
+                    style={{ background: '#1E293B', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer', fontFamily: font, fontWeight: 600 }}
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Export buttons */}
+        {canExport && (
+          <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden', opacity: loading.export ? 0.7 : 1 }}>
+            <button
+              onClick={exportToExcel}
+              disabled={loading.export}
+              title="Export formatted Excel checklist (.xlsx)"
+              style={{ background: 'var(--bg-surface)', color: '#16A34A', padding: '6px 11px', border: 'none', borderRight: '1px solid var(--border)', fontSize: 11, cursor: loading.export ? 'not-allowed' : 'pointer', fontFamily: font, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}
+            >
+              {loading.export ? <Spinner size={12} /> : (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+              )}
+              {loading.export ? 'Exporting…' : 'Excel'}
+            </button>
+            <button
+              onClick={exportToCSV}
+              disabled={loading.export}
+              title="Export raw data as CSV"
+              style={{ background: 'var(--bg-surface)', color: 'var(--text-muted)', padding: '6px 11px', border: 'none', fontSize: 11, cursor: loading.export ? 'not-allowed' : 'pointer', fontFamily: font, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}
+            >
+              CSV
+            </button>
+          </div>
         )}
+
+        {/* Legend toggle */}
         <button
           onClick={() => setShowLegend(p => !p)}
           title="Toggle legend"
-          style={{ background: showLegend ? '#F1F5F9' : 'transparent', border: '1px solid #E2E8F0', borderRadius: 6, padding: '7px 10px', fontSize: 11, cursor: 'pointer', color: '#64748B', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}
+          style={{ background: showLegend ? 'var(--bg-surface-2)' : 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', fontSize: 11, cursor: 'pointer', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}
         >
           ⓘ Legend
         </button>
 
         <div style={{ flex: 1 }} />
 
+        {/* Bulk edit bar — only visible when rows selected */}
         {(currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN) && selectedPlanIds.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#0F172A', padding: '4px 12px', borderRadius: 8, color: '#fff', fontSize: 11, fontWeight: 600 }}>
             {loading.bulk ? <Spinner size={12} color="#fff" /> : <span>{selectedPlanIds.length} Selected</span>}
@@ -211,7 +406,16 @@ function TableView({
           </div>
         )}
 
-        <div style={{ fontSize: 11, color: '#94A3B8', alignSelf: 'center' }}>{filtered.length} of {plans.length}</div>
+        {/* Inline summary stats */}
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontWeight: 800, color: 'var(--text-primary)' }}>{plans.length}</span> plans
+          <span style={{ color: 'var(--border)', margin: '0 2px' }}>·</span>
+          <span style={{ fontWeight: 800, color: statsAtDOT > 0 ? '#F59E0B' : 'var(--text-primary)' }}>{statsAtDOT}</span> at DOT
+          <span style={{ color: 'var(--border)', margin: '0 2px' }}>·</span>
+          <span style={{ fontWeight: 800, color: statsAtRisk > 0 ? '#D97706' : 'var(--text-primary)' }}>{statsAtRisk}</span> at risk
+          <span style={{ color: 'var(--border)', margin: '0 2px' }}>·</span>
+          <span style={{ fontWeight: 800, color: statsOverdue > 0 ? '#DC2626' : 'var(--text-primary)' }}>{statsOverdue}</span> overdue
+        </div>
       </div>
 
       {/* Legend popover */}
@@ -342,7 +546,7 @@ function TableView({
             </tr>
           </thead>
           <tbody>
-            {sortedData.map((plan, idx) => {
+            {displayItems.map(({ plan, isSub, isGroupPrimary, subCount, groupKey }, idx) => {
               const dl = plan.needByDate ? daysFromToday(plan.needByDate, TODAY) : 999;
               const stage = getStage(plan.stage);
               const isRisk = !COMPLETED_STAGES.includes(plan.stage) && dl <= 14;
@@ -352,14 +556,22 @@ function TableView({
                   ? daysBetween(plan.submitDate, plan.approvedDate)
                   : null;
               const isSelected = selectedPlanIds.includes(plan.id);
+              const isExpanded = groupKey ? expandedGroups.has(groupKey) : false;
               const rowBg = isSelected ? (isDark ? '#1C3B5A' : '#F0F9FF')
+                : isSub ? (isDark ? '#1A2332' : '#F8FAFC')
                 : isRisk ? (isDark ? '#3D2B0A' : '#FFFBEB')
                 : idx % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-3)';
 
               return (
                 <tr
                   key={plan.id}
-                  style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', background: rowBg, transition: 'background 0.1s' }}
+                  style={{
+                    borderBottom: '1px solid var(--border-subtle)',
+                    cursor: 'pointer',
+                    background: rowBg,
+                    transition: 'background 0.1s',
+                    ...(isSub ? { borderLeft: '3px solid #CBD5E1' } : {}),
+                  }}
                   onMouseEnter={e => (e.currentTarget.style.background = isDark ? '#1C3B5A' : '#F0F9FF')}
                   onMouseLeave={e => (e.currentTarget.style.background = rowBg)}
                 >
@@ -374,11 +586,47 @@ function TableView({
                       case 'id':
                         // LOC # is primary — show LOC field (falls back to id for legacy data)
                         return (
-                          <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px', fontFamily: monoFont, fontWeight: 700, color: '#0F172A', fontSize: 12 }}>
+                          <td key={col.id} style={{ padding: '10px 8px', fontFamily: monoFont, fontWeight: 700, color: isDark ? '#E2E8F0' : '#0F172A', fontSize: 12 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {plan.locStatus === 'unassigned' ? (
-                                <span style={{ color: '#D97706', fontWeight: 700 }}>TBD</span>
-                              ) : (plan.loc || plan.id)}
+                              {/* Group expand toggle */}
+                              {isGroupPrimary && (
+                                <button
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    setExpandedGroups(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(groupKey!)) next.delete(groupKey!);
+                                      else next.add(groupKey!);
+                                      return next;
+                                    });
+                                  }}
+                                  title={isExpanded ? 'Collapse revisions' : `Expand ${subCount} older revision${subCount !== 1 ? 's' : ''}`}
+                                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: 0, flexShrink: 0 }}
+                                >
+                                  <svg width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"
+                                    style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>
+                                    <polyline points="9 18 15 12 9 6" />
+                                  </svg>
+                                </button>
+                              )}
+                              {/* Sub-row indent connector */}
+                              {isSub && (
+                                <span style={{ color: '#CBD5E1', fontSize: 11, flexShrink: 0, lineHeight: 1 }}>└</span>
+                              )}
+                              <span onClick={() => setSelectedPlan(plan)} style={{ cursor: 'pointer' }}>
+                                {plan.locStatus === 'unassigned' ? (
+                                  <span style={{ color: '#D97706', fontWeight: 700 }}>TBD</span>
+                                ) : (plan.loc || plan.id)}
+                              </span>
+                              {/* Collapsed count badge */}
+                              {isGroupPrimary && !isExpanded && subCount > 0 && (
+                                <span
+                                  title={`${subCount} older revision${subCount !== 1 ? 's' : ''} — click ▶ to expand`}
+                                  style={{ fontSize: 9, fontWeight: 700, color: '#94A3B8', background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 3, padding: '1px 4px', cursor: 'default' }}
+                                >
+                                  +{subCount}
+                                </span>
+                              )}
                               {plan.isHistorical && <span title="Historical Record" style={{ fontSize: 10 }}>📋</span>}
                               {plan.pendingDocuments && <span title="Pending Documents" style={{ fontSize: 10 }}>⚠️</span>}
                               {plan.importStatus === 'needs_review' && <span title="Needs Review" style={{ fontSize: 10, color: '#0EA5E9' }}>⚑</span>}

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { Upload, FileText, X } from 'lucide-react';
 import { PlanForm, DrivewayProperty, Plan } from '../types';
 import { detectComplianceTriggers } from '../utils/compliance';
 
@@ -9,6 +10,8 @@ interface ComplianceBannerProps {
   plans?: Plan[];
   drivewayAddresses?: Array<{ address: string; propertyId?: string }>;
   onDrivewayAddressesChange?: (addrs: Array<{ address: string; propertyId?: string }>) => void;
+  cdSlideFile?: File | null;
+  onCdSlideChange?: (file: File | null) => void;
 }
 
 const TRACK_META = {
@@ -239,7 +242,10 @@ export const ComplianceBanner: React.FC<ComplianceBannerProps> = ({
   plans = [],
   drivewayAddresses = [],
   onDrivewayAddressesChange,
+  cdSlideFile,
+  onCdSlideChange,
 }) => {
+  const cdSlideInputRef = useRef<HTMLInputElement>(null);
   const triggers = detectComplianceTriggers(form);
 
   const active = [
@@ -304,6 +310,50 @@ export const ComplianceBanner: React.FC<ComplianceBannerProps> = ({
             rows={3}
             placeholder="Explain why peak hour work is operationally necessary..."
             className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-amber-400 resize-none"
+          />
+        </div>
+      )}
+
+      {/* CD slide upload */}
+      {triggers.cdConcurrence && onCdSlideChange && (
+        <div className="rounded-lg border border-blue-200 bg-white px-3 py-3">
+          <div className="text-[11px] font-bold text-slate-700 mb-0.5">
+            Council District Presentation Slide
+            <span className="ml-1.5 font-normal text-slate-400">— optional, can upload from plan card later</span>
+          </div>
+          <p className="text-[10px] text-slate-400 mb-2">
+            If you already have the CD PowerPoint ready, attach it now. Otherwise, skip and upload from the plan card.
+          </p>
+          {cdSlideFile ? (
+            <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+              <FileText size={13} className="text-blue-600 flex-shrink-0" />
+              <span className="text-[12px] font-semibold text-blue-700 flex-1 truncate">{cdSlideFile.name}</span>
+              <button
+                onClick={() => onCdSlideChange(null)}
+                className="text-slate-400 hover:text-red-500 flex-shrink-0"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => cdSlideInputRef.current?.click()}
+              className="flex items-center gap-2 w-full rounded-lg border-2 border-dashed border-blue-200 bg-blue-50 px-3 py-2.5 text-[11px] font-semibold text-blue-600 hover:border-blue-400 hover:bg-blue-100 transition-colors"
+            >
+              <Upload size={13} />
+              Attach CD slide (PPTX / PDF)
+            </button>
+          )}
+          <input
+            ref={cdSlideInputRef}
+            type="file"
+            accept=".ppt,.pptx,.pdf"
+            className="hidden"
+            onChange={e => {
+              const f = e.target.files?.[0];
+              if (f) onCdSlideChange(f);
+              e.target.value = '';
+            }}
           />
         </div>
       )}

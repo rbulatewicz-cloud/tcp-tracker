@@ -156,6 +156,31 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
   );
 }
 
+/**
+ * Finds the most recent sent/approved letter for this address on a *different* plan.
+ * Used to detect LOC renewal scenarios (e.g. 362.1 → 362.2) and offer Re-notice pre-fill.
+ * Matches by propertyId (preferred) or normalised address string.
+ */
+function findPriorLetter(
+  addr: DrivewayAddress,
+  allLetters: DrivewayLetter[],
+  currentPlanId: string,
+): DrivewayLetter | null {
+  const MATURE: DrivewayLetterStatus[] = ['sent', 'approved'];
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return (
+    allLetters
+      .filter(l => {
+        if (l.planId === currentPlanId) return false;
+        if (!MATURE.includes(l.status)) return false;
+        if (addr.propertyId && l.propertyId === addr.propertyId) return true;
+        if (addr.address && l.address && norm(l.address) === norm(addr.address)) return true;
+        return false;
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] ?? null
+  );
+}
+
 /** Returns true when the address still needs a new letter drafted/uploaded */
 function needsNewLetter(
   addr: DrivewayAddress,
@@ -178,7 +203,7 @@ function QueueRow({
 }: {
   item: QueueItem;
   onOpen: () => void;
-  onDraftLetter: (addr: DrivewayAddress) => void;
+  onDraftLetter: (addr: DrivewayAddress, parentLetter?: DrivewayLetter) => void;
   canDraft: boolean;
   properties: DrivewayProperty[];
   allLetters: DrivewayLetter[];
@@ -307,7 +332,7 @@ function QueueRow({
         <div className="flex-1 min-w-0">
           {/* Plan ID + meta chips */}
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="font-bold text-slate-800 text-sm">{plan.id}</span>
+            <span className="font-bold text-slate-800 text-sm">{plan.loc || plan.id}</span>
             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{plan.type}</span>
             {plan.segment && (
               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">Seg {plan.segment}</span>
@@ -442,15 +467,37 @@ function QueueRow({
                   <span className="text-[11px] text-slate-600 flex-1 min-w-0 truncate" title={addr.address}>
                     {addr.address || `Address ${addresses.indexOf(addr) + 1}`}
                   </span>
-                  {canDraft && (
-                    <button
-                      onClick={() => onDraftLetter(addr)}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 text-white text-[10px] font-bold hover:bg-blue-700 transition-colors flex-shrink-0"
-                    >
-                      <Wand2 size={10} />
-                      Draft with AI
-                    </button>
-                  )}
+                  {canDraft && (() => {
+                    const prior = findPriorLetter(addr, allLetters, plan.id);
+                    return prior ? (
+                      <>
+                        <button
+                          onClick={() => onDraftLetter(addr, prior)}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-600 text-white text-[10px] font-bold hover:bg-teal-700 transition-colors flex-shrink-0"
+                          title={`Re-notice based on prior letter from ${prior.planLoc}`}
+                        >
+                          <RefreshCw size={10} />
+                          Re-notice ↻
+                        </button>
+                        <button
+                          onClick={() => onDraftLetter(addr)}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-blue-200 text-blue-600 text-[10px] font-semibold hover:bg-blue-50 transition-colors flex-shrink-0"
+                          title="Draft a brand-new letter from scratch"
+                        >
+                          <Wand2 size={10} />
+                          New draft
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => onDraftLetter(addr)}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 text-white text-[10px] font-bold hover:bg-blue-700 transition-colors flex-shrink-0"
+                      >
+                        <Wand2 size={10} />
+                        Draft with AI
+                      </button>
+                    );
+                  })()}
                   <button
                     onClick={onOpen}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 text-[10px] font-semibold text-slate-500 hover:border-slate-300 hover:text-slate-700 transition-colors flex-shrink-0"
@@ -719,7 +766,7 @@ interface CRQueueSectionProps {
 export function CRQueueSection({ plans, appConfig, onOpenPlanLetters, currentUser }: CRQueueSectionProps) {
   const [letters,    setLetters]    = useState<DrivewayLetter[]>([]);
   const [properties, setProperties] = useState<DrivewayProperty[]>([]);
-  const [draftTarget, setDraftTarget] = useState<{ plan: Plan; addr: DrivewayAddress } | null>(null);
+  const [draftTarget, setDraftTarget] = useState<{ plan: Plan; addr: DrivewayAddress; parentLetter?: DrivewayLetter } | null>(null);
   useEffect(() => subscribeToDrivewayLetters(setLetters), []);
   useEffect(() => subscribeToDrivewayProperties(setProperties), []);
 
@@ -868,7 +915,7 @@ export function CRQueueSection({ plans, appConfig, onOpenPlanLetters, currentUse
                   key={item.plan.id}
                   item={item}
                   onOpen={() => onOpenPlanLetters(item.plan)}
-                  onDraftLetter={addr => setDraftTarget({ plan: item.plan, addr })}
+                  onDraftLetter={(addr, parentLetter) => setDraftTarget({ plan: item.plan, addr, parentLetter })}
                   canDraft={!!currentUser}
                   properties={properties}
                   allLetters={letters}
@@ -893,6 +940,7 @@ export function CRQueueSection({ plans, appConfig, onOpenPlanLetters, currentUse
           appConfig={appConfig}
           allLetters={letters}
           currentUser={currentUser}
+          parentLetter={draftTarget.parentLetter}
           onClose={() => setDraftTarget(null)}
           onCreated={() => {
             setDraftTarget(null);

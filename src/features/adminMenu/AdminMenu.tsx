@@ -45,7 +45,7 @@ export const AdminMenu: React.FC<AdminMenuProps> = ({
         <div className="absolute top-full right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl min-w-[160px] z-[100] flex flex-col p-1 gap-0.5">
           {canViewMetrics && (
             <button onClick={()=>{setView("metrics"); onClose();}} className={`flex items-center gap-2 px-3 py-2 rounded-md font-medium text-xs text-left w-full transition-all ${view==="metrics" ? "bg-slate-50 text-slate-900" : "text-slate-600 hover:bg-slate-50"}`}>
-              <BarChart3 size={14} /> Metrics
+              <BarChart3 size={14} /> Dashboard
             </button>
           )}
           

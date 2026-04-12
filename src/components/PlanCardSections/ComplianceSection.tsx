@@ -85,6 +85,10 @@ export const ComplianceSection: React.FC = React.memo(() => {
   // but cannot change the overall track status or remove the track.
   const canEditCD = canEditFields || currentUser?.role === UserRole.SFTC;
 
+  // CR team can manage driveway impact notice addresses, owner names, notes,
+  // and the N/A toggle — all driveway-specific fields are in their purview.
+  const canEditDriveway = canEditFields || currentUser?.role === UserRole.CR;
+
   const [expandedTrack, setExpandedTrack] = useState<string | null>(null);
   const [localCompliance, setLocalCompliance] = useState<PlanCompliance | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -261,7 +265,10 @@ export const ComplianceSection: React.FC = React.memo(() => {
               <CDPanel
                 cd={compliance.cdConcurrence}
                 canEdit={canEditCD}
+                planId={selectedPlan.id}
+                currentUser={currentUser}
                 onChange={c => updateCompliance({ cdConcurrence: c })}
+                readOnlyStatus={true}
               />
             </div>
           )}
@@ -302,7 +309,7 @@ export const ComplianceSection: React.FC = React.memo(() => {
               })()}
             </div>
             {/* N/A is the only manual override — all other statuses are derived from letter states */}
-            {canEditFields && (
+            {canEditDriveway && (
               <button
                 onClick={e => {
                   e.stopPropagation();
@@ -325,7 +332,7 @@ export const ComplianceSection: React.FC = React.memo(() => {
             <div className="border-t border-green-100">
               <DrivewayNoticesPanel
                 dn={compliance.drivewayNotices}
-                canEdit={canEditFields}
+                canEdit={canEditDriveway}
                 onChange={d => updateCompliance({ drivewayNotices: d })}
                 plan={selectedPlan}
                 appConfig={appConfig}
@@ -334,7 +341,7 @@ export const ComplianceSection: React.FC = React.memo(() => {
               />
             </div>
           )}
-          {canEditFields && (
+          {canEditDriveway && (
             <div className="border-t border-green-100 px-3 py-1.5 flex justify-end">
               {removeConfirm === 'driveway' ? (
                 <span className="flex items-center gap-2 text-[10px]">
@@ -351,7 +358,7 @@ export const ComplianceSection: React.FC = React.memo(() => {
       )}
 
       {/* Save button */}
-      {dirty && (canEditFields || canEditCD) && (
+      {dirty && (canEditFields || canEditCD || canEditDriveway) && (
         <div className="flex justify-end pt-1">
           <button
             onClick={saveCompliance}

@@ -21,7 +21,7 @@ export const usePlanManagement = (plans: Plan[]) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPlan]);
 
-  const [filter, setFilter] = useState<FilterState>({ stage: "all", type: "all", lead: "all", priority: "all", importStatus: "all", requestedBy: "all", scope: "all" });
+  const [filter, setFilter] = useState<FilterState>({ stage: "all", type: "all", lead: "all", priority: "all", importStatus: "all", requestedBy: "all", scope: "all", quickFilter: "all" });
   const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
   const [planSearch, setPlanSearch] = useState("");
   const [selectedPlanIds, setSelectedPlanIds] = useState<string[]>([]);

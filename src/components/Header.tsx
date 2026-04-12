@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { LayoutGrid, Ticket, MapPin, Calendar as CalendarIcon, Users, BarChart3, FileText, Menu, X, ShieldCheck, HelpCircle, FileWarning, BookOpen, MessageCircle } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { LayoutGrid, Ticket, MapPin, Map as MapIcon, Calendar as CalendarIcon, Users, BarChart3, FileText, Menu, X, ShieldCheck, HelpCircle, FileWarning, BookOpen, CalendarRange, FileBarChart, ChevronDown, Inbox } from 'lucide-react';
 import { NavTab } from './NavTab';
 import { User, AppConfig, AppNotification } from '../types';
 import { SearchInput } from '../features/search/SearchInput';
@@ -23,6 +23,8 @@ interface HeaderProps {
   canManageUsers: boolean;
   canManageApp: boolean;
   canViewCompliance: boolean;
+  canViewCRHub: boolean;
+  canViewTab: (key: string) => boolean;
   canCreateRequest: boolean;
   canRequestAppChange: boolean;
   onOpenHelp: () => void;
@@ -49,28 +51,76 @@ const HeaderComponent: React.FC<HeaderProps> = ({
   currentUser, setCurrentUser,
   handleLogout,
   setShowLogin,
-  canViewTickets, canViewMetrics, canViewLogs, canManageUsers, canManageApp, canViewCompliance, canCreateRequest, canRequestAppChange,
+  canViewTickets, canViewMetrics, canViewLogs, canManageUsers, canManageApp, canViewCompliance, canViewCRHub, canViewTab, canCreateRequest, canRequestAppChange,
   onOpenHelp, setShowForm, setShowAppRequestModal, setShowAppRequestSidebar, appConfig, isDark, toggleDark, onOpenProfile, onOpenMyRequests,
   notifications, unreadCount, markRead, markAllRead, notifOpen, setNotifOpen, onNotifNavigate,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
 
-  const navItems = [
-    { label: 'Plans',      icon: LayoutGrid,   view: 'table',         show: true },
-    { label: 'Requests',   icon: Ticket,        view: 'plan_requests', show: canViewTickets },
-    { label: 'LOCs',       icon: MapPin,        view: 'locs',          show: false },
-    { label: 'Calendar',   icon: CalendarIcon,  view: 'calendar',      show: true },
-    { label: 'Compliance', icon: ShieldCheck,   view: 'compliance',    show: canViewCompliance },
-    { label: 'Library',    icon: FileWarning,   view: 'variances',     show: true },
-    { label: 'Reference',  icon: BookOpen,      view: 'reference',     show: true },
-    { label: 'Metrics',    icon: BarChart3,     view: 'metrics',       show: canViewMetrics },
-    { label: 'System Log', icon: FileText,      view: 'log',           show: canViewLogs },
-    { label: 'Team',       icon: Users,         view: 'users',         show: canManageUsers },
+  // Close "More" dropdown on outside click
+  useEffect(() => {
+    if (!moreOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
+        setMoreOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [moreOpen]);
+
+  // Primary tabs — always visible
+  const primaryItems = [
+    { label: 'Dashboard', icon: BarChart3,     view: 'metrics',       show: canViewMetrics },
+    { label: 'Plans',     icon: LayoutGrid,    view: 'table',         show: true },
+    { label: 'Map',       icon: MapIcon,       view: 'corridor',      show: true },
+    { label: 'Calendar',  icon: CalendarIcon,  view: 'calendar',      show: true },
+    { label: 'Requests',  icon: Ticket,        view: 'plan_requests', show: canViewTickets },
   ].filter(item => item.show);
+
+  // Overflow groups — shown in "More ▾" dropdown
+  const overflowGroups = [
+    {
+      label: 'Analysis',
+      items: [
+        { label: 'Timeline', icon: CalendarRange, view: 'timeline',  show: canViewTab('timeline') },
+        { label: 'Reports',  icon: FileBarChart,  view: 'reports',   show: canViewTab('reports') },
+      ],
+    },
+    {
+      label: 'Compliance',
+      items: [
+        { label: 'CR Hub',     icon: Inbox,       view: 'cr_hub',    show: canViewCRHub },
+        { label: 'Compliance', icon: ShieldCheck, view: 'compliance', show: canViewCompliance },
+        { label: 'Library',    icon: FileWarning, view: 'variances', show: canViewTab('variances') },
+        { label: 'Reference',  icon: BookOpen,    view: 'reference', show: canViewTab('reference') },
+      ],
+    },
+    {
+      label: 'Admin',
+      items: [
+        { label: 'System Log', icon: FileText, view: 'log',   show: canViewLogs },
+        { label: 'Team',       icon: Users,    view: 'users', show: canManageUsers },
+      ],
+    },
+  ].map(g => ({ ...g, items: g.items.filter(i => i.show) }))
+   .filter(g => g.items.length > 0);
+
+  // All items flat (for mobile menu)
+  const allItems = [
+    ...primaryItems,
+    ...overflowGroups.flatMap(g => g.items),
+  ];
+
+  // Is the active view in the overflow?
+  const activeOverflowItem = overflowGroups.flatMap(g => g.items).find(i => i.view === view);
 
   const handleNavClick = (v: string) => {
     setView(v);
     setMobileMenuOpen(false);
+    setMoreOpen(false);
   };
 
   return (
@@ -147,9 +197,10 @@ const HeaderComponent: React.FC<HeaderProps> = ({
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 24px 8px', borderTop: '1px solid var(--border-subtle)' }}>
         <SearchInput view={view} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
 
-        {/* Desktop nav tabs — hidden below lg (1024px) */}
-        <div className="hidden lg:flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg ml-auto flex-shrink-0">
-          {navItems.map(item => (
+        {/* Desktop nav — hidden below lg */}
+        <div className="hidden lg:flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg ml-auto flex-shrink-0" style={{ position: 'relative' }}>
+          {/* Primary tabs */}
+          {primaryItems.map(item => (
             <NavTab
               key={item.view}
               active={view === item.view}
@@ -158,6 +209,91 @@ const HeaderComponent: React.FC<HeaderProps> = ({
               label={item.label}
             />
           ))}
+
+          {/* Divider */}
+          <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 2px', flexShrink: 0 }} />
+
+          {/* More ▾ button */}
+          <div ref={moreRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setMoreOpen(prev => !prev)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '5px 10px',
+                borderRadius: 6,
+                border: 'none',
+                background: activeOverflowItem ? 'var(--bg-surface)' : 'transparent',
+                color: activeOverflowItem ? 'var(--text-primary)' : 'var(--text-muted)',
+                fontWeight: activeOverflowItem ? 700 : 500,
+                fontSize: 12,
+                cursor: 'pointer',
+                boxShadow: activeOverflowItem ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                transition: 'background 0.15s',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {activeOverflowItem ? activeOverflowItem.label : 'More'}
+              <ChevronDown size={12} style={{ transform: moreOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+            </button>
+
+            {/* Dropdown */}
+            {moreOpen && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                right: 0,
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                width: 200,
+                padding: 6,
+                zIndex: 200,
+              }}>
+                {overflowGroups.map((group, gi) => (
+                  <div key={group.label}>
+                    {gi > 0 && <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '4px 0' }} />}
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', color: 'var(--text-muted)', padding: '4px 10px 2px' }}>
+                      {group.label}
+                    </div>
+                    {group.items.map(item => {
+                      const Icon = item.icon;
+                      const isActive = view === item.view;
+                      return (
+                        <button
+                          key={item.view}
+                          onClick={() => handleNavClick(item.view)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '7px 10px',
+                            borderRadius: 6,
+                            border: 'none',
+                            background: isActive ? 'var(--bg-surface-2)' : 'transparent',
+                            color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            fontWeight: isActive ? 700 : 500,
+                            fontSize: 12,
+                            cursor: 'pointer',
+                            width: '100%',
+                            textAlign: 'left',
+                            transition: 'background 0.12s',
+                          }}
+                          onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg-surface-2)'; }}
+                          onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                        >
+                          <Icon size={13} strokeWidth={isActive ? 2.5 : 2} />
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Hamburger button — visible below lg */}
@@ -170,17 +306,17 @@ const HeaderComponent: React.FC<HeaderProps> = ({
         </button>
       </div>
 
-      {/* Mobile dropdown — slides in/out */}
+      {/* Mobile dropdown — slides in/out — shows all items */}
       <div
         style={{
-          maxHeight: mobileMenuOpen ? '400px' : '0px',
+          maxHeight: mobileMenuOpen ? '500px' : '0px',
           overflow: 'hidden',
           transition: 'max-height 0.25s ease',
         }}
         className="lg:hidden"
       >
         <div style={{ padding: '8px 24px 12px', display: 'flex', flexDirection: 'column', gap: 2, borderTop: '1px solid var(--border-subtle)' }}>
-          {navItems.map(item => {
+          {allItems.map(item => {
             const Icon = item.icon;
             const isActive = view === item.view;
             return (

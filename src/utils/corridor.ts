@@ -164,3 +164,84 @@ export const STAGE_PILL: Record<string, { bg: string; text: string; border: stri
 export function getStagePill(stage: string) {
   return STAGE_PILL[stage] ?? { bg: '#F8FAFC', text: '#64748B', border: '#E2E8F0' };
 }
+
+/** Returns all CORRIDOR_STREETS between two named cross streets (inclusive), in corridor order.
+ *  Use this to enumerate every cross street a plan spans when work covers a range (e.g. Bessemer → Sylvan).
+ *  Returns [] if either street is not found in the corridor (e.g. when street1 is the main arterial). */
+export function getStreetsBetween(from: string, to: string): string[] {
+  if (!from?.trim() || !to?.trim()) return [];
+  const fromIdx = getStreetIndex(from);
+  const toIdx = getStreetIndex(to);
+  if (fromIdx === -1 || toIdx === -1) return [];
+  if (fromIdx === toIdx) return [CORRIDOR_STREETS[fromIdx].name];
+  const [start, end] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx];
+  return CORRIDOR_STREETS.slice(start, end + 1).map(cs => cs.name);
+}
+
+/** Sort a list of street names in south-to-north corridor order.
+ *  Streets not found in the corridor are appended at the end, preserving their relative order. */
+export function sortStreetsByCorridorOrder(streets: string[]): string[] {
+  return [...streets].sort((a, b) => {
+    const ai = getStreetIndex(a);
+    const bi = getStreetIndex(b);
+    if (ai === -1 && bi === -1) return 0;
+    if (ai === -1) return 1;   // unknown streets sink to end
+    if (bi === -1) return -1;
+    return ai - bi;            // lower index = further south = listed first
+  });
+}
+
+/** Streets in coveredStreets that fall OUTSIDE the stated corridor ranges.
+ *  These are likely AI over-extraction — the stated corridor says "Gledhill → Novice" but
+ *  the AI also captured Vincennes/Tupper/Nordhoff which are south of Gledhill.
+ *  Only meaningful when corridors[] is non-empty; returns [] otherwise. */
+export function findExtrasOutsideCorridors(
+  corridors: { mainStreet: string; from: string; to: string }[],
+  coveredStreets: string[]
+): string[] {
+  if (corridors.length === 0) return [];
+
+  // Build the set of corridor indices that ARE within the stated range
+  const inRangeIndices = new Set<number>();
+  for (const corridor of corridors) {
+    for (const st of getStreetsBetween(corridor.from, corridor.to)) {
+      const idx = getStreetIndex(st);
+      if (idx !== -1) inRangeIndices.add(idx);
+    }
+  }
+
+  const extras: string[] = [];
+  for (const st of coveredStreets) {
+    const idx = getStreetIndex(st);
+    // streets with idx === -1 (e.g. "Van Nuys Blvd") can't be classified — skip silently
+    if (idx !== -1 && !inRangeIndices.has(idx)) {
+      extras.push(st);
+    }
+  }
+  return [...new Set(extras)];
+}
+
+/** Given a variance's corridor ranges and coveredStreets, return any corridor cross streets
+ *  that fall within the stated range but are absent from coveredStreets.
+ *  These are likely AI extraction misses — worth verifying against the source PDF. */
+export function findGapsInCoverage(
+  corridors: { mainStreet: string; from: string; to: string }[],
+  coveredStreets: string[]
+): string[] {
+  // Build a set of corridor indices already represented in coveredStreets
+  const coveredIndices = new Set(
+    coveredStreets.map(cs => getStreetIndex(cs)).filter(i => i !== -1)
+  );
+
+  const gaps: string[] = [];
+  for (const corridor of corridors) {
+    const expected = getStreetsBetween(corridor.from, corridor.to);
+    for (const street of expected) {
+      const idx = getStreetIndex(street);
+      if (idx !== -1 && !coveredIndices.has(idx)) {
+        gaps.push(street); // in the stated range but missing from the extracted list
+      }
+    }
+  }
+  return [...new Set(gaps)]; // de-duplicate across multiple corridors
+}
