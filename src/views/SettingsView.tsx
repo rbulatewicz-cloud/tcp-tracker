@@ -111,6 +111,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-8">
+        {/* Version badge */}
+        <div className="flex justify-end mb-6 -mt-2">
+          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 tracking-widest uppercase bg-slate-100 dark:bg-slate-700 px-2.5 py-1 rounded-full">
+            v2.0.0
+          </span>
+        </div>
         {tab === 'branding'        && <BrandingTab       form={form} setForm={setForm} />}
         {tab === 'workflow'        && <WorkflowTab       form={form} setForm={setForm} />}
         {tab === 'lists'           && <ListsTab          form={form} setForm={setForm} saving={saving} handleSave={handleSave} />}
