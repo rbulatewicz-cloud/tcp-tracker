@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { usePlanData, usePlanActions, usePlanPermissions } from '../PlanCardContext';
 import { ConfirmationModal } from '../ConfirmationModal';
 import { UserRole } from '../../types';
+import { showToast } from '../../lib/toast';
 
 export const ActivityLog: React.FC = React.memo(() => {
   const { selectedPlan, draftPlan, isDirty } = usePlanData();
@@ -10,6 +11,7 @@ export const ActivityLog: React.FC = React.memo(() => {
   const { canEditPlan, canView, currentUser } = usePlanPermissions();
   const [newLogEntry, setNewLogEntry] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [confirmDelete, setConfirmDelete] = useState<{isOpen: boolean, index: number | null}>({isOpen: false, index: null});
 
@@ -17,11 +19,21 @@ export const ActivityLog: React.FC = React.memo(() => {
 
   const isPrivileged = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.MOT;
 
-  const handleAddEntry = () => {
+  const handleAddEntry = async () => {
     if (!newLogEntry.trim() && pendingFiles.length === 0) return;
-    addLogEntry(plan.id, newLogEntry.trim(), pendingFiles);
-    setNewLogEntry('');
-    setPendingFiles([]);
+    setSaving(true);
+    const text = newLogEntry.trim();
+    const files = [...pendingFiles];
+    try {
+      await addLogEntry(plan.id, text, files);
+      setNewLogEntry('');
+      setPendingFiles([]);
+      if (files.length > 0) showToast('Entry saved with attachment', 'success');
+    } catch (err: any) {
+      showToast(`Failed to save: ${err?.message || 'Unknown error'}`, 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -72,10 +84,10 @@ export const ActivityLog: React.FC = React.memo(() => {
             />
             <button
               onClick={handleAddEntry}
-              disabled={!newLogEntry.trim() && pendingFiles.length === 0}
+              disabled={saving || (!newLogEntry.trim() && pendingFiles.length === 0)}
               className="flex-1 bg-slate-900 text-white border-none px-4 py-1.5 rounded-md text-[12px] font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Add Entry
+              {saving ? 'Saving...' : 'Add Entry'}
             </button>
           </div>
         </div>

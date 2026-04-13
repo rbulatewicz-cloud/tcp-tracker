@@ -68,6 +68,7 @@ import { HelpModal } from './components/HelpModal';
 import * as authService from './services/authService';
 import { useNotifications } from './hooks/useNotifications';
 import { subscribeToVariances } from './services/varianceService';
+import { subscribeToGlobalLog, GlobalLogEntry } from './services/logService';
 
 const TODAY = new Date();
 const td = getLocalDateString();
@@ -145,6 +146,8 @@ function AppContent() {
   // Library variances — loaded globally so TableView, CalendarView, and CSV export can use them
   const [libraryVariances, setLibraryVariances] = useState<NoiseVariance[]>([]);
   useEffect(() => subscribeToVariances(setLibraryVariances), []);
+  const [globalLogs, setGlobalLogs] = useState<GlobalLogEntry[]>([]);
+  useEffect(() => subscribeToGlobalLog(setGlobalLogs), []);
 
   // Show welcome screen for new users (profileComplete === false, not null)
   const showWelcomeScreen = loaded && !!currentUser && profileComplete === false;
@@ -766,6 +769,8 @@ function AppContent() {
             setClearPlansConfirm={setClearPlansConfirm}
             onOpenImport={() => setShowImportWizard(true)}
             onExportCSV={exportToCSV}
+            currentUserEmail={currentUser?.email}
+            notificationEmail={currentUser?.notificationEmail}
           />
         )}
 
@@ -817,12 +822,11 @@ function AppContent() {
           <MetricsView
             filtered={filtered}
             metrics={metrics}
-            STAGES={STAGES}
             monoFont={monoFont}
             TODAY={TODAY}
-            td={td}
             setSelectedPlan={setSelectedPlan}
             setView={setView}
+            setFilter={setFilter}
             reportTemplate={reportTemplate}
           />
         )}
@@ -835,6 +839,7 @@ function AppContent() {
             setSearchQuery={setSearchQuery}
             logCols={logCols}
             plans={plans}
+            globalLogs={globalLogs}
             setSelectedPlan={setSelectedPlan}
             setView={setView}
             monoFont={monoFont}

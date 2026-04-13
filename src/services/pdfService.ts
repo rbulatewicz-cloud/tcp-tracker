@@ -4,16 +4,9 @@ import { ref as storageRef, getBytes } from 'firebase/storage';
 import { storage, auth } from '../firebase';
 import { showToast, showPersistentToast, dismissToast } from '../lib/toast';
 import type { NoiseVariance, PDFExportOptions } from '../types';
-import { fmtDate } from '../utils/plans';
+import { fmtDate, fmt12 } from '../utils/plans';
 
 // ── Formatting helpers ──────────────────────────────────────────────────────
-
-function fmt12(time: string): string {
-  const [h, m] = time.split(':').map(Number);
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const hour = h % 12 || 12;
-  return m === 0 ? `${hour} ${ampm}` : `${hour}:${m.toString().padStart(2, '0')} ${ampm}`;
-}
 
 function fmtWorkHours(wh: any): string {
   if (!wh) return '—';

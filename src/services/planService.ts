@@ -5,17 +5,11 @@ import { storage } from '../firebase';
 import { Plan, Stage, LogEntry, User, UserRole, LoadingState, ReviewCycle, ImplementationWindow, PHETrack, WorkHours, WorkDay } from '../types';
 import { detectComplianceTriggers, initializeComplianceTracks } from '../utils/compliance';
 import { FIELD_REGISTRY, ALL_STAGES } from '../constants';
+import { fmt12 } from '../utils/plans';
 import { showToast } from '../lib/toast';
+import { sendPlanAssignedEmail } from './emailTriggerActions';
 
 // ── Log formatting helpers ─────────────────────────────────────────────────────
-
-/** Convert a 24-hour "HH:MM" string to a readable "H AM/PM" label */
-function fmt12(time: string): string {
-  const [h, m] = time.split(':').map(Number);
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const hour = h % 12 || 12;
-  return m === 0 ? `${hour} ${ampm}` : `${hour}:${m.toString().padStart(2, '0')} ${ampm}`;
-}
 
 /** Format a WorkHours object into a readable summary for activity log entries */
 function formatWorkHours(wh: WorkHours): string {

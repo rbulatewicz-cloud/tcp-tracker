@@ -12,6 +12,7 @@ import { db } from '../../firebase';
 import { CDMeeting, CDEntry, CDStatus, Plan, User } from '../../types';
 import { CD_STATUS_LABELS } from '../../utils/compliance';
 import { CD_STATUS_COLORS } from '../../components/PlanCardSections/compliance/complianceShared';
+import { fmtDate } from '../../utils/plans';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -20,11 +21,6 @@ const TODAY = new Date().toISOString().slice(0, 10);
 function daysSince(iso?: string): number | null {
   if (!iso) return null;
   return Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
-}
-
-function fmtDate(iso: string) {
-  if (!iso) return '—';
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 const CD_STATUS_OPTIONS: { value: CDStatus; label: string }[] = [

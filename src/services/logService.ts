@@ -1,4 +1,4 @@
-import { collection, addDoc, deleteDoc, getDocs, query } from 'firebase/firestore';
+import { collection, deleteDoc, getDocs, query, doc, updateDoc, arrayUnion, addDoc, onSnapshot, orderBy } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase';
@@ -28,21 +28,24 @@ export const addLogEntry = async (
       );
     }
 
-    const newLogEntry = { 
+    // Build entry without undefined fields — Firestore arrayUnion doesn't accept undefined
+    const newLogEntry: Record<string, any> = {
       uniqueId: Date.now().toString(),
-      date: td, 
-      action: entry, 
-      user: getUserLabel(), 
+      date: td,
+      action: entry,
+      user: getUserLabel(),
       userId: auth.currentUser?.uid || 'unknown',
       attachments: uploadedAttachments,
-      field,
-      previousValue,
-      newValue
     };
-    
-    await addDoc(collection(db, 'plans', pid, 'logs'), newLogEntry);
+    if (field       !== undefined) newLogEntry.field         = field;
+    if (previousValue !== undefined) newLogEntry.previousValue = previousValue;
+    if (newValue    !== undefined) newLogEntry.newValue      = newValue;
+
+    // Write to plan.log array — consistent with all other log writers in the codebase
+    await updateDoc(doc(db, 'plans', pid), { log: arrayUnion(newLogEntry) });
+    return newLogEntry;
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `plans/${pid}/logs`);
+    handleFirestoreError(error, OperationType.WRITE, `plans/${pid}`);
     throw error;
   }
 };
@@ -118,4 +121,54 @@ export const handleClearLog = async (
     }
   }
   setClearLogConfirm({isOpen: false, type: 'plan'});
+};
+
+// ── Global cross-system log ────────────────────────────────────────────────────
+
+export interface GlobalLogEntry {
+  id: string;
+  date: string;          // YYYY-MM-DD for display
+  createdAt: string;     // ISO timestamp for precise sort
+  action: string;
+  user: string;
+  source: 'cr_hub' | 'library';
+  reference: string;     // e.g. "123 Main St" or "NV Permit 2345"
+  referenceId: string;
+  referenceType: 'letter' | 'variance';
+  planLoc?: string;
+}
+
+export const writeGlobalLog = async (
+  action: string,
+  source: 'cr_hub' | 'library',
+  reference: string,
+  referenceId: string,
+  referenceType: 'letter' | 'variance',
+  planLoc?: string
+): Promise<void> => {
+  try {
+    const user = auth.currentUser;
+    const userLabel = user?.displayName || user?.email || 'System';
+    const now = new Date();
+    await addDoc(collection(db, 'global_log'), {
+      date: now.toLocaleDateString('en-CA'),
+      createdAt: now.toISOString(),
+      action,
+      user: userLabel,
+      source,
+      reference,
+      referenceId,
+      referenceType,
+      planLoc: planLoc || '',
+    });
+  } catch {
+    // Global log writes are best-effort — never block the main action
+  }
+};
+
+export const subscribeToGlobalLog = (cb: (entries: GlobalLogEntry[]) => void): () => void => {
+  return onSnapshot(
+    query(collection(db, 'global_log'), orderBy('createdAt', 'desc')),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as GlobalLogEntry)))
+  );
 };

@@ -16,6 +16,8 @@ const ROLE_META: Record<string, { label: string; bg: string; text: string; borde
   [UserRole.MOT]:   { label: 'MOT Team',          bg: 'bg-blue-100',     text: 'text-blue-800',     border: 'border-blue-200' },
   [UserRole.SFTC]:  { label: 'SFTC Team',         bg: 'bg-emerald-100',  text: 'text-emerald-800',  border: 'border-emerald-200' },
   [UserRole.CR]:    { label: 'Community Rel.',     bg: 'bg-purple-100',   text: 'text-purple-800',   border: 'border-purple-200' },
+  [UserRole.DOT]:   { label: 'DOT',               bg: 'bg-orange-100',   text: 'text-orange-800',   border: 'border-orange-200' },
+  [UserRole.METRO]: { label: 'Metro',             bg: 'bg-red-100',      text: 'text-red-800',      border: 'border-red-200' },
   [UserRole.GUEST]: { label: 'Guest / Viewer',     bg: 'bg-slate-100',    text: 'text-slate-500',    border: 'border-slate-200' },
 };
 
@@ -311,6 +313,8 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({ users, c
                   <option value={UserRole.SFTC}>SFTC Team — submit requests</option>
                   <option value={UserRole.MOT}>MOT Team — manage plans</option>
                   <option value={UserRole.CR}>Community Relations</option>
+                  <option value={UserRole.DOT}>DOT — external oversight</option>
+                  <option value={UserRole.METRO}>Metro — client/owner team</option>
                   {role === UserRole.ADMIN && (
                     <option value={UserRole.ADMIN}>Admin — full access</option>
                   )}

@@ -204,6 +204,10 @@ export type DrivewayLetterStatus =
   | 'approved'
   | 'sent';
 
+export type StakeholderType = 'resident' | 'business' | 'landlord' | 'tenant' | 'hoa' | 'other';
+export type LanguagePreference = 'english' | 'spanish' | 'armenian' | 'korean' | 'chinese' | 'tagalog' | 'other';
+export type DeliveryPreference = 'email' | 'mail' | 'phone' | 'in_person' | 'none';
+
 export interface DrivewayProperty {
   id: string;
   address: string;
@@ -212,9 +216,84 @@ export interface DrivewayProperty {
   ownerEmail?: string;
   segment?: string;
   notes?: string;
+  // ── Property 360 (CRM) ────────────────────────────────────────────────────
+  stakeholderType?: StakeholderType;
+  languagePreference?: LanguagePreference;
+  deliveryPreference?: DeliveryPreference;
+  contactNotes?: string;       // CR-specific notes separate from general notes
+  doNotContact?: boolean;      // suppress outreach for this property
+  tags?: string[];             // freeform tags e.g. ['vocal', 'priority', 'hoa-rep']
   createdAt: string;
   createdBy: string;
   updatedAt?: string;
+}
+
+// ── CR Issue Tracker ──────────────────────────────────────────────────────────
+export type CRIssueStatus   = 'open' | 'in_progress' | 'resolved' | 'closed';
+export type CRIssuePriority = 'low' | 'medium' | 'high' | 'urgent';
+export type CRIssueCategory =
+  | 'noise_complaint'
+  | 'access_blocked'
+  | 'safety_concern'
+  | 'property_damage'
+  | 'communication'
+  | 'schedule_conflict'
+  | 'other';
+
+export type CRIssueLogMethod =
+  | 'phone_call'
+  | 'email'
+  | 'in_person'
+  | 'walk_in'
+  | 'online_form'
+  | 'social_media'
+  | 'other';
+
+export interface CRIssueAttachment {
+  id: string;
+  name: string;
+  url: string;
+  storagePath: string;
+  uploadedAt: string;
+  uploadedBy: string;
+}
+
+export interface CRIssueNote {
+  id: string;
+  text: string;
+  addedAt: string;
+  addedBy: string;   // display name or email
+}
+
+export interface CRIssue {
+  id: string;
+  title: string;
+  description: string;
+  category: CRIssueCategory;
+  status: CRIssueStatus;
+  priority: CRIssuePriority;
+  // Linked records
+  propertyId?: string;         // linked DrivewayProperty
+  propertyAddress?: string;    // denormalized for display
+  planId?: string;             // linked Plan doc ID
+  planLoc?: string;            // denormalized LOC number
+  // Reporter info
+  reportedByName: string;      // name of constituent who reported
+  reportedByPhone?: string;
+  reportedByEmail?: string;
+  // How the issue was logged
+  loggedVia?: CRIssueLogMethod;
+  // Assignment
+  assignedTo?: string;         // user email
+  // Attachments (photos, documents)
+  attachments?: CRIssueAttachment[];
+  // Timeline
+  createdAt: string;
+  createdBy: string;           // user email who logged it
+  updatedAt?: string;
+  resolvedAt?: string;
+  // Notes thread
+  notes?: CRIssueNote[];
 }
 
 export interface DrivewayAddress {
@@ -236,8 +315,9 @@ export interface DrivewayAddress {
 // ── Driveway Letter Library ───────────────────────────────────────────────────
 export interface DrivewayLetter {
   id: string;
-  planId: string;
-  planLoc: string;             // e.g. "LOC-042" — for display in Library
+  planId?: string;             // Firestore doc ID of primary linked plan (performance hint)
+  planLoc?: string;            // e.g. "LOC-042" — primary plan LOC (backwards compat)
+  linkedPlanLocs?: string[];   // All linked plan LOCs — canonical multi-link field
   addressId: string;           // links back to DrivewayAddress on the plan
   address: string;             // denormalized for Library display
   ownerName?: string;
@@ -360,7 +440,64 @@ export enum UserRole {
 }
 
 // ── Notification / profile types ─────────────────────────────────────────────
-export type NotifyEvent = 'status_change' | 'comment' | 'doc_uploaded' | 'window_expiring' | 'dot_comments' | 'plan_approved' | 'plan_expired' | 'nv_expiring' | 'feedback_updated' | 'feedback_comment' | 'cd_overdue' | 'cd_warning' | 'phe_deadline' | 'missing_slide';
+export type NotifyEvent =
+  // Plan lifecycle
+  | 'status_change' | 'plan_assigned' | 'plan_approved' | 'plan_expired'
+  | 'dot_comments' | 'missing_slide'
+  // Compliance
+  | 'nv_expiring' | 'window_expiring' | 'phe_deadline' | 'cd_overdue' | 'cd_warning'
+  // Activity
+  | 'comment' | 'doc_uploaded' | 'mention'
+  // CR Hub
+  | 'cr_issue_assigned' | 'cr_issue_updated' | 'cr_issue_escalation' | 'queue_item'
+  // Feedback
+  | 'feedback_updated' | 'feedback_comment';
+
+/** Per-category email delivery preference */
+export type EmailDelivery = 'none' | 'in_app' | 'email' | 'both';
+
+/** Maps each NotifyEvent to a delivery preference. Missing keys default to 'in_app'. */
+export type EmailDeliveryPrefs = Partial<Record<NotifyEvent, EmailDelivery>>;
+
+// ── Email template ────────────────────────────────────────────────────────────
+
+export type EmailBarColor = 'red' | 'amber' | 'blue' | 'green' | 'neutral';
+export type EmailTier = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
+
+export interface EmailTemplate {
+  id: string;
+  name: string;               // Human label shown in admin UI
+  event: NotifyEvent | string;// Which event uses this template
+  tier: EmailTier;            // A=alert, B=update, C=constituent, D=digest, E=doc, F=cd, G=broadcast
+  subject: string;            // e.g. "{{loc}} — Noise Variance Expiring in {{days_until}} Days"
+  body: string;               // 1-2 lines with tokens
+  barColor: EmailBarColor;    // top accent bar color
+  ctaLabel: string;           // e.g. "View LOC →"
+  ctaPath: string;            // deep link path, e.g. "/plans/{{planId}}"
+  active: boolean;            // false = disabled, no emails sent
+  updatedAt: string;
+  updatedBy: string;
+}
+
+// ── Mail audit log ────────────────────────────────────────────────────────────
+
+export type MailStatus = 'sent' | 'failed' | 'bounced' | 'opened';
+
+export interface MailLogEntry {
+  id: string;
+  to: string;                 // recipient email
+  toName?: string;            // recipient display name
+  subject: string;            // resolved subject line
+  templateId: string;         // which template was used
+  templateName: string;       // human label for the audit table
+  tokens: Record<string, string>; // token values resolved at send time
+  sentAt: string;             // ISO timestamp
+  status: MailStatus;
+  openedAt?: string;          // future: populated by SendGrid webhook
+  triggerEvent?: string;      // what triggered this email (NotifyEvent or manual)
+  relatedId?: string;         // planId, issueId, etc.
+  sentBy: string;             // user email who triggered, or 'system'
+}
 
 export interface FeedbackComment {
   id: string;
@@ -398,6 +535,8 @@ export interface NotificationPrefs {
   notifyOn: NotifyEvent[];
   notificationFrequency: NotifyFrequency;
   autoFollow: AutoFollowPrefs;
+  /** Per-category delivery overrides. Missing keys fall back to 'in_app'. */
+  emailDelivery?: EmailDeliveryPrefs;
 }
 
 export interface UserPublic {
@@ -418,6 +557,7 @@ export interface UserPrivate {
   notifyOn?: NotifyEvent[];
   notificationFrequency?: NotifyFrequency;
   autoFollow?: AutoFollowPrefs;
+  emailDelivery?: EmailDeliveryPrefs;
   profileComplete?: boolean;
 }
 
@@ -429,7 +569,6 @@ export interface ReportTemplate {
   address: string;
   cityStateZip: string;
   projectInfo: string[];
-  showMetricCharts: boolean;
   needByThresholds: {
     WATCH: number;
     Standard: number;

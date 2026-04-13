@@ -26,6 +26,7 @@ import { AppConfig, DrivewayLetter, DrivewayLetterStatus, DrivewayProperty, User
 import { subscribeToDrivewayProperties } from '../../services/drivewayPropertyService';
 import type { DrivewayNoticeFields } from '../../services/drivewayNoticeService';
 import { fmtDate as fmt } from '../../utils/plans';
+import { showToast } from '../../lib/toast';
 
 interface DrivewayLettersSectionProps {
   currentUser: User | null;
@@ -884,7 +885,7 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
         }
       }
     } catch (e) {
-      alert(`Upload failed: ${(e as Error).message}`);
+      showToast(`Upload failed: ${(e as Error).message}`, 'error');
     } finally {
       setUploading(false);
     }
@@ -934,7 +935,7 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
         letter.exhibitImageUrl
       );
     } catch (e) {
-      alert(`Download failed: ${(e as Error).message}`);
+      showToast(`Download failed: ${(e as Error).message}`, 'error');
     } finally {
       setDownloading(d => ({ ...d, [letter.id]: false }));
     }
@@ -943,81 +944,81 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
   async function handleDirectApprove(letter: DrivewayLetter) {
     try {
       const blob = await buildNoticeDocx(letter.fields, letter.exhibitImageUrl);
-      await approveDrivewayLetter(letter.id);
+      await approveDrivewayLetter(letter.id, letter.address);
       await uploadFinalLetter(
         letter.id,
         blob,
         `driveway-letter-${(letter.planLoc || letter.address).replace(/\s+/g, '_')}.docx`
       );
     } catch (e) {
-      alert(`Approve failed: ${(e as Error).message}`);
+      showToast(`Approve failed: ${(e as Error).message}`, 'error');
     }
   }
 
-  async function handleSubmitToMetro(id: string, date: string) {
-    try { await submitLetterToMetro(id, date); }
-    catch (e) { alert(`Failed: ${(e as Error).message}`); }
+  async function handleSubmitToMetro(id: string, date: string, address?: string) {
+    try { await submitLetterToMetro(id, date, address); }
+    catch (e) { showToast(`Submit failed: ${(e as Error).message}`, 'error'); }
   }
 
   async function handleMetroApprove(letter: DrivewayLetter, date: string) {
     try {
       const blob = await buildNoticeDocx(letter.fields, letter.exhibitImageUrl);
-      await metroApproveLetter(letter.id, date);
+      await metroApproveLetter(letter.id, date, letter.address);
       await uploadFinalLetter(
         letter.id,
         blob,
         `driveway-letter-${(letter.planLoc || letter.address).replace(/\s+/g, '_')}.docx`
       );
     } catch (e) {
-      alert(`Failed: ${(e as Error).message}`);
+      showToast(`Metro approve failed: ${(e as Error).message}`, 'error');
     }
   }
 
   async function handleMetroRevision(id: string, comment: string) {
     try { await metroRequestRevision(id, comment || '(no notes)', currentUserEmail); }
-    catch (e) { alert(`Failed: ${(e as Error).message}`); }
+    catch (e) { showToast(`Revision request failed: ${(e as Error).message}`, 'error'); }
   }
 
   async function handleResubmit(id: string, date: string) {
     try { await resubmitLetterToMetro(id, date); }
-    catch (e) { alert(`Failed: ${(e as Error).message}`); }
+    catch (e) { showToast(`Resubmit failed: ${(e as Error).message}`, 'error'); }
   }
 
   async function handleMarkSent(letter: DrivewayLetter, date: string) {
-    try { await markDrivewayLetterSent(letter.id, date); }
-    catch (e) { alert(`Update failed: ${(e as Error).message}`); }
+    try { await markDrivewayLetterSent(letter.id, date, letter.address); }
+    catch (e) { showToast(`Update failed: ${(e as Error).message}`, 'error'); }
   }
 
   async function handleAddMetroComment(id: string, text: string) {
     try { await addMetroComment(id, text, currentUserEmail); }
-    catch (e) { alert(`Failed: ${(e as Error).message}`); }
+    catch (e) { showToast(`Comment failed: ${(e as Error).message}`, 'error'); }
   }
 
   async function handleRevert(id: string, toStatus: DrivewayLetterStatus) {
     try { await revertDrivewayLetterStatus(id, toStatus); }
-    catch (e) { alert(`Revert failed: ${(e as Error).message}`); }
+    catch (e) { showToast(`Revert failed: ${(e as Error).message}`, 'error'); }
   }
 
   async function handleEditSentDate(id: string, dateStr: string) {
     // Accept YYYY-MM-DD and store as ISO midnight UTC
     try { await updateDrivewayLetter(id, { sentAt: dateStr + 'T00:00:00.000Z' }); }
-    catch (e) { alert(`Update failed: ${(e as Error).message}`); }
+    catch (e) { showToast(`Update failed: ${(e as Error).message}`, 'error'); }
   }
 
   async function handleRescan(letter: DrivewayLetter) {
     if (!letter.letterUrl) return;
     try { await rescanDrivewayLetterFromUrl(letter.id, letter.letterUrl); }
-    catch (e) { alert(`Rescan failed: ${(e as Error).message}`); }
+    catch (e) { showToast(`Rescan failed: ${(e as Error).message}`, 'error'); }
   }
 
   async function handleLinkProperty(letterId: string, propertyId: string) {
     try { await updateDrivewayLetter(letterId, { propertyId }); }
-    catch (e) { alert(`Failed: ${(e as Error).message}`); }
+    catch (e) { showToast(`Link failed: ${(e as Error).message}`, 'error'); }
   }
 
   async function handleUnlinkProperty(letterId: string) {
     try { await updateDrivewayLetter(letterId, { propertyId: '' }); }
-    catch (e) { alert(`Failed: ${(e as Error).message}`); }
+    catch (e) { showToast(`Unlink failed: ${(e as Error).message}`, 'error'); }
   }
 
   async function handleDelete(id: string) {
@@ -1025,7 +1026,7 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
       await deleteDrivewayLetter(id);
       setDeleteConfirm(null);
     } catch (e) {
-      alert(`Delete failed: ${(e as Error).message}`);
+      showToast(`Delete failed: ${(e as Error).message}`, 'error');
     }
   }
 
@@ -1205,7 +1206,7 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
               metroWarnDays={metroWarnDays}
               downloading={!!downloading[letter.id]}
               deleteConfirmId={deleteConfirm}
-              onSubmitToMetro={date => handleSubmitToMetro(letter.id, date)}
+              onSubmitToMetro={date => handleSubmitToMetro(letter.id, date, letter.address)}
               onMetroApprove={date => handleMetroApprove(letter, date)}
               onMetroRevision={comment => handleMetroRevision(letter.id, comment)}
               onResubmit={date => handleResubmit(letter.id, date)}

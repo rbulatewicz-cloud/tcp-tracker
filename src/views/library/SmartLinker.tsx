@@ -1,25 +1,20 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Gauge, Mail } from 'lucide-react';
-import { Plan, DrivewayLetter } from '../../types';
+import { ShieldCheck, Gauge } from 'lucide-react';
+import { Plan } from '../../types';
 import { NVSmartLinker } from './NVSmartLinker';
 import { PHELinkerSection } from './PHELinkerSection';
-import { DrivewayLinkerSection } from './DrivewayLinkerSection';
 import { COMPLETED_STAGES } from '../../constants';
 
-type DocType = 'nv' | 'phe' | 'driveway';
+type DocType = 'nv' | 'phe';
 
 export function SmartLinker({
   plans,
   setSelectedPlan,
-  letters,
 }: {
   plans: Plan[];
   setSelectedPlan: (p: Plan | null) => void;
-  letters: DrivewayLetter[];
 }) {
   const [docType, setDocType] = useState<DocType>('nv');
-
-  // ── Badges ──────────────────────────────────────────────────────────────────
 
   const nvUnlinked = plans.filter(p => {
     const track = p.compliance?.noiseVariance;
@@ -34,16 +29,9 @@ export function SmartLinker({
     !COMPLETED_STAGES.includes(p.stage)
   ).length;
 
-  const dwayNeedsAction = plans.filter(p => {
-    if (!p.impact_driveway || COMPLETED_STAGES.includes(p.stage)) return false;
-    const s = p.compliance?.drivewayNotices?.status;
-    return !s || s === 'not_started' || s === 'in_progress';
-  }).length;
-
   const DOC_TYPES: { id: DocType; label: string; icon: React.ReactNode; badge: number }[] = [
-    { id: 'nv',       label: 'Noise Variances',  icon: <ShieldCheck size={13} />, badge: nvUnlinked },
-    { id: 'phe',      label: 'PHE Permits',       icon: <Gauge size={13} />,       badge: phePending },
-    { id: 'driveway', label: 'Driveway Notices',  icon: <Mail size={13} />,        badge: dwayNeedsAction },
+    { id: 'nv',  label: 'Noise Variances', icon: <ShieldCheck size={13} />, badge: nvUnlinked },
+    { id: 'phe', label: 'PHE Permits',      icon: <Gauge size={13} />,       badge: phePending },
   ];
 
   return (
@@ -73,16 +61,8 @@ export function SmartLinker({
         ))}
       </div>
 
-      {/* Section content */}
-      {docType === 'nv' && (
-        <NVSmartLinker plans={plans} setSelectedPlan={setSelectedPlan} />
-      )}
-      {docType === 'phe' && (
-        <PHELinkerSection plans={plans} setSelectedPlan={setSelectedPlan} />
-      )}
-      {docType === 'driveway' && (
-        <DrivewayLinkerSection plans={plans} setSelectedPlan={setSelectedPlan} letters={letters} />
-      )}
+      {docType === 'nv'  && <NVSmartLinker plans={plans} setSelectedPlan={setSelectedPlan} />}
+      {docType === 'phe' && <PHELinkerSection plans={plans} setSelectedPlan={setSelectedPlan} />}
     </div>
   );
 }

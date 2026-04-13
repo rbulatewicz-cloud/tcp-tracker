@@ -6,7 +6,6 @@ export const DEFAULT_REPORT_TEMPLATE: ReportTemplate = {
   address: "123 Main St",
   cityStateZip: "City, ST 12345",
   projectInfo: [],
-  showMetricCharts: true,
   needByThresholds: {
     WATCH: 7,
     Standard: 14,
@@ -115,6 +114,22 @@ export const DEFAULT_APP_CONFIG = {
 };
 
 export const PLAN_TYPES = ["WATCH", "Standard", "Engineered"];
+
+// ── Work Hours shared constants ───────────────────────────────────────────────
+export const DAY_LABELS: Record<string, string> = {
+  weekday:  'Mon–Fri',
+  saturday: 'Saturday',
+  sunday:   'Sunday',
+};
+export const DAY_ORDER: string[] = ['weekday', 'saturday', 'sunday'];
+
+export const SHIFT_LABELS: Record<string, string> = {
+  day:       'Day shift',
+  night:     'Night shift',
+  overnight: 'Overnight shift',
+  weekend:   'Weekend',
+  custom:    'Custom hours',
+};
 export const SCOPES = ["Water", "Sewer", "Storm", "Telecom", "Systems", "UA2/3", "Tree Planting", "Other"];
 export const SEGMENTS = ["A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"];
 export const PRIORITIES = ["Critical", "High", "Medium", "Low"];
@@ -182,12 +197,6 @@ export const DEFAULT_MAIN_COLUMNS = [
   { id: "status",     label: "Status" },
   { id: "needBy",     label: "Need By" },
   { id: "wait",       label: "Wait" },
-  // Available but not shown by default:
-  // { id: "scope", label: "Scope" }
-  // { id: "segment", label: "Seg" }
-  // { id: "submittedToDOT", label: "Submitted to DOT" }
-  // { id: "requested", label: "Requested" }
-  // { id: "requestedBy", label: "Requested By" }
 ];
 
 export const DEFAULT_TEAM_COLUMNS = [

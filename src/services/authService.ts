@@ -75,6 +75,7 @@ export const saveUserProfile = async (email: string, data: NotificationPrefs): P
         notifyOn:              data.notifyOn,
         notificationFrequency: data.notificationFrequency,
         autoFollow:            data.autoFollow,
+        emailDelivery:         data.emailDelivery ?? {},
         profileComplete:       true,
       }),
     ]);
@@ -100,6 +101,7 @@ export const fetchUserProfile = async (email: string): Promise<NotificationPrefs
       notifyOn:              priv.notifyOn           || ['status_change', 'window_expiring'],
       notificationFrequency: priv.notificationFrequency || 'daily_digest',
       autoFollow:            priv.autoFollow         || { myRequests: true, myLeads: true, onComment: false, segments: [] },
+      emailDelivery:         priv.emailDelivery      || {},
     };
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, `users/${email}`);
@@ -108,6 +110,7 @@ export const fetchUserProfile = async (email: string): Promise<NotificationPrefs
       notifyOn: ['status_change', 'window_expiring'],
       notificationFrequency: 'daily_digest',
       autoFollow: { myRequests: true, myLeads: true, onComment: false, segments: [] },
+      emailDelivery: {},
     };
   }
 };

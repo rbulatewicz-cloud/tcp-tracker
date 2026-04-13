@@ -1,6 +1,7 @@
 import { Document, Packer, Paragraph, TextRun, AlignmentType, SectionType } from 'docx';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { fmtDateLong } from '../utils/plans';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -99,11 +100,6 @@ Generate the following JSON (respond ONLY with valid JSON, no markdown):
 
 // ── docx assembly ─────────────────────────────────────────────────────────────
 
-function fmtDate(iso: string): string {
-  if (!iso) return '';
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-}
-
 function para(text: string, opts?: { bold?: boolean; size?: number; align?: typeof AlignmentType[keyof typeof AlignmentType]; spacingAfter?: number }): Paragraph {
   return new Paragraph({
     alignment: opts?.align ?? AlignmentType.LEFT,
@@ -151,7 +147,7 @@ export function buildLetterDocx(fields: VarianceLetterFields, isRenewal = false)
           ...blank(),
 
           // ── Date ──────────────────────────────────────────────────
-          para(fmtDate(fields.letterDate)),
+          para(fmtDateLong(fields.letterDate)),
           ...blank(),
 
           // ── To ────────────────────────────────────────────────────
@@ -182,7 +178,7 @@ export function buildLetterDocx(fields: VarianceLetterFields, isRenewal = false)
           ...blank(),
 
           // ── Work hours ────────────────────────────────────────────
-          para(`The requested noise variance covers ${fields.workHoursDescription}, for the period from ${fmtDate(fields.validFrom)} through ${fmtDate(fields.validThrough)}.`),
+          para(`The requested noise variance covers ${fields.workHoursDescription}, for the period from ${fmtDateLong(fields.validFrom)} through ${fmtDateLong(fields.validThrough)}.`),
           ...blank(),
 
           // ── Equipment list ────────────────────────────────────────

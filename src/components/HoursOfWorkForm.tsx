@@ -1,5 +1,6 @@
 import React from 'react';
 import { WorkHours, WorkDay, WorkShift } from '../types';
+import { DAY_LABELS, DAY_ORDER } from '../constants';
 
 type DayShift = 'daytime' | 'nighttime' | 'both';
 
@@ -13,14 +14,6 @@ const DAYS: { key: WorkDay; label: string }[] = [
   { key: 'saturday', label: 'Saturday' },
   { key: 'sunday',   label: 'Sunday' },
 ];
-
-const DAY_LABELS: Record<WorkDay, string> = {
-  weekday:  'Mon–Fri',
-  saturday: 'Saturday',
-  sunday:   'Sunday',
-};
-
-const DAY_ORDER: WorkDay[] = ['weekday', 'saturday', 'sunday'];
 
 // ── Default times ──────────────────────────────────────────────────────────────
 const DAYTIME_DEFAULTS: Record<WorkDay, { start: string; end: string }> = {

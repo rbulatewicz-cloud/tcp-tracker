@@ -4,6 +4,7 @@ import {
 } from 'docx';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { fmtDateLong } from '../utils/plans';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -134,11 +135,6 @@ const NO_BORDERS = {
 
 // ── low-level helpers ─────────────────────────────────────────────────────────
 
-function fmtDate(iso: string): string {
-  if (!iso) return '';
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-}
-
 function fmtDateEs(iso: string): string {
   if (!iso) return '';
   return new Date(iso + 'T00:00:00').toLocaleDateString('es-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -255,7 +251,7 @@ function letterChildren(
   exhibitType: 'png' | 'jpg' = 'png',
 ): (Paragraph | Table)[] {
   const isEs = lang === 'es';
-  const date = isEs ? fmtDateEs(fields.letterDate) : fmtDate(fields.letterDate);
+  const date = isEs ? fmtDateEs(fields.letterDate) : fmtDateLong(fields.letterDate);
   const body = isEs ? fields.bodyParagraphEs : fields.bodyParagraph;
 
   const items: (Paragraph | Table)[] = [

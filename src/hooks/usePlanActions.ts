@@ -6,6 +6,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Plan, Stage, User, UserRole, LoadingState, LogEntry, ReviewCycle, ImplementationWindow } from '../types';
 import { showToast } from '../lib/toast';
+import { sendPlanAssignedEmail, sendMentionEmails } from '../services/emailTriggerActions';
 
 interface UsePlanActionsParams {
   plans: Plan[];
@@ -111,11 +112,23 @@ export const usePlanActions = ({
   };
 
   const addLogEntryHandler = async (pid: string, entry: string, attachments?: File[], field?: string, previousValue?: any, newValue?: any) => {
-    await addLogEntry(pid, entry, attachments, td, getUserLabel, field, previousValue, newValue);
+    const newEntry = await addLogEntry(pid, entry, attachments, td, getUserLabel, field, previousValue, newValue);
+    // Update local state immediately so the log reflects the new entry without waiting for Firestore listener
+    if (newEntry) {
+      const plan = plansById.get(pid) ?? selectedPlan;
+      if (plan && selectedPlan?.id === pid) {
+        setSelectedPlan({ ...plan, log: [...(plan.log || []), newEntry] });
+      }
+    }
     // Fire comment notification for real user-authored entries only
     if (!field && onCommentNotify && currentUser?.email) {
       const plan = plansById.get(pid);
       if (plan) onCommentNotify(plan, currentUser.email, currentUser.displayName || currentUser.name || currentUser.email);
+    }
+    // 4E: @mention detection — non-fatal
+    if (!field && entry.includes('@') && currentUser?.email) {
+      const plan = plansById.get(pid);
+      if (plan) sendMentionEmails(plan, entry, currentUser.email).catch(console.warn);
     }
   };
 
@@ -226,6 +239,10 @@ const deleteLogEntryHandler = async (pid: string, logEntryIndex: string) => {
 
     await updatePlanFieldsService(draftPlan.id, changes, originalPlan, setSelectedPlan, getUserLabel, td);
     setIsDirty(false);
+    // 4B: Plan assigned — fire email if lead changed, non-fatal
+    if ('lead' in changes && changes.lead && currentUser?.email) {
+      sendPlanAssignedEmail(draftPlan, changes.lead as string, currentUser.email).catch(console.warn);
+    }
   };
 
   const updateLogEntry = async (pid: string, index: number, field: string, value: string | number | boolean | null, isDraft: boolean = true) => {

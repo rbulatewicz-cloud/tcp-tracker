@@ -7,6 +7,7 @@ import { subscribeToVariances, daysUntilExpiry, getVarianceExpiryStatus, rescanV
 import { COMPLETED_STAGES } from '../../constants';
 import { fmtDate as fmt } from '../../utils/plans';
 import { showToast } from '../../lib/toast';
+import { writeGlobalLog } from '../../services/logService';
 import { sortStreetsByCorridorOrder, findGapsInCoverage, findExtrasOutsideCorridors, getStreetsBetween } from '../../utils/corridor';
 
 // ── Scoring ────────────────────────────────────────────────────────────────────
@@ -128,6 +129,14 @@ async function applyLink(plan: Plan, variance: NoiseVariance) {
     noiseVariance: updatedNV,
   };
   await updateDoc(doc(db, 'plans', plan.id), { compliance: updatedCompliance });
+  writeGlobalLog(
+    `Noise Variance linked to ${plan.loc || plan.id}`,
+    'library',
+    variance.permitNumber || variance.title || variance.id,
+    variance.parentVarianceId ?? variance.id,
+    'variance',
+    plan.loc
+  );
 }
 
 

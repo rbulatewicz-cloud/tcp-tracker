@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { WorkHours, WorkDay } from '../../types';
 import { usePlanData, usePlanActions, usePlanPermissions } from '../PlanCardContext';
 import { HoursOfWorkForm } from '../HoursOfWorkForm';
+import { DAY_LABELS, DAY_ORDER } from '../../constants';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function formatTime(t: string): string {
@@ -33,13 +34,6 @@ const SHIFT_LABELS: Record<string, string> = {
   mixed:      '⚙️ Mixed — per day',
 };
 
-const DAY_LABELS: Record<WorkDay, string> = {
-  weekday:  'Mon–Fri',
-  saturday: 'Saturday',
-  sunday:   'Sunday',
-};
-
-const DAY_ORDER: WorkDay[] = ['weekday', 'saturday', 'sunday'];
 
 // ── component ─────────────────────────────────────────────────────────────────
 export const HoursOfWorkDisplay: React.FC = React.memo(() => {

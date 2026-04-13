@@ -13,6 +13,8 @@ import { STAGES } from '../constants';
 import { UserRole, Plan, NoiseVariance } from '../types';
 import { writeNotificationsForPlanEvent, buildStatusChangeNotif, buildCommentNotif, checkAndNotifyNVExpiry } from '../services/notificationService';
 import { subscribeToVariances, daysUntilExpiry } from '../services/varianceService';
+import { runTierAEmailTriggers } from '../services/emailTriggerService';
+import { sendStatusChangeEmail } from '../services/emailTriggerActions';
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const uiState = useUIState();
@@ -35,11 +37,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       .map(email => firestoreData.users.find(u => u.email === email) ?? { email, notifyOn: ['status_change'] as any });
     if (subscriberUsers.length === 0) return;
     writeNotificationsForPlanEvent(plan, type, actorEmail, subscriberUsers as any, title, body);
+    // Phase 4A: send status_change email alongside in-app notification (non-fatal)
+    const oldStage = plan.stage; // captured before the update reaches Firestore
+    sendStatusChangeEmail(plan, oldStage, newStage, actorEmail).catch(console.warn);
   }, [firestoreData.users]);
 
   // NV expiry notifications — check once per session when plans + users are ready
   const [libraryVariances, setLibraryVariances] = useState<NoiseVariance[]>([]);
   const nvCheckFired = useRef(false);
+  const emailTriggerFired = useRef(false);
   useEffect(() => subscribeToVariances(setLibraryVariances), []);
   useEffect(() => {
     if (nvCheckFired.current) return;
@@ -55,6 +61,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       },
     );
   }, [firestoreData.plans, firestoreData.users, libraryVariances]);
+
+  // Tier A email triggers — run once per session alongside in-app notification check
+  useEffect(() => {
+    if (emailTriggerFired.current) return;
+    if (!firestoreData.plans.length || !libraryVariances.length) return;
+    emailTriggerFired.current = true;
+    const varianceMap = new Map(libraryVariances.map(v => [v.id, v]));
+    runTierAEmailTriggers(firestoreData.plans, varianceMap);
+  }, [firestoreData.plans, libraryVariances]);
 
   const planActions = usePlanActions({
     plans: firestoreData.plans,

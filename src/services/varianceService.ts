@@ -4,6 +4,7 @@ import { db, storage } from '../firebase';
 import { NoiseVariance, VarianceExpiryStatus, Plan, PlanCompliance } from '../types';
 import { SEGMENT_STREETS, SCOPES } from '../constants';
 import { showToast } from '../lib/toast';
+import { writeGlobalLog } from './logService';
 
 // ── Subscriptions ─────────────────────────────────────────────────────────────
 
@@ -69,6 +70,7 @@ export async function uploadAndScanVariance(
     console.error('Variance scan error:', err);
   });
 
+  writeGlobalLog(`Noise Variance uploaded: ${file.name}`, 'library', file.name, id, 'variance');
   return id;
 }
 

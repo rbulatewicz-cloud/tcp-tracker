@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserCircle, Bell, Zap, Clock, VolumeX, BookmarkCheck, Save, Loader } from 'lucide-react';
-import { User, NotificationPrefs, NotifyEvent, NotifyFrequency } from '../types';
+import { X, UserCircle, Bell, Zap, Clock, VolumeX, BookmarkCheck, Save, Loader, Mail } from 'lucide-react';
+import { User, NotificationPrefs, NotifyEvent, NotifyFrequency, EmailDelivery, EmailDeliveryPrefs } from '../types';
 import { SEGMENTS } from '../constants';
 import * as authService from '../services/authService';
 import { showToast } from '../lib/toast';
@@ -65,6 +65,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ user, initialTab = '
   const [frequency, setFrequency]                 = useState<NotifyFrequency>('daily_digest');
   const [autoFollow, setAutoFollow]               = useState({ myRequests: true, myLeads: true, onComment: false });
   const [followSegments, setFollowSegments]       = useState<string[]>([]);
+  const [emailDelivery, setEmailDelivery]         = useState<EmailDeliveryPrefs>({});
 
   // Load current profile from Firestore
   useEffect(() => {
@@ -80,6 +81,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ user, initialTab = '
         onComment:  data.autoFollow?.onComment  ?? false,
       });
       setFollowSegments(data.autoFollow?.segments || []);
+      setEmailDelivery(data.emailDelivery || {});
       setLoading(false);
     });
   }, [user.email]);
@@ -95,6 +97,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ user, initialTab = '
         displayName, title, notificationEmail, notifyOn,
         notificationFrequency: frequency,
         autoFollow: { ...autoFollow, segments: followSegments },
+        emailDelivery,
       };
       await authService.saveUserProfile(user.email, data);
       onSaved({ name: displayName, displayName, title, notificationEmail });
@@ -273,6 +276,56 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ user, initialTab = '
                   ))}
                 </div>
               </div>
+
+              {/* Email delivery per event */}
+              {notifyOn.length > 0 && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+                    <Mail size={13} color="#7C3AED" />
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#7C3AED', letterSpacing: 1, textTransform: 'uppercase' }}>
+                      Email Delivery
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 10 }}>
+                    Choose how each notification reaches you. "Both" sends to the app bell and your email.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {NOTIFY_OPTIONS.filter(o => notifyOn.includes(o.key)).map(opt => {
+                      const current: EmailDelivery = emailDelivery[opt.key] ?? 'in_app';
+                      const options: { value: EmailDelivery; label: string }[] = [
+                        { value: 'in_app', label: '🔔 App only' },
+                        { value: 'email',  label: '📧 Email only' },
+                        { value: 'both',   label: '✉️ Both' },
+                        { value: 'none',   label: '🔕 Off' },
+                      ];
+                      return (
+                        <div key={opt.key} style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          background: 'var(--bg-surface-2)', border: '1px solid var(--border)',
+                          borderRadius: 8, padding: '7px 11px',
+                        }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{opt.label}</span>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            {options.map(o => (
+                              <button key={o.value} onClick={() => setEmailDelivery(prev => ({ ...prev, [opt.key]: o.value }))}
+                                style={{
+                                  padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                                  cursor: 'pointer', fontFamily: 'inherit', border: 'none',
+                                  background: current === o.value ? '#7C3AED' : 'var(--bg-surface)',
+                                  color: current === o.value ? '#fff' : 'var(--text-secondary)',
+                                  outline: current === o.value ? 'none' : '1px solid var(--border)',
+                                  transition: 'all 0.15s',
+                                }}>
+                                {o.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Frequency */}
               <div>

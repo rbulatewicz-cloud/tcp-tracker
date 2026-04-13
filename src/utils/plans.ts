@@ -10,6 +10,21 @@ export function fmtDate(iso: string | null | undefined): string {
   return isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/** Format an ISO date string to "January 1, 2024" (long month). Used for formal letters/documents. Returns '' for empty. */
+export function fmtDateLong(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
+  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+/** Convert a 24-hour "HH:MM" string to a readable "H AM/PM" label */
+export function fmt12(time: string): string {
+  const [h, m] = time.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hour = h % 12 || 12;
+  return m === 0 ? `${hour} ${ampm}` : `${hour}:${m.toString().padStart(2, '0')} ${ampm}`;
+}
+
 export const getUserLabel = (currentUser: any) => {
   if (!currentUser) return "Guest";
   return `${currentUser.name} (${currentUser.role})`;

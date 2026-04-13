@@ -5,6 +5,7 @@ import {
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 import { DrivewayLetter, DrivewayLetterStatus, MetroComment } from '../types';
+import { writeGlobalLog } from './logService';
 import { DrivewayNoticeFields } from './drivewayNoticeService';
 import { SEGMENT_STREETS } from '../constants';
 
@@ -48,35 +49,38 @@ export async function updateDrivewayLetter(
 
 // ── Status transitions ────────────────────────────────────────────────────────
 
-export async function approveDrivewayLetter(id: string): Promise<void> {
+export async function approveDrivewayLetter(id: string, address?: string): Promise<void> {
   await updateDoc(doc(db, COL, id), {
     status: 'approved' as DrivewayLetterStatus,
     approvedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
+  writeGlobalLog(`Driveway notice approved: ${address || id}`, 'cr_hub', address || id, id, 'letter');
 }
 
-export async function markDrivewayLetterSent(id: string, dateStr?: string): Promise<void> {
+export async function markDrivewayLetterSent(id: string, dateStr?: string, address?: string): Promise<void> {
   const ts = dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : new Date().toISOString();
   await updateDoc(doc(db, COL, id), {
     status: 'sent' as DrivewayLetterStatus,
     sentAt: ts,
     updatedAt: new Date().toISOString(),
   });
+  writeGlobalLog(`Driveway notice sent: ${address || id}`, 'cr_hub', address || id, id, 'letter');
 }
 
 // ── Metro review workflow ─────────────────────────────────────────────────────
 
-export async function submitLetterToMetro(id: string, dateStr?: string): Promise<void> {
+export async function submitLetterToMetro(id: string, dateStr?: string, address?: string): Promise<void> {
   const ts = dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : new Date().toISOString();
   await updateDoc(doc(db, COL, id), {
     status: 'submitted_to_metro' as DrivewayLetterStatus,
     metroSubmittedAt: ts,
     updatedAt: new Date().toISOString(),
   });
+  writeGlobalLog(`Driveway notice submitted to Metro: ${address || id}`, 'cr_hub', address || id, id, 'letter');
 }
 
-export async function metroApproveLetter(id: string, dateStr?: string): Promise<void> {
+export async function metroApproveLetter(id: string, dateStr?: string, address?: string): Promise<void> {
   const ts = dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : new Date().toISOString();
   await updateDoc(doc(db, COL, id), {
     status: 'approved' as DrivewayLetterStatus,
@@ -84,6 +88,7 @@ export async function metroApproveLetter(id: string, dateStr?: string): Promise<
     approvedAt: ts,
     updatedAt: new Date().toISOString(),
   });
+  writeGlobalLog(`Driveway notice approved by Metro: ${address || id}`, 'cr_hub', address || id, id, 'letter');
 }
 
 export async function metroRequestRevision(
@@ -212,6 +217,7 @@ export async function uploadAndScanDrivewayLetter(
     console.error('Driveway letter scan error:', err)
   );
 
+  writeGlobalLog(`Driveway notice uploaded: ${file.name}`, 'cr_hub', file.name, id, 'letter');
   return id;
 }
 
@@ -402,6 +408,48 @@ export async function uploadFinalLetter(
     updatedAt: new Date().toISOString(),
   });
   return url;
+}
+
+// ── Plan linking ─────────────────────────────────────────────────────────────
+
+export async function linkDrivewayLetterToPlan(
+  letter: import('../types').DrivewayLetter,
+  plan: import('../types').Plan,
+): Promise<void> {
+  const { auth } = await import('../firebase');
+  const { arrayUnion } = await import('firebase/firestore');
+
+  // 1. Update the letter — linkedPlanLocs is the canonical multi-link array;
+  //    planLoc/planId are kept for backwards compat (set only if not already populated)
+  const alreadyLinked = letter.linkedPlanLocs?.length || letter.planLoc;
+  await updateDoc(doc(db, COL, letter.id), {
+    linkedPlanLocs: arrayUnion(plan.loc),
+    ...(alreadyLinked ? {} : { planId: plan.id, planLoc: plan.loc }),
+    updatedAt: new Date().toISOString(),
+  });
+
+  // 2. Write to plan.log so it shows in the plan card activity log
+  const user = auth.currentUser;
+  const userLabel = user?.displayName || user?.email || 'System';
+  const logEntry = {
+    uniqueId:  Date.now().toString(),
+    date:      new Date().toLocaleDateString('en-CA'),
+    action:    `Driveway notice linked: ${letter.address || letter.id}`,
+    user:      userLabel,
+    userId:    user?.uid || 'unknown',
+    attachments: [],
+  };
+  await updateDoc(doc(db, 'plans', plan.id), { log: arrayUnion(logEntry) });
+
+  // 3. Global log
+  writeGlobalLog(
+    `Driveway notice linked to ${plan.loc}: ${letter.address || letter.id}`,
+    'cr_hub',
+    letter.address || letter.id,
+    letter.id,
+    'letter',
+    plan.loc
+  );
 }
 
 // ── Delete ────────────────────────────────────────────────────────────────────

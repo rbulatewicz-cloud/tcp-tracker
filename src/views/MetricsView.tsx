@@ -1,17 +1,16 @@
 import React from 'react';
 import { daysBetween } from '../utils/plans';
-import { ReportGenerator } from '../components/ReportGenerator';
-import { ReportTemplate } from '../types';
+import { Plan, ReportTemplate, FilterState } from '../types';
+import { CLOCK_TARGETS } from '../constants';
 
 interface MetricsViewProps {
-  filtered: any[];
-  metrics: any;
-  STAGES: any[];
+  filtered: Plan[];
+  metrics: Record<string, unknown>;
   monoFont: string;
   TODAY: Date;
-  td: string;
-  setSelectedPlan: (plan: any) => void;
+  setSelectedPlan: (plan: Plan | null) => void;
   setView: (view: string) => void;
+  setFilter: React.Dispatch<React.SetStateAction<FilterState>>;
   reportTemplate: ReportTemplate;
 }
 
@@ -41,19 +40,30 @@ function timeAgo(iso: string): string {
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
-function KPICard({ label, value, delta, deltaType, barPct, accent }: {
+function KPICard({ label, value, delta, deltaType, barPct, accent, onClick }: {
   label: string; value: number | string; delta: string;
   deltaType: 'up' | 'down' | 'neutral'; barPct: number; accent: string;
+  onClick?: () => void;
 }) {
   const deltaColor = deltaType === 'neutral' ? '#94A3B8' : deltaType === 'up' ? '#EF4444' : '#10B981';
   return (
-    <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: '16px 20px' }}>
+    <div
+      onClick={onClick}
+      style={{
+        background: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: '16px 20px',
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'box-shadow .15s, border-color .15s',
+      }}
+      onMouseEnter={e => { if (onClick) (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 12px rgba(0,0,0,.08)'; }}
+      onMouseLeave={e => { if (onClick) (e.currentTarget as HTMLDivElement).style.boxShadow = ''; }}
+    >
       <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 32, fontWeight: 800, lineHeight: 1.1, color: accent, margin: '4px 0 2px' }}>{value}</div>
       <div style={{ fontSize: 11, color: deltaColor, marginBottom: 10 }}>{delta}</div>
       <div style={{ height: 3, background: '#F1F5F9', borderRadius: 2, overflow: 'hidden' }}>
         <div style={{ height: '100%', borderRadius: 2, background: accent, width: `${Math.min(barPct, 100)}%`, transition: 'width .4s' }} />
       </div>
+      {onClick && <div style={{ fontSize: 9, color: '#CBD5E1', marginTop: 6, textAlign: 'right' }}>Click to view →</div>}
     </div>
   );
 }
@@ -68,9 +78,156 @@ function Tag({ label, color, bg }: { label: string; color: string; bg: string })
   );
 }
 
+// ── Plan Type Breakdown ───────────────────────────────────────────────────────
+
+const AT_DOT_STAGE_SET = new Set(['submitted_to_dot','submitted','dot_review','loc_submitted','loc_review','resubmit_review','resubmitted']);
+const INACTIVE_STAGE_SET = new Set(['approved','plan_approved','implemented','tcp_approved_final','closed','cancelled','expired']);
+
+const TYPE_META: Record<string, { color: string; bg: string; border: string; emoji: string }> = {
+  WATCH:      { color: '#92400E', bg: '#FFFBEB', border: '#FDE68A', emoji: '👁' },
+  Standard:   { color: '#1E40AF', bg: '#EFF6FF', border: '#BFDBFE', emoji: '📋' },
+  Engineered: { color: '#5B21B6', bg: '#F5F3FF', border: '#DDD6FE', emoji: '⚙️' },
+};
+
+// Find how many days ago the plan last changed stage, using log entries
+function daysInCurrentStage(plan: any): number | null {
+  const log: any[] = plan.log || [];
+  // Walk backwards to find the most recent status change log entry
+  for (let i = log.length - 1; i >= 0; i--) {
+    const action: string = log[i].action || '';
+    if (action.includes('Status') && (action.includes('→') || action.includes('changed') || action.includes('Changed'))) {
+      const rawDate: string = (log[i].date || '').split(',')[0].trim();
+      if (!rawDate) continue;
+      return Math.floor((Date.now() - new Date(rawDate + 'T00:00:00').getTime()) / 86_400_000);
+    }
+  }
+  // Fallback: use requestDate
+  if (plan.requestDate) {
+    return Math.floor((Date.now() - new Date(plan.requestDate + 'T00:00:00').getTime()) / 86_400_000);
+  }
+  return null;
+}
+
+function dayColor(days: number | null, type: string): string {
+  if (days === null) return '#94A3B8';
+  const t = CLOCK_TARGETS[type]?.dot_review;
+  if (!t) return '#94A3B8';
+  if (days > t.target)  return '#EF4444';  // red — over target
+  if (days > t.warning) return '#F59E0B';  // amber — approaching
+  return '#10B981';                         // green — on track
+}
+
+function PlanTypeSummary({ filtered, setView, setFilter }: {
+  filtered: any[];
+  setView: (v: string) => void;
+  setFilter: React.Dispatch<React.SetStateAction<FilterState>>;
+}) {
+  const PLAN_TYPES = ['WATCH', 'Standard', 'Engineered'];
+
+  const rows = PLAN_TYPES.map(type => {
+    const active  = filtered.filter(p => p.type === type && !INACTIVE_STAGE_SET.has(p.stage) && !p.isHistorical);
+    const atDot   = active.filter(p => AT_DOT_STAGE_SET.has(p.stage));
+    const drafting = active.filter(p => p.stage === 'drafting' || p.stage === 'requested');
+
+    const dotDays = atDot.map(p => daysInCurrentStage(p)).filter((d): d is number => d !== null);
+    const avgDot  = dotDays.length ? Math.round(dotDays.reduce((a, b) => a + b, 0) / dotDays.length) : null;
+    const maxDot  = dotDays.length ? Math.max(...dotDays) : null;
+
+    const t = CLOCK_TARGETS[type]?.dot_review;
+    const overTarget = atDot.filter(p => {
+      const d = daysInCurrentStage(p);
+      return d !== null && t && d > t.target;
+    }).length;
+
+    return { type, active: active.length, atDot: atDot.length, drafting: drafting.length, avgDot, maxDot, overTarget };
+  }).filter(r => r.active > 0);
+
+  if (!rows.length) return null;
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: 20, marginBottom: 16 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>
+        Plan Pipeline by Type
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${rows.length},1fr)`, gap: 10 }}>
+        {rows.map(({ type, active, atDot, drafting, avgDot, maxDot, overTarget }) => {
+          const meta = TYPE_META[type] ?? TYPE_META.Standard;
+          const t = CLOCK_TARGETS[type]?.dot_review;
+          return (
+            <button
+              key={type}
+              onClick={() => { setFilter(f => ({ ...f, type })); setView('table'); }}
+              style={{
+                background: meta.bg, borderRadius: 10, border: `1px solid ${meta.border}`,
+                padding: '12px 14px', textAlign: 'left', cursor: 'pointer',
+                transition: 'box-shadow .15s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.08)')}
+              onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>{meta.emoji} {type}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: meta.border, color: meta.color }}>
+                  {active} active
+                </span>
+              </div>
+
+              {/* Stage breakdown */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
+                {drafting > 0 && (
+                  <span style={{ display: 'inline-flex', padding: '2px 7px', borderRadius: 4, fontSize: 10, fontWeight: 700, color: '#1E40AF', background: '#DBEAFE' }}>
+                    {drafting} drafting
+                  </span>
+                )}
+                {atDot > 0 && (
+                  <span style={{ display: 'inline-flex', padding: '2px 7px', borderRadius: 4, fontSize: 10, fontWeight: 700, color: overTarget > 0 ? '#991B1B' : '#92400E', background: overTarget > 0 ? '#FEE2E2' : '#FEF3C7' }}>
+                    {atDot} at DOT{overTarget > 0 ? ` · ${overTarget} over` : ''}
+                  </span>
+                )}
+              </div>
+
+              {/* Time-in-review stats */}
+              {atDot > 0 && (
+                <div style={{ borderTop: `1px solid ${meta.border}`, paddingTop: 8 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>
+                    Days in Review
+                  </div>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    {avgDot !== null && (
+                      <div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: dayColor(avgDot, type), lineHeight: 1 }}>{avgDot}d</div>
+                        <div style={{ fontSize: 9, color: '#94A3B8' }}>avg</div>
+                      </div>
+                    )}
+                    {maxDot !== null && (
+                      <div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: dayColor(maxDot, type), lineHeight: 1 }}>{maxDot}d</div>
+                        <div style={{ fontSize: 9, color: '#94A3B8' }}>max</div>
+                      </div>
+                    )}
+                    {t && (
+                      <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: '#CBD5E1', lineHeight: 1 }}>{t.target}d</div>
+                        <div style={{ fontSize: 9, color: '#94A3B8' }}>target</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ fontSize: 9, color: '#CBD5E1', marginTop: 8, textAlign: 'right' }}>View plans →</div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Compliance Health Cards ───────────────────────────────────────────────────
 
-function ComplianceHealthCards({ filtered }: { filtered: any[] }) {
+function ComplianceHealthCards({ filtered, setView }: { filtered: any[]; setView: (v: string) => void }) {
   const pheAll = filtered.filter(p => p.compliance?.phe);
   const ph = {
     approved:    pheAll.filter(p => p.compliance.phe.status === 'approved').length,
@@ -123,7 +280,8 @@ function ComplianceHealthCards({ filtered }: { filtered: any[] }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
 
         {pheAll.length > 0 && (
-          <div style={{ background: '#FFFBEB', borderRadius: 10, border: '1px solid #FEF3C7', padding: '12px 14px' }}>
+          <div onClick={() => setView('variances')} style={{ background: '#FFFBEB', borderRadius: 10, border: '1px solid #FEF3C7', padding: '12px 14px', cursor: 'pointer', transition: 'box-shadow .15s' }}
+            onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.08)')} onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🏛 PHE (BOE)</span>
               <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#FEF3C7', color: '#92400E' }}>{pheAll.length} active</span>
@@ -138,12 +296,13 @@ function ComplianceHealthCards({ filtered }: { filtered: any[] }) {
             <div style={{ height: 4, background: '#E2E8F0', borderRadius: 2, overflow: 'hidden' }}>
               <div style={{ height: '100%', background: phePct === 100 ? '#10B981' : '#F59E0B', width: `${phePct}%`, transition: 'width .4s' }} />
             </div>
-            <div style={{ fontSize: 9, color: '#94A3B8', marginTop: 3 }}>{ph.approved} of {pheAll.length} approved</div>
+            <div style={{ fontSize: 9, color: '#94A3B8', marginTop: 3 }}>{ph.approved} of {pheAll.length} approved · click to open Library →</div>
           </div>
         )}
 
         {nvAll.length > 0 && (
-          <div style={{ background: '#F5F3FF', borderRadius: 10, border: '1px solid #EDE9FE', padding: '12px 14px' }}>
+          <div onClick={() => setView('variances')} style={{ background: '#F5F3FF', borderRadius: 10, border: '1px solid #EDE9FE', padding: '12px 14px', cursor: 'pointer', transition: 'box-shadow .15s' }}
+            onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.08)')} onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🔊 Noise Variance</span>
               <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#EDE9FE', color: '#5B21B6' }}>{nvAll.length} active</span>
@@ -158,12 +317,13 @@ function ComplianceHealthCards({ filtered }: { filtered: any[] }) {
             <div style={{ height: 4, background: '#E2E8F0', borderRadius: 2, overflow: 'hidden' }}>
               <div style={{ height: '100%', background: nvPct === 100 ? '#10B981' : '#8B5CF6', width: `${nvPct}%`, transition: 'width .4s' }} />
             </div>
-            <div style={{ fontSize: 9, color: '#94A3B8', marginTop: 3 }}>{nv.linked + nv.approved} of {nvAll.length} resolved</div>
+            <div style={{ fontSize: 9, color: '#94A3B8', marginTop: 3 }}>{nv.linked + nv.approved} of {nvAll.length} resolved · click to open Library →</div>
           </div>
         )}
 
         {cdAll.length > 0 && (
-          <div style={{ background: cdOverdue > 0 ? '#FFF5F5' : '#EFF6FF', borderRadius: 10, border: `1px solid ${cdOverdue > 0 ? '#FECACA' : '#DBEAFE'}`, padding: '12px 14px' }}>
+          <div onClick={() => setView('variances')} style={{ background: cdOverdue > 0 ? '#FFF5F5' : '#EFF6FF', borderRadius: 10, border: `1px solid ${cdOverdue > 0 ? '#FECACA' : '#DBEAFE'}`, padding: '12px 14px', cursor: 'pointer', transition: 'box-shadow .15s' }}
+            onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.08)')} onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🏙 CD Concurrence</span>
               <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#DBEAFE', color: '#1E40AF' }}>{cdAll.length} active</span>
@@ -177,12 +337,13 @@ function ComplianceHealthCards({ filtered }: { filtered: any[] }) {
             <div style={{ height: 4, background: '#E2E8F0', borderRadius: 2, overflow: 'hidden' }}>
               <div style={{ height: '100%', background: cdOverdue > 0 ? '#EF4444' : cdPct === 100 ? '#10B981' : '#3B82F6', width: `${cdPct}%`, transition: 'width .4s' }} />
             </div>
-            <div style={{ fontSize: 9, color: '#94A3B8', marginTop: 3 }}>{cdConcurred} of {cdTotal} districts concurred</div>
+            <div style={{ fontSize: 9, color: '#94A3B8', marginTop: 3 }}>{cdConcurred} of {cdTotal} districts concurred · click to open Library →</div>
           </div>
         )}
 
         {dwAll.length > 0 && (
-          <div style={{ background: '#F0FDF4', borderRadius: 10, border: '1px solid #DCFCE7', padding: '12px 14px' }}>
+          <div onClick={() => setView('variances')} style={{ background: '#F0FDF4', borderRadius: 10, border: '1px solid #DCFCE7', padding: '12px 14px', cursor: 'pointer', transition: 'box-shadow .15s' }}
+            onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.08)')} onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🏠 Driveway Notices</span>
               <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#D1FAE5', color: '#065F46' }}>{dwAll.length} active</span>
@@ -194,9 +355,9 @@ function ComplianceHealthCards({ filtered }: { filtered: any[] }) {
               {dwNA > 0         && <Tag label={`${dwNA} N/A`}                 color="#475569" bg="#F1F5F9" />}
             </div>
             <div style={{ height: 4, background: '#E2E8F0', borderRadius: 2, overflow: 'hidden' }}>
-              <div style={{ height: '100%', background: dwPct === 100 ? '#10B981' : '#10B981', width: `${dwPct}%`, transition: 'width .4s' }} />
+              <div style={{ height: '100%', background: '#10B981', width: `${dwPct}%`, transition: 'width .4s' }} />
             </div>
-            <div style={{ fontSize: 9, color: '#94A3B8', marginTop: 3 }}>{dwAllSent + dwNA} of {dwAll.length} resolved</div>
+            <div style={{ fontSize: 9, color: '#94A3B8', marginTop: 3 }}>{dwAllSent + dwNA} of {dwAll.length} resolved · click to open Library →</div>
           </div>
         )}
 
@@ -337,7 +498,7 @@ function RecentActivityFeed({ filtered, setSelectedPlan, setView }: {
                 <div style={{ width: 26, height: 26, borderRadius: 6, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0, marginTop: 1 }}>{s.icon}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12, color: '#334155', lineHeight: 1.4 }}>
-                    <strong style={{ color: s.color }}>LOC {e.loc}</strong> — {e.action}
+                    <strong style={{ color: s.color }}>{e.loc}</strong> — {e.action}
                   </div>
                   <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 1 }}>
                     {e.user ? `${e.user} · ` : ''}{timeAgo(e.date)}
@@ -408,7 +569,7 @@ function AvgCycleTimes({ filtered, monoFont }: { filtered: any[]; monoFont: stri
 // ── MetricsView ───────────────────────────────────────────────────────────────
 
 function MetricsView({
-  filtered, metrics, monoFont, TODAY, setSelectedPlan, setView, reportTemplate,
+  filtered, metrics, monoFont, TODAY, setSelectedPlan, setView, setFilter,
 }: MetricsViewProps) {
 
   const INACTIVE = new Set(['approved','plan_approved','implemented','tcp_approved_final','closed','cancelled','expired']);
@@ -462,7 +623,6 @@ function MetricsView({
             Live snapshot across all active plans — Van Nuys corridor · Updated now
           </div>
         </div>
-        <ReportGenerator template={reportTemplate} elementId="metrics-view-container" />
       </div>
 
       {/* ── KPI row ── */}
@@ -473,6 +633,7 @@ function MetricsView({
           deltaType={atRiskCount > 0 ? 'up' : 'neutral'}
           barPct={metrics.total > 0 ? (activePlans.length / metrics.total) * 100 : 0}
           accent="#1D4ED8"
+          onClick={() => { setFilter(f => ({ ...f, quickFilter: 'all' })); setView('table'); }}
         />
         <KPICard
           label="Pending PHE / NV" value={pendingCompliance.length}
@@ -480,13 +641,15 @@ function MetricsView({
           deltaType={expiringCompliance > 0 ? 'up' : 'neutral'}
           barPct={filtered.length > 0 ? (pendingCompliance.length / filtered.length) * 100 : 0}
           accent="#D97706"
+          onClick={() => { setFilter(f => ({ ...f, quickFilter: 'needs_compliance' })); setView('table'); }}
         />
         <KPICard
           label="CD Response Overdue" value={cdOverdueCount}
-          delta={cdOverdueCount === 0 ? 'All CDs current' : cdWaitingCount > 0 ? `+1 since last week` : ''}
+          delta={cdOverdueCount === 0 ? 'All CDs current' : cdWaitingCount > 0 ? `+${cdWaitingCount} waiting` : 'Action needed'}
           deltaType={cdOverdueCount > 0 ? 'up' : 'neutral'}
           barPct={cdOverdueCount > 0 ? Math.min((cdOverdueCount / Math.max(cdOverdueCount + cdWaitingCount, 1)) * 100, 100) : 0}
           accent="#DC2626"
+          onClick={() => setView('variances')}
         />
         <KPICard
           label="Concurred This Month" value={approvedThisMonth.length}
@@ -494,15 +657,19 @@ function MetricsView({
           deltaType={approvedThisMonth.length > 0 ? 'down' : 'neutral'}
           barPct={metrics.total > 0 ? (approvedThisMonth.length / metrics.total) * 100 : 0}
           accent="#059669"
+          onClick={() => { setFilter(f => ({ ...f, stage: 'plan_approved' })); setView('table'); }}
         />
       </div>
+
+      {/* ── Plan Type Breakdown ── */}
+      <PlanTypeSummary filtered={filtered} setView={setView} setFilter={setFilter} />
 
       {/* ── Main 2-col layout ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
 
         {/* Left: compliance cards + overdue table */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <ComplianceHealthCards filtered={filtered} />
+          <ComplianceHealthCards filtered={filtered} setView={setView} />
           <NeedsAttentionTable filtered={filtered} monoFont={monoFont} setSelectedPlan={setSelectedPlan} setView={setView} />
         </div>
 

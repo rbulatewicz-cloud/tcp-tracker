@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
   Building2, Plus, Phone, Mail, Edit2, Trash2, ChevronDown, ChevronUp, ExternalLink,
+  Tag, AlertCircle,
 } from 'lucide-react';
 import {
   DrivewayProperty, DrivewayLetter, Plan, User, UserRole,
+  StakeholderType, LanguagePreference, DeliveryPreference, CRIssue,
 } from '../../types';
 import {
   subscribeToDrivewayProperties,
@@ -19,6 +21,8 @@ interface DrivewayPropertiesSectionProps {
   allLetters: DrivewayLetter[];
   setSelectedPlan: (plan: Plan | null) => void;
   plans: Plan[];
+  allIssues?: CRIssue[];
+  onOpenIssues?: () => void;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -39,10 +43,47 @@ const STATUS_LABEL: Record<string, string> = {
   sent:                     'Sent',
 };
 
-const BLANK_FORM = { address: '', ownerName: '', ownerPhone: '', ownerEmail: '', segment: '' };
+// ── Property 360 option maps ──────────────────────────────────────────────────
+const STAKEHOLDER_LABELS: Record<StakeholderType, string> = {
+  resident:  'Resident',
+  business:  'Business',
+  landlord:  'Landlord',
+  tenant:    'Tenant',
+  hoa:       'HOA',
+  other:     'Other',
+};
+
+const LANGUAGE_LABELS: Record<LanguagePreference, string> = {
+  english:  'English',
+  spanish:  'Spanish',
+  armenian: 'Armenian',
+  korean:   'Korean',
+  chinese:  'Chinese',
+  tagalog:  'Tagalog',
+  other:    'Other',
+};
+
+const DELIVERY_LABELS: Record<DeliveryPreference, string> = {
+  email:     'Email',
+  mail:      'Physical mail',
+  phone:     'Phone call',
+  in_person: 'In person',
+  none:      'No preference',
+};
+
+const BLANK_FORM = {
+  address: '', ownerName: '', ownerPhone: '', ownerEmail: '', segment: '',
+  // 360 fields
+  stakeholderType: '' as StakeholderType | '',
+  languagePreference: '' as LanguagePreference | '',
+  deliveryPreference: '' as DeliveryPreference | '',
+  contactNotes: '',
+  doNotContact: false,
+  tags: '',
+};
 
 export function DrivewayPropertiesSection({
-  currentUser, allLetters, setSelectedPlan, plans,
+  currentUser, allLetters, setSelectedPlan, plans, allIssues = [], onOpenIssues,
 }: DrivewayPropertiesSectionProps) {
   const [properties, setProperties] = useState<DrivewayProperty[]>([]);
   useEffect(() => subscribeToDrivewayProperties(setProperties), []);
@@ -78,6 +119,12 @@ export function DrivewayPropertiesSection({
           ownerPhone: addForm.ownerPhone.trim() || undefined,
           ownerEmail: addForm.ownerEmail.trim() || undefined,
           segment: addForm.segment.trim() || undefined,
+          stakeholderType: (addForm.stakeholderType as StakeholderType) || undefined,
+          languagePreference: (addForm.languagePreference as LanguagePreference) || undefined,
+          deliveryPreference: (addForm.deliveryPreference as DeliveryPreference) || undefined,
+          contactNotes: addForm.contactNotes.trim() || undefined,
+          doNotContact: addForm.doNotContact || undefined,
+          tags: addForm.tags.trim() ? addForm.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
         },
         currentUser?.email ?? 'Unknown'
       );
@@ -117,6 +164,12 @@ export function DrivewayPropertiesSection({
       ownerEmail: prop.ownerEmail,
       notes: prop.notes,
       segment: prop.segment,
+      stakeholderType: prop.stakeholderType,
+      languagePreference: prop.languagePreference,
+      deliveryPreference: prop.deliveryPreference,
+      contactNotes: prop.contactNotes,
+      doNotContact: prop.doNotContact,
+      tags: prop.tags,
     });
   };
 
@@ -156,7 +209,7 @@ export function DrivewayPropertiesSection({
             <input
               value={addForm.ownerName}
               onChange={e => setAddForm(f => ({ ...f, ownerName: e.target.value }))}
-              placeholder="Owner name"
+              placeholder="Owner / contact name"
               className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400"
             />
             <input
@@ -177,7 +230,59 @@ export function DrivewayPropertiesSection({
               placeholder="Email"
               className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400"
             />
+            <select
+              value={addForm.stakeholderType}
+              onChange={e => setAddForm(f => ({ ...f, stakeholderType: e.target.value as StakeholderType | '' }))}
+              className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400"
+            >
+              <option value="">Stakeholder type…</option>
+              {(Object.keys(STAKEHOLDER_LABELS) as StakeholderType[]).map(k => (
+                <option key={k} value={k}>{STAKEHOLDER_LABELS[k]}</option>
+              ))}
+            </select>
+            <select
+              value={addForm.languagePreference}
+              onChange={e => setAddForm(f => ({ ...f, languagePreference: e.target.value as LanguagePreference | '' }))}
+              className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400"
+            >
+              <option value="">Language preference…</option>
+              {(Object.keys(LANGUAGE_LABELS) as LanguagePreference[]).map(k => (
+                <option key={k} value={k}>{LANGUAGE_LABELS[k]}</option>
+              ))}
+            </select>
+            <select
+              value={addForm.deliveryPreference}
+              onChange={e => setAddForm(f => ({ ...f, deliveryPreference: e.target.value as DeliveryPreference | '' }))}
+              className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400"
+            >
+              <option value="">Delivery preference…</option>
+              {(Object.keys(DELIVERY_LABELS) as DeliveryPreference[]).map(k => (
+                <option key={k} value={k}>{DELIVERY_LABELS[k]}</option>
+              ))}
+            </select>
+            <input
+              value={addForm.tags}
+              onChange={e => setAddForm(f => ({ ...f, tags: e.target.value }))}
+              placeholder="Tags (comma-separated)"
+              className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400"
+            />
           </div>
+          <input
+            value={addForm.contactNotes}
+            onChange={e => setAddForm(f => ({ ...f, contactNotes: e.target.value }))}
+            placeholder="CR contact notes (e.g. prefers morning calls)"
+            className="w-full rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-indigo-400"
+          />
+          <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={addForm.doNotContact}
+              onChange={e => setAddForm(f => ({ ...f, doNotContact: e.target.checked }))}
+              className="rounded"
+            />
+            <span className="font-semibold text-red-600">Do Not Contact</span>
+            <span className="text-slate-400">(suppress outreach)</span>
+          </label>
           <div className="flex gap-2 pt-1">
             <button
               onClick={handleAdd}
@@ -212,6 +317,7 @@ export function DrivewayPropertiesSection({
         {properties.map(prop => {
           const propLetters = allLetters.filter(l => l.propertyId === prop.id);
           const lastSent = propLetters.filter(l => l.sentAt).sort((a, b) => (b.sentAt ?? '').localeCompare(a.sentAt ?? ''))[0];
+          const propOpenIssues = allIssues.filter(i => i.propertyId === prop.id && (i.status === 'open' || i.status === 'in_progress'));
           const isExpanded = expandedId === prop.id;
           const isEditing = editId === prop.id;
 
@@ -236,7 +342,7 @@ export function DrivewayPropertiesSection({
                         <input
                           value={editDraft.ownerName ?? ''}
                           onChange={e => setEditDraft(d => ({ ...d, ownerName: e.target.value }))}
-                          placeholder="Owner name"
+                          placeholder="Owner / contact name"
                           className="w-full rounded border border-slate-200 px-2 py-1 text-[11px] outline-none focus:border-indigo-400"
                         />
                         <div className="grid grid-cols-2 gap-1.5">
@@ -252,19 +358,70 @@ export function DrivewayPropertiesSection({
                             placeholder="Email"
                             className="rounded border border-slate-200 px-2 py-1 text-[11px] outline-none focus:border-indigo-400"
                           />
+                          <select
+                            value={editDraft.stakeholderType ?? ''}
+                            onChange={e => setEditDraft(d => ({ ...d, stakeholderType: e.target.value as StakeholderType || undefined }))}
+                            className="rounded border border-slate-200 px-2 py-1 text-[11px] outline-none focus:border-indigo-400"
+                          >
+                            <option value="">Stakeholder type…</option>
+                            {(Object.keys(STAKEHOLDER_LABELS) as StakeholderType[]).map(k => (
+                              <option key={k} value={k}>{STAKEHOLDER_LABELS[k]}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={editDraft.languagePreference ?? ''}
+                            onChange={e => setEditDraft(d => ({ ...d, languagePreference: e.target.value as LanguagePreference || undefined }))}
+                            className="rounded border border-slate-200 px-2 py-1 text-[11px] outline-none focus:border-indigo-400"
+                          >
+                            <option value="">Language pref…</option>
+                            {(Object.keys(LANGUAGE_LABELS) as LanguagePreference[]).map(k => (
+                              <option key={k} value={k}>{LANGUAGE_LABELS[k]}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={editDraft.deliveryPreference ?? ''}
+                            onChange={e => setEditDraft(d => ({ ...d, deliveryPreference: e.target.value as DeliveryPreference || undefined }))}
+                            className="rounded border border-slate-200 px-2 py-1 text-[11px] outline-none focus:border-indigo-400"
+                          >
+                            <option value="">Delivery pref…</option>
+                            {(Object.keys(DELIVERY_LABELS) as DeliveryPreference[]).map(k => (
+                              <option key={k} value={k}>{DELIVERY_LABELS[k]}</option>
+                            ))}
+                          </select>
+                          <input
+                            value={editDraft.segment ?? ''}
+                            onChange={e => setEditDraft(d => ({ ...d, segment: e.target.value }))}
+                            placeholder="Segment"
+                            className="rounded border border-slate-200 px-2 py-1 text-[11px] outline-none focus:border-indigo-400"
+                          />
                         </div>
-                        <input
-                          value={editDraft.segment ?? ''}
-                          onChange={e => setEditDraft(d => ({ ...d, segment: e.target.value }))}
-                          placeholder="Segment"
-                          className="w-full rounded border border-slate-200 px-2 py-1 text-[11px] outline-none focus:border-indigo-400"
-                        />
                         <input
                           value={editDraft.notes ?? ''}
                           onChange={e => setEditDraft(d => ({ ...d, notes: e.target.value }))}
-                          placeholder="Notes"
+                          placeholder="General notes"
                           className="w-full rounded border border-slate-200 px-2 py-1 text-[11px] outline-none focus:border-indigo-400"
                         />
+                        <input
+                          value={editDraft.contactNotes ?? ''}
+                          onChange={e => setEditDraft(d => ({ ...d, contactNotes: e.target.value }))}
+                          placeholder="CR contact notes (e.g. prefers morning calls)"
+                          className="w-full rounded border border-slate-200 px-2 py-1 text-[11px] outline-none focus:border-indigo-400"
+                        />
+                        <input
+                          value={editDraft.tags?.join(', ') ?? ''}
+                          onChange={e => setEditDraft(d => ({ ...d, tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) }))}
+                          placeholder="Tags (comma-separated, e.g. vocal, priority)"
+                          className="w-full rounded border border-slate-200 px-2 py-1 text-[11px] outline-none focus:border-indigo-400"
+                        />
+                        <label className="flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editDraft.doNotContact ?? false}
+                            onChange={e => setEditDraft(d => ({ ...d, doNotContact: e.target.checked }))}
+                            className="rounded"
+                          />
+                          <span className="font-semibold text-red-600">Do Not Contact</span>
+                        </label>
                         <div className="flex gap-2 pt-0.5">
                           <button
                             onClick={() => handleEditSave(prop.id)}
@@ -283,7 +440,29 @@ export function DrivewayPropertiesSection({
                       </div>
                     ) : (
                       <div className="mt-1 space-y-0.5">
+                        {prop.doNotContact && (
+                          <div className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-2 py-0.5 w-fit mb-1">
+                            <AlertCircle size={10} /> Do Not Contact
+                          </div>
+                        )}
                         {prop.ownerName && <div className="text-[12px] font-semibold text-slate-700">{prop.ownerName}</div>}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {prop.stakeholderType && (
+                            <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-medium">
+                              {STAKEHOLDER_LABELS[prop.stakeholderType]}
+                            </span>
+                          )}
+                          {prop.languagePreference && prop.languagePreference !== 'english' && (
+                            <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">
+                              🌐 {LANGUAGE_LABELS[prop.languagePreference]}
+                            </span>
+                          )}
+                          {prop.deliveryPreference && (
+                            <span className="text-[10px] bg-violet-50 text-violet-600 px-1.5 py-0.5 rounded font-medium">
+                              {DELIVERY_LABELS[prop.deliveryPreference]}
+                            </span>
+                          )}
+                        </div>
                         {prop.ownerPhone && (
                           <div className="flex items-center gap-1 text-[11px] text-slate-500">
                             <Phone size={10} /> {prop.ownerPhone}
@@ -294,13 +473,28 @@ export function DrivewayPropertiesSection({
                             <Mail size={10} /> {prop.ownerEmail}
                           </div>
                         )}
+                        {prop.contactNotes && (
+                          <div className="text-[11px] text-indigo-700 bg-indigo-50 rounded px-2 py-0.5 mt-0.5">
+                            📋 {prop.contactNotes}
+                          </div>
+                        )}
                         {prop.notes && (
                           <div className="text-[10px] text-slate-400 italic mt-0.5">{prop.notes}</div>
+                        )}
+                        {prop.tags && prop.tags.length > 0 && (
+                          <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                            <Tag size={10} className="text-slate-400" />
+                            {prop.tags.map(t => (
+                              <span key={t} className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full font-medium">
+                                {t}
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </div>
                     )}
 
-                    {/* Letter count & last sent */}
+                    {/* Letter count & last sent & issues */}
                     {!isEditing && (
                       <div className="mt-2 flex items-center gap-3 flex-wrap">
                         <button
@@ -314,6 +508,16 @@ export function DrivewayPropertiesSection({
                           <span className="text-[10px] text-slate-400">
                             Last sent {fmtDate(lastSent.sentAt)}
                           </span>
+                        )}
+                        {propOpenIssues.length > 0 && (
+                          <button
+                            onClick={() => onOpenIssues?.()}
+                            className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 rounded-full px-2 py-0.5 hover:bg-red-100 transition-colors"
+                            title="Open issues for this property"
+                          >
+                            <AlertCircle size={9} />
+                            {propOpenIssues.length} open issue{propOpenIssues.length !== 1 ? 's' : ''}
+                          </button>
                         )}
                       </div>
                     )}

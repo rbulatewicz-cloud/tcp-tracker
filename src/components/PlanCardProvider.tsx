@@ -22,7 +22,7 @@ export interface PlanActions {
   handleDOTCommentsRec: (pid: string) => void;
   handleExportPlanToPDF: (plan: Plan, options?: PDFExportOptions) => void;
   setStatusDate: (date: string) => void;
-  addLogEntry: (pid: string, entry: string, attachments?: File[], field?: string, previousValue?: any, newValue?: any) => void;
+  addLogEntry: (pid: string, entry: string, attachments?: File[], field?: string, previousValue?: any, newValue?: any) => Promise<void>;
   deleteLogEntry: (pid: string, logEntryUniqueId: string) => void;
   deleteDocument: (pid: string, docId: string, type: 'tcp' | 'loc', plan: any, isDraft?: boolean) => void;
   clearLog: (pid: string, plan: any, setSelectedPlan: (plan: any) => void, getUserLabel: () => string, td: string, isDraft?: boolean) => void;
