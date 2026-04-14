@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { auth, db, loginWithGoogle } from '../firebase';
 import { Plan } from '../types';
 
@@ -80,10 +80,25 @@ export function PlanPopoutView({ locId }: Props) {
 
   useEffect(() => {
     if (!fbUser || fbUser === 'loading') return;
+    // Try direct doc-ID lookup first (most plans use LOC number as doc ID).
+    // If not found, fall back to querying by the `loc` field (older/imported plans
+    // may have a different Firestore doc ID with `loc` set separately).
     getDoc(doc(db, 'plans', locId))
-      .then(snap => {
-        if (!snap.exists()) { setError(`Plan "${locId}" not found.`); setPlan(null); }
-        else setPlan({ id: snap.id, ...snap.data() } as Plan);
+      .then(async snap => {
+        if (snap.exists()) {
+          setPlan({ ...snap.data(), id: snap.id } as Plan);
+          return;
+        }
+        // Fallback: query by loc field
+        const q = query(collection(db, 'plans'), where('loc', '==', locId), limit(1));
+        const qs = await getDocs(q);
+        if (!qs.empty) {
+          const d = qs.docs[0];
+          setPlan({ ...d.data(), id: d.id } as Plan);
+        } else {
+          setError(`Plan "${locId}" not found.`);
+          setPlan(null);
+        }
       })
       .catch(() => { setError('Failed to load plan.'); setPlan(null); });
   }, [fbUser, locId]);
