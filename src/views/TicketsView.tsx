@@ -3,6 +3,8 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { COMPLETED_STAGES } from '../constants';
 import { GripVertical } from 'lucide-react';
+import { RequestCommentThread } from './tickets/RequestCommentThread';
+import { User } from '../types';
 
 const PRIORITY_SCORE: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
 
@@ -30,6 +32,8 @@ interface TicketsViewProps {
   pushTicket: (id: string, stage: string) => void;
   plans: any[];
   canReorder?: boolean;
+  currentUser: User | null;
+  allUsers: User[];
 }
 
 export function TicketsView({
@@ -44,6 +48,8 @@ export function TicketsView({
   pushTicket,
   plans,
   canReorder = false,
+  currentUser,
+  allUsers,
 }: TicketsViewProps) {
   const [queueOrder, setQueueOrder] = useState<string[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -202,6 +208,13 @@ export function TicketsView({
                   </div>
                   {ticket.notes && (
                     <div style={{ fontSize: 12, color: '#475569', marginTop: 6, fontStyle: 'italic' }}>"{ticket.notes}"</div>
+                  )}
+                  {currentUser && (
+                    <RequestCommentThread
+                      plan={ticket}
+                      currentUser={currentUser}
+                      allUsers={allUsers}
+                    />
                   )}
                 </div>
               </div>

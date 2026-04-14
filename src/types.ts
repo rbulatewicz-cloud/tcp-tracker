@@ -451,7 +451,7 @@ export type NotifyEvent =
   // CR Hub
   | 'cr_issue_assigned' | 'cr_issue_updated' | 'cr_issue_escalation' | 'queue_item'
   // Feedback
-  | 'feedback_updated' | 'feedback_comment';
+  | 'feedback_updated' | 'feedback_comment' | 'request_comment';
 
 /** Per-category email delivery preference */
 export type EmailDelivery = 'none' | 'in_app' | 'email' | 'both';
@@ -506,6 +506,18 @@ export interface FeedbackComment {
   text: string;
   createdAt: string;
 }
+
+export interface RequestComment {
+  id: string;
+  authorEmail: string;
+  authorName: string;
+  authorRole: string;      // UserRole string value
+  text: string;
+  attachments: string[];   // storage download URLs
+  createdAt: string;
+}
+
+export type RequestStatus = 'under_review' | 'needs_clarification' | 'clarification_provided';
 
 export interface AppNotification {
   id: string;
@@ -806,6 +818,10 @@ export interface Plan {
 
   // Subscribers — list of user emails who follow this plan
   subscribers?: string[];
+
+  // Request Q&A thread
+  requestComments?: RequestComment[];
+  requestStatus?: RequestStatus;
 
   // Legacy fields — kept for backward compat with existing data
   outreach?: { status: string; notes?: string };

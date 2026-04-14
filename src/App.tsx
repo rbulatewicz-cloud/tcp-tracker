@@ -981,6 +981,8 @@ function AppContent() {
             pushTicket={pushTicket}
             plans={plans}
             canReorder={role === UserRole.MOT || role === UserRole.ADMIN}
+            currentUser={currentUser}
+            allUsers={users}
           />
         )}
 

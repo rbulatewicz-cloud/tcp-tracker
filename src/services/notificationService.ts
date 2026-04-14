@@ -281,3 +281,36 @@ export async function checkAndNotifyNVExpiry(
     await writeNotificationsForPlanEvent(plan, type, '', subscriberUsers as any, title, body);
   }
 }
+
+/** Notify recipients when a comment is posted on a TCP request ticket. */
+export async function writeRequestCommentNotification(
+  recipients: string[],   // email addresses
+  actorEmail: string,
+  actorName: string,
+  planId: string,
+  planLoc: string,
+  text: string,
+): Promise<void> {
+  const targets = recipients.filter(r => r !== actorEmail);
+  if (targets.length === 0) return;
+  const snippet = text.length > 80 ? text.slice(0, 80) + '…' : text;
+  const batch = writeBatch(db);
+  for (const email of targets) {
+    const notif: Omit<AppNotification, 'id'> = {
+      userId:    email,
+      type:      'request_comment',
+      planId,
+      planLoc,
+      title:     `New comment on request ${planLoc}`,
+      body:      `${actorName}: ${snippet}`,
+      read:      false,
+      createdAt: new Date().toISOString(),
+    };
+    batch.set(doc(collection(db, COL)), notif);
+  }
+  try {
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, COL);
+  }
+}
