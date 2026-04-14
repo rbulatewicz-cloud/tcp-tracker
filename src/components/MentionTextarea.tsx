@@ -136,7 +136,7 @@ export function MentionTextarea({
       />
 
       {suggestions.length > 0 && (
-        <div className="absolute bottom-full left-0 mb-1 w-60 rounded-lg border border-slate-200 bg-white shadow-xl z-50 overflow-hidden">
+        <div className="absolute top-full left-0 mt-1 w-60 rounded-lg border border-slate-200 bg-white shadow-xl z-50 overflow-hidden">
           <p className="px-3 py-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-wide border-b border-slate-100">
             Tag a person
           </p>
