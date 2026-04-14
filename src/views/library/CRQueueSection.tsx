@@ -8,6 +8,7 @@ import { subscribeToDrivewayProperties } from '../../services/drivewayPropertySe
 import { fmtDate as fmt } from '../../utils/plans';
 import { DraftLetterModal } from './DraftLetterModal';
 import { BulkNoticeUploadWizard } from '../cr_hub/BulkNoticeUploadWizard';
+import { BulkLinkModal } from '../cr_hub/BulkLinkModal';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -769,6 +770,7 @@ export function CRQueueSection({ plans, appConfig, onOpenPlanLetters, currentUse
   const [properties, setProperties] = useState<DrivewayProperty[]>([]);
   const [draftTarget, setDraftTarget] = useState<{ plan: Plan; addr: DrivewayAddress; parentLetter?: DrivewayLetter } | null>(null);
   const [showBulkWizard, setShowBulkWizard] = useState(false);
+  const [showBulkLink,   setShowBulkLink]   = useState(false);
   useEffect(() => subscribeToDrivewayLetters(setLetters), []);
   useEffect(() => subscribeToDrivewayProperties(setProperties), []);
 
@@ -891,13 +893,22 @@ export function CRQueueSection({ plans, appConfig, onOpenPlanLetters, currentUse
             </div>
           );
         })}
-        <button
-          onClick={() => setShowBulkWizard(true)}
-          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors ml-auto"
-        >
-          <Upload size={13} />
-          Bulk Upload
-        </button>
+        <div className="flex items-center gap-2 ml-auto">
+          <button
+            onClick={() => setShowBulkLink(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 hover:border-indigo-300 hover:text-indigo-600 transition-colors"
+          >
+            <Link2 size={13} />
+            Bulk Link
+          </button>
+          <button
+            onClick={() => setShowBulkWizard(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors"
+          >
+            <Upload size={13} />
+            Bulk Upload
+          </button>
+        </div>
       </div>
 
       {/* Grouped lists */}
@@ -955,6 +966,15 @@ export function CRQueueSection({ plans, appConfig, onOpenPlanLetters, currentUse
             setDraftTarget(null);
             onOpenPlanLetters(draftTarget.plan);
           }}
+        />
+      )}
+
+      {/* Bulk Link Modal */}
+      {showBulkLink && (
+        <BulkLinkModal
+          onClose={() => setShowBulkLink(false)}
+          plans={plans}
+          letters={letters}
         />
       )}
 
