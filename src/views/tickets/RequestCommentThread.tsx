@@ -6,6 +6,7 @@ import { db, storage } from '../../firebase';
 import { Plan, User, UserRole, RequestComment, RequestStatus } from '../../types';
 import { writeRequestCommentNotification } from '../../services/notificationService';
 import { showToast } from '../../lib/toast';
+import { MentionTextarea } from '../../components/MentionTextarea';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -22,7 +23,7 @@ function timeAgo(iso: string): string {
 const isMOTOrAdmin = (role: string) =>
   role === UserRole.MOT || role === UserRole.ADMIN;
 
-/** Parse @handle mentions from text and return matching user emails */
+/** Parse @FirstName mentions from text and return matching user emails */
 function parseMentionEmails(text: string, allUsers: User[]): string[] {
   const handles = [...text.matchAll(/@(\w+)/g)].map(m => m[1].toLowerCase());
   const emails: string[] = [];
@@ -30,7 +31,7 @@ function parseMentionEmails(text: string, allUsers: User[]): string[] {
     const match = allUsers.find(u => {
       const full  = (u.name || '').toLowerCase();
       const first = full.split(' ')[0];
-      return first === handle || full.replace(/\s+/g, '') === handle;
+      return first === handle;
     });
     if (match) emails.push(match.email);
   }
@@ -294,9 +295,10 @@ export function RequestCommentThread({ plan, currentUser, allUsers }: Props) {
 
           {/* Compose area */}
           <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-            <textarea
+            <MentionTextarea
               value={draftText}
-              onChange={e => setDraftText(e.target.value)}
+              onChange={setDraftText}
+              allUsers={allUsers}
               placeholder={
                 isMOT
                   ? 'Ask for clarification or leave a note… use @name to tag someone'
