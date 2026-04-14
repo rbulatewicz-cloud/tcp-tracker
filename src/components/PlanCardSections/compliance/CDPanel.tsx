@@ -114,7 +114,7 @@ export function CDPanel({ cd, canEdit, planId, currentUser, onChange, readOnlySt
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
             Council Presentation (PowerPoint)
           </span>
-          {cd.presentationAttachment && canEdit && !readOnlyStatus && (
+          {cd.presentationAttachment && canEdit && (
             <button
               onClick={() => slideInputRef.current?.click()}
               disabled={!!uploading}
@@ -140,7 +140,7 @@ export function CDPanel({ cd, canEdit, planId, currentUser, onChange, readOnlySt
               Uploaded {new Date(cd.presentationAttachment.uploadedAt).toLocaleDateString()} by {cd.presentationAttachment.uploadedBy}
             </p>
           </div>
-        ) : canEdit && !readOnlyStatus ? (
+        ) : canEdit ? (
           <button
             onClick={() => slideInputRef.current?.click()}
             disabled={!!uploading}
