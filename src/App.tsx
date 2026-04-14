@@ -292,6 +292,30 @@ function AppContent() {
     return true;
   }), [plans, filter, searchQuery, stageLabelMap, currentUser, TODAY, td]);
 
+  // Search-only filtered set for views that manage their own layout (CR Hub,
+  // Compliance, Library) — applies the search query but NOT quick-filter pills
+  // or stage/scope filters, so navigating from "My Plans" doesn't bleed in.
+  const searchFiltered = useMemo(() => {
+    if (!searchQuery) return plans;
+    const q = searchQuery.toLowerCase();
+    return plans.filter(p => {
+      const stageLabel = stageLabelMap.get(p.stage) || p.stage;
+      return (
+        (p.loc != null && String(p.loc).toLowerCase().includes(q)) ||
+        (p.type != null && String(p.type).toLowerCase().includes(q)) ||
+        (p.scope != null && String(p.scope).toLowerCase().includes(q)) ||
+        (p.segment != null && String(p.segment).toLowerCase().includes(q)) ||
+        (p.street1 != null && String(p.street1).toLowerCase().includes(q)) ||
+        (p.street2 != null && String(p.street2).toLowerCase().includes(q)) ||
+        (p.lead != null && String(p.lead).toLowerCase().includes(q)) ||
+        (p.priority != null && String(p.priority).toLowerCase().includes(q)) ||
+        (p.notes != null && String(p.notes).toLowerCase().includes(q)) ||
+        (stageLabel != null && String(stageLabel).toLowerCase().includes(q)) ||
+        (p.id != null && String(p.id).toLowerCase().includes(q))
+      );
+    });
+  }, [plans, searchQuery, stageLabelMap]);
+
   const toggleSelectAll = useCallback(() => {
     if (selectedPlanIds.length === filtered.length) {
       setSelectedPlanIds([]);
@@ -891,7 +915,7 @@ function AppContent() {
         {/* COMPLIANCE VIEW */}
         {view==="compliance" && canViewCompliance && (
           <ComplianceView
-            plans={plans}
+            plans={searchFiltered}
             setSelectedPlan={setSelectedPlan}
             setView={setView}
             appConfig={appConfig}
@@ -900,7 +924,7 @@ function AppContent() {
 
         {/* VARIANCE LIBRARY */}
         {view === "variances" && canViewTab('variances') && (
-          <VarianceLibraryView currentUser={currentUser} appConfig={appConfig} plans={plans} setSelectedPlan={setSelectedPlan} />
+          <VarianceLibraryView currentUser={currentUser} appConfig={appConfig} plans={searchFiltered} setSelectedPlan={setSelectedPlan} />
         )}
 
         {/* CR HUB */}
@@ -908,7 +932,7 @@ function AppContent() {
           <CRHubView
             currentUser={currentUser}
             appConfig={appConfig}
-            plans={plans}
+            plans={searchFiltered}
             setSelectedPlan={setSelectedPlan}
             setView={setView}
           />
