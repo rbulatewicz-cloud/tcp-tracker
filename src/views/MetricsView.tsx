@@ -29,7 +29,11 @@ function daysAgoMs(days: number) {
 }
 
 function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
+  // Date-only strings (YYYY-MM-DD) are parsed as UTC midnight by new Date(),
+  // which shifts them to "yesterday" for users west of UTC. Appending T00:00:00
+  // forces local-midnight parsing instead.
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(iso + 'T00:00:00') : new Date(iso);
+  const diff = Date.now() - parsed.getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1)  return 'just now';
   if (mins < 60) return `${mins}m ago`;
