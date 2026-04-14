@@ -472,44 +472,41 @@ function RecentActivityFeed({ filtered, allPlans, globalLogs, setSelectedPlan, s
   filtered: any[]; allPlans?: any[]; globalLogs?: GlobalLogEntry[];
   setSelectedPlan: (p: any) => void; setView: (v: string) => void;
 }) {
+  const todayKey = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
+
   const entries = React.useMemo(() => {
     const source = allPlans && allPlans.length > 0 ? allPlans : filtered;
-    // Plan-level log entries — _dateKey for primary sort, _tsMs for intra-day tiebreak
+    // Plan-level log entries — today only
     const planEntries = source.flatMap(p =>
-      (p.log ?? []).map((l: any) => ({
-        ...l,
-        planId: p.id,
-        loc: p.loc,
-        plan: p,
-        _dateKey: l.date ?? '',
-        // uniqueId is a Unix-ms string; parse it so it's comparable with Date.parse values
-        _tsMs: l.uniqueId ? Number(l.uniqueId) : 0,
-      }))
+      (p.log ?? [])
+        .filter((l: any) => l.date === todayKey)
+        .map((l: any) => ({
+          ...l,
+          planId: p.id,
+          loc: p.loc,
+          plan: p,
+          _tsMs: l.uniqueId ? Number(l.uniqueId) : 0,
+        }))
     );
-    // Global log entries (Library, CR Hub) — normalised into the same shape
-    const globalEntries = (globalLogs ?? []).map(g => ({
-      date: g.date,
-      action: g.action,
-      user: g.user,
-      planId: null,
-      loc: g.planLoc ?? g.reference,
-      plan: null,
-      source: g.source,
-      _dateKey: g.date,
-      _tsMs: g.createdAt ? Date.parse(g.createdAt) : 0,
-    }));
+    // Global log entries (Library, CR Hub) — today only
+    const globalEntries = (globalLogs ?? [])
+      .filter(g => g.date === todayKey)
+      .map(g => ({
+        date: g.date,
+        action: g.action,
+        user: g.user,
+        planId: null,
+        loc: g.planLoc ?? g.reference,
+        plan: null,
+        source: g.source,
+        _tsMs: g.createdAt ? Date.parse(g.createdAt) : 0,
+      }));
 
     return [...planEntries, ...globalEntries]
       .filter(l => l.date && l.action)
-      .sort((a, b) => {
-        // Primary: date string descending (YYYY-MM-DD compares correctly as strings)
-        const dc = b._dateKey.localeCompare(a._dateKey);
-        if (dc !== 0) return dc;
-        // Secondary: numeric timestamp descending (both are ms since epoch)
-        return b._tsMs - a._tsMs;
-      })
-      .slice(0, 15);
-  }, [filtered, allPlans, globalLogs]);
+      .sort((a, b) => b._tsMs - a._tsMs)
+      .slice(0, 20);
+  }, [filtered, allPlans, globalLogs, todayKey]);
 
   const getStyle = (action: string, source?: string): { icon: string; color: string; bg: string } => {
     if (source === 'library')  return { icon: '📐', color: '#0891B2', bg: '#CFFAFE' };
@@ -525,9 +522,9 @@ function RecentActivityFeed({ filtered, allPlans, globalLogs, setSelectedPlan, s
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: 20 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>Recent Activity</div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>Today's Activity</div>
       {entries.length === 0
-        ? <div style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center', padding: '16px 0' }}>No recent activity</div>
+        ? <div style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center', padding: '16px 0' }}>No activity yet today</div>
         : entries.map((e, i) => {
             const s = getStyle(e.action, e.source);
             const handleClick = e.plan
@@ -543,7 +540,7 @@ function RecentActivityFeed({ filtered, allPlans, globalLogs, setSelectedPlan, s
                     <strong style={{ color: s.color }}>{e.loc}</strong> — {e.action}
                   </div>
                   <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 1 }}>
-                    {e.user ? `${e.user} · ` : ''}{timeAgo(e.date)}
+                    {e.user ? `${e.user} · ` : ''}{e._tsMs ? new Date(e._tsMs).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : timeAgo(e.date)}
                   </div>
                 </div>
               </div>
