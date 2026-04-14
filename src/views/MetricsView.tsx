@@ -5,6 +5,7 @@ import { CLOCK_TARGETS } from '../constants';
 
 interface MetricsViewProps {
   filtered: Plan[];
+  allPlans?: Plan[];
   metrics: Record<string, unknown>;
   monoFont: string;
   TODAY: Date;
@@ -461,18 +462,27 @@ function NeedsAttentionTable({ filtered, monoFont, setSelectedPlan, setView }: {
 
 // ── Recent Activity Feed ──────────────────────────────────────────────────────
 
-function RecentActivityFeed({ filtered, setSelectedPlan, setView }: {
-  filtered: any[]; setSelectedPlan: (p: any) => void; setView: (v: string) => void;
+function RecentActivityFeed({ filtered, allPlans, setSelectedPlan, setView }: {
+  filtered: any[]; allPlans?: any[]; setSelectedPlan: (p: any) => void; setView: (v: string) => void;
 }) {
   const entries = React.useMemo(() => {
-    const allLogs = filtered.flatMap(p =>
+    const source = allPlans && allPlans.length > 0 ? allPlans : filtered;
+    const allLogs = source.flatMap(p =>
       (p.log ?? []).map((l: any) => ({ ...l, planId: p.id, loc: p.loc, plan: p }))
     );
     return allLogs
       .filter(l => l.date && l.action)
-      .sort((a, b) => b.date.localeCompare(a.date))
+      .sort((a, b) => {
+        // Primary: date string (YYYY-MM-DD) descending
+        const dateCmp = b.date.localeCompare(a.date);
+        if (dateCmp !== 0) return dateCmp;
+        // Secondary: uniqueId (timestamp string) descending for intra-day ordering
+        const aId = a.uniqueId ?? '';
+        const bId = b.uniqueId ?? '';
+        return bId.localeCompare(aId);
+      })
       .slice(0, 10);
-  }, [filtered]);
+  }, [filtered, allPlans]);
 
   const getStyle = (action: string): { icon: string; color: string; bg: string } => {
     if (action.includes('Status changed'))  return { icon: '🔄', color: '#3B82F6', bg: '#DBEAFE' };
@@ -569,7 +579,7 @@ function AvgCycleTimes({ filtered, monoFont }: { filtered: any[]; monoFont: stri
 // ── MetricsView ───────────────────────────────────────────────────────────────
 
 function MetricsView({
-  filtered, metrics, monoFont, TODAY, setSelectedPlan, setView, setFilter,
+  filtered, allPlans, metrics, monoFont, TODAY, setSelectedPlan, setView, setFilter,
 }: MetricsViewProps) {
 
   const INACTIVE = new Set(['approved','plan_approved','implemented','tcp_approved_final','closed','cancelled','expired']);
@@ -649,7 +659,7 @@ function MetricsView({
           deltaType={cdOverdueCount > 0 ? 'up' : 'neutral'}
           barPct={cdOverdueCount > 0 ? Math.min((cdOverdueCount / Math.max(cdOverdueCount + cdWaitingCount, 1)) * 100, 100) : 0}
           accent="#DC2626"
-          onClick={() => setView('variances')}
+          onClick={() => { setFilter(f => ({ ...f, quickFilter: 'needs_compliance' })); setView('table'); }}
         />
         <KPICard
           label="Concurred This Month" value={approvedThisMonth.length}
@@ -675,7 +685,7 @@ function MetricsView({
 
         {/* Right sidebar: activity feed + cycle times */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <RecentActivityFeed filtered={filtered} setSelectedPlan={setSelectedPlan} setView={setView} />
+          <RecentActivityFeed filtered={filtered} allPlans={allPlans} setSelectedPlan={setSelectedPlan} setView={setView} />
           <AvgCycleTimes filtered={filtered} monoFont={monoFont} />
         </div>
 

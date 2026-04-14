@@ -821,6 +821,7 @@ function AppContent() {
         {view==="metrics"&&(
           <MetricsView
             filtered={filtered}
+            allPlans={plans}
             metrics={metrics}
             monoFont={monoFont}
             TODAY={TODAY}
