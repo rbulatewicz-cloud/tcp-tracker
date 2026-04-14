@@ -470,14 +470,16 @@ function RecentActivityFeed({ filtered, allPlans, globalLogs, setSelectedPlan, s
 }) {
   const entries = React.useMemo(() => {
     const source = allPlans && allPlans.length > 0 ? allPlans : filtered;
-    // Plan-level log entries
+    // Plan-level log entries — _dateKey for primary sort, _tsMs for intra-day tiebreak
     const planEntries = source.flatMap(p =>
       (p.log ?? []).map((l: any) => ({
         ...l,
         planId: p.id,
         loc: p.loc,
         plan: p,
-        _sortKey: l.uniqueId ?? l.date ?? '',
+        _dateKey: l.date ?? '',
+        // uniqueId is a Unix-ms string; parse it so it's comparable with Date.parse values
+        _tsMs: l.uniqueId ? Number(l.uniqueId) : 0,
       }))
     );
     // Global log entries (Library, CR Hub) — normalised into the same shape
@@ -489,12 +491,19 @@ function RecentActivityFeed({ filtered, allPlans, globalLogs, setSelectedPlan, s
       loc: g.planLoc ?? g.reference,
       plan: null,
       source: g.source,
-      _sortKey: g.createdAt ?? g.date,
+      _dateKey: g.date,
+      _tsMs: g.createdAt ? Date.parse(g.createdAt) : 0,
     }));
 
     return [...planEntries, ...globalEntries]
       .filter(l => l.date && l.action)
-      .sort((a, b) => b._sortKey.localeCompare(a._sortKey))
+      .sort((a, b) => {
+        // Primary: date string descending (YYYY-MM-DD compares correctly as strings)
+        const dc = b._dateKey.localeCompare(a._dateKey);
+        if (dc !== 0) return dc;
+        // Secondary: numeric timestamp descending (both are ms since epoch)
+        return b._tsMs - a._tsMs;
+      })
       .slice(0, 15);
   }, [filtered, allPlans, globalLogs]);
 
