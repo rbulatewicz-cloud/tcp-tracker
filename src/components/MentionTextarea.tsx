@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { User } from '../types';
 
 interface Props {
@@ -46,6 +47,8 @@ export function MentionTextarea({
   const [mentionStart, setMentionStart] = useState(-1);
   const [selectedIdx,  setSelectedIdx]  = useState(0);
 
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -61,9 +64,20 @@ export function MentionTextarea({
       setMentionQuery(mention.query);
       setMentionStart(mention.start);
       setSelectedIdx(0);
+      // Calculate portal position — flip above if not enough space below
+      if (textareaRef.current) {
+        const rect = textareaRef.current.getBoundingClientRect();
+        const dropdownHeight = 220; // approximate max height
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const top = spaceBelow >= dropdownHeight
+          ? rect.bottom + window.scrollY + 4
+          : rect.top + window.scrollY - dropdownHeight - 4;
+        setDropdownPos({ top, left: rect.left + window.scrollX, width: rect.width });
+      }
     } else {
       setSuggestions([]);
       setMentionStart(-1);
+      setDropdownPos(null);
     }
   }
 
@@ -135,8 +149,11 @@ export function MentionTextarea({
         className={className}
       />
 
-      {suggestions.length > 0 && (
-        <div className="absolute top-full left-0 mt-1 w-60 rounded-lg border border-slate-200 bg-white shadow-xl z-50 overflow-hidden">
+      {suggestions.length > 0 && dropdownPos && createPortal(
+        <div
+          style={{ position: 'absolute', top: dropdownPos.top, left: dropdownPos.left, width: Math.max(dropdownPos.width, 240), zIndex: 9999 }}
+          className="rounded-lg border border-slate-200 bg-white shadow-xl overflow-hidden"
+        >
           <p className="px-3 py-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-wide border-b border-slate-100">
             Tag a person
           </p>
@@ -161,7 +178,8 @@ export function MentionTextarea({
           <p className="px-3 py-1 text-[9px] text-slate-300 border-t border-slate-100">
             ↑↓ navigate · Enter or Tab to select · Esc to dismiss
           </p>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
