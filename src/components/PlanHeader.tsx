@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ExternalLink } from 'lucide-react';
 import { usePlanCard } from './PlanCardContext';
 import { Plan } from '../types';
 import { showToast } from '../lib/toast';
@@ -197,6 +198,14 @@ export const PlanHeader: React.FC = () => {
               </button>
             </Tooltip>
           )}
+          <Tooltip text="Open this plan in a new window." position="bottom">
+            <button
+              onClick={() => window.open(`${window.location.origin}${window.location.pathname}?plan=${encodeURIComponent(selectedPlan.loc || selectedPlan.id)}`, '_blank')}
+              className="text-[11px] px-2 py-1 border border-slate-300 rounded-md bg-white text-slate-500 hover:bg-slate-50 flex items-center gap-1"
+            >
+              <ExternalLink size={11} />
+            </button>
+          </Tooltip>
           <Tooltip text="Download a PDF summary of this plan card." position="bottom">
             <button
               onClick={() => setShowExportModal(true)}
