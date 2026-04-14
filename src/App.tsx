@@ -43,6 +43,7 @@ import { ReportsView } from './views/ReportsView';
 import { MyRequestsModal } from './views/MyRequestsModal';
 import { daysBetween, formatFileSize, calcMetrics, getLocalDateString } from './utils/plans';
 import { TodoSidebar } from './components/TodoSidebar';
+import { Tooltip } from './components/Tooltip';
 import { AppRequestSidebar } from './features/appRequests/AppRequestSidebar';
 import { ToastContainer } from './components/ToastContainer';
 import { showToast } from './lib/toast';
@@ -236,6 +237,8 @@ function AppContent() {
 
     // Quick filter pills
     if (filter.quickFilter === 'my_plans') {
+      const TERMINAL = ['approved','plan_approved','implemented','tcp_approved_final','closed','cancelled','expired'];
+      if (TERMINAL.includes(p.stage)) return false;
       const userName = currentUser?.name || '';
       const firstName = userName.split(' ')[0];
       const userEmail = currentUser?.email || '';
@@ -736,7 +739,7 @@ function AppContent() {
             { key: 'overdue_dot',      label: 'Overdue at DOT',   emoji: '🕐', activeColor: '#DC2626', activeBg: '#FEE2E2' },
           ] as { key: FilterState['quickFilter']; label: string; emoji: string; activeColor: string; activeBg: string }[]).map(p => {
             const active = (filter.quickFilter ?? 'all') === p.key;
-            return (
+            const btn = (
               <button
                 key={p.key}
                 onClick={() => setFilter(pr => ({ ...pr, quickFilter: p.key }))}
@@ -755,7 +758,36 @@ function AppContent() {
                 {p.label}
               </button>
             );
+            if (p.key === 'my_plans') {
+              return (
+                <Tooltip key={p.key} text="Your active work queue — plans you lead or follow. Cancelled, expired, and closed plans are excluded." position="bottom">
+                  {btn}
+                </Tooltip>
+              );
+            }
+            return btn;
           })}
+
+          {/* Option B — My Plans subtext strip */}
+          {filter.quickFilter === 'my_plans' && (() => {
+            const userName = currentUser?.name || '';
+            const firstName = userName.split(' ')[0];
+            const userEmail = currentUser?.email || '';
+            const leadCount = filtered.filter(p => p.lead === userName || p.lead === firstName).length;
+            const followCount = filtered.filter(p =>
+              userEmail && (p.subscribers ?? []).includes(userEmail) &&
+              p.lead !== userName && p.lead !== firstName
+            ).length;
+            return (
+              <div style={{ width: '100%', fontSize: 11, color: '#64748B', paddingTop: 4, paddingLeft: 2 }}>
+                Showing active plans only
+                <span style={{ color: '#94A3B8', margin: '0 6px' }}>·</span>
+                <span style={{ color: '#1D4ED8', fontWeight: 600 }}>{leadCount} leading</span>
+                <span style={{ color: '#94A3B8', margin: '0 6px' }}>·</span>
+                <span style={{ color: '#0891B2', fontWeight: 600 }}>{followCount} following</span>
+              </div>
+            );
+          })()}
 
         </div>
       )}
