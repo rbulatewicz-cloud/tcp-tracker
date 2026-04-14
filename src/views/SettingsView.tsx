@@ -129,7 +129,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {tab === 'notifications'   && <NotificationsTab />}
 
         {/* Shared save button for tabs that don't have their own */}
-        {(tab === 'branding' || tab === 'workflow') && (
+        {(tab === 'branding' || tab === 'workflow' || tab === 'access') && (
           <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex justify-end">
             <button
               onClick={handleSave}
