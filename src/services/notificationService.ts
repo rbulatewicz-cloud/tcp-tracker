@@ -294,6 +294,9 @@ export async function writeRequestCommentNotification(
   const targets = recipients.filter(r => r !== actorEmail);
   if (targets.length === 0) return;
   const snippet = text.length > 80 ? text.slice(0, 80) + '…' : text;
+  const APP_URL = 'https://gen-lang-client-0122413243.web.app';
+
+  // Bell notifications (batched)
   const batch = writeBatch(db);
   for (const email of targets) {
     const notif: Omit<AppNotification, 'id'> = {
@@ -312,5 +315,37 @@ export async function writeRequestCommentNotification(
     await batch.commit();
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, COL);
+  }
+
+  // Email notifications — write to `mail` collection (Firebase Trigger Email extension)
+  for (const email of targets) {
+    try {
+      await addDoc(collection(db, 'mail'), {
+        to: email,
+        message: {
+          subject: `New comment on TCP request ${planLoc}`,
+          html: `
+            <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+              <div style="height:4px;background:#6366f1;border-radius:4px 4px 0 0;"></div>
+              <div style="padding:24px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;">
+                <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;">TCP Tracker</p>
+                <h2 style="margin:0 0 16px;font-size:18px;color:#0f172a;">New comment on ${planLoc}</h2>
+                <p style="margin:0 0 16px;font-size:14px;color:#334155;line-height:1.6;">
+                  <strong>${actorName}</strong> wrote:<br/>${snippet}
+                </p>
+                <a href="${APP_URL}" style="display:inline-block;padding:10px 20px;background:#0f172a;color:#fff;font-size:13px;font-weight:600;text-decoration:none;border-radius:8px;">
+                  View in TCP Tracker
+                </a>
+                <p style="margin:20px 0 0;font-size:11px;color:#94a3b8;">
+                  You're receiving this because you're involved in request ${planLoc}.
+                </p>
+              </div>
+            </div>`,
+          text: `${actorName} commented on request ${planLoc}:\n\n${snippet}\n\n${APP_URL}`,
+        },
+      });
+    } catch {
+      // Email failure is non-critical — bell notification already sent
+    }
   }
 }

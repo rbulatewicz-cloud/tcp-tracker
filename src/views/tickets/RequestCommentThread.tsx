@@ -22,6 +22,48 @@ function timeAgo(iso: string): string {
 const isMOTOrAdmin = (role: string) =>
   role === UserRole.MOT || role === UserRole.ADMIN;
 
+/** Parse @handle mentions from text and return matching user emails */
+function parseMentionEmails(text: string, allUsers: User[]): string[] {
+  const handles = [...text.matchAll(/@(\w+)/g)].map(m => m[1].toLowerCase());
+  const emails: string[] = [];
+  for (const handle of handles) {
+    const match = allUsers.find(u => {
+      const full  = (u.name || '').toLowerCase();
+      const first = full.split(' ')[0];
+      return first === handle || full.replace(/\s+/g, '') === handle;
+    });
+    if (match) emails.push(match.email);
+  }
+  return emails;
+}
+
+/** Highlight @mentions in rendered comment text */
+function renderWithMentions(text: string, allUsers: User[]): React.ReactNode {
+  const parts = text.split(/(@\w+)/g);
+  return parts.map((part, i) => {
+    if (!part.startsWith('@')) return part;
+    const handle = part.slice(1).toLowerCase();
+    const matched = allUsers.some(u => {
+      const full  = (u.name || '').toLowerCase();
+      const first = full.split(' ')[0];
+      return first === handle || full.replace(/\s+/g, '') === handle;
+    });
+    return matched
+      ? <span key={i} className="font-semibold text-indigo-600">{part}</span>
+      : part;
+  });
+}
+
+/** Fuzzy name lookup: matches full name OR first name */
+function findUserByName(name: string, allUsers: User[]): User | undefined {
+  const q = name.trim().toLowerCase();
+  return allUsers.find(u => {
+    const full  = (u.name || '').toLowerCase();
+    const first = full.split(' ')[0];
+    return full === q || first === q;
+  });
+}
+
 // Status badge
 const STATUS_META: Record<RequestStatus, { label: string; icon: React.ReactNode; cls: string }> = {
   under_review:          { label: 'Under Review',          icon: <Clock size={11} />,        cls: 'bg-blue-50 text-blue-600 border-blue-200' },
@@ -48,22 +90,22 @@ export function RequestCommentThread({ plan, currentUser, allUsers }: Props) {
   const isMOT       = isMOTOrAdmin(currentUser.role);
   const commentCount = comments.length;
 
-  // Collect notification recipients: lead + requestedBy (by name lookup) + past commenters
-  function getRecipients(): string[] {
+  // Collect notification recipients: lead + requestedBy + past commenters + @mentions
+  function getRecipients(text = ''): string[] {
     const emails = new Set<string>();
     // MOT users always get notified on engineer replies
     if (!isMOT) {
-      allUsers
-        .filter(u => isMOTOrAdmin(u.role))
-        .forEach(u => emails.add(u.email));
+      allUsers.filter(u => isMOTOrAdmin(u.role)).forEach(u => emails.add(u.email));
     }
-    // Plan lead + requester (name → email lookup)
-    const leadUser = allUsers.find(u => u.name === plan.lead || u.displayName === plan.lead);
+    // Plan lead + requester (fuzzy name → email)
+    const leadUser = findUserByName(plan.lead || '', allUsers);
     if (leadUser) emails.add(leadUser.email);
-    const requesterUser = allUsers.find(u => u.name === plan.requestedBy || u.displayName === plan.requestedBy);
+    const requesterUser = findUserByName(plan.requestedBy || '', allUsers);
     if (requesterUser) emails.add(requesterUser.email);
     // Past commenters
     comments.forEach(c => emails.add(c.authorEmail));
+    // @mentions in new message
+    parseMentionEmails(text, allUsers).forEach(e => emails.add(e));
     return Array.from(emails);
   }
 
@@ -110,8 +152,9 @@ export function RequestCommentThread({ plan, currentUser, allUsers }: Props) {
         ...(newStatus !== status ? { requestStatus: newStatus } : {}),
       });
 
-      // Notifications
-      const recipients = getRecipients();
+      // Notifications (pass text so @mentions are included)
+      const notifyText = text || `[${draftFiles.length} file(s) attached]`;
+      const recipients = getRecipients(text);
       if (recipients.length > 0) {
         await writeRequestCommentNotification(
           recipients,
@@ -119,7 +162,7 @@ export function RequestCommentThread({ plan, currentUser, allUsers }: Props) {
           currentUser.name || currentUser.email,
           plan.id,
           plan.loc || plan.id,
-          text || `[${draftFiles.length} file(s) attached]`,
+          notifyText,
         );
       }
 
@@ -219,7 +262,7 @@ export function RequestCommentThread({ plan, currentUser, allUsers }: Props) {
                         </span>
                         <span className="text-slate-400 ml-auto">{timeAgo(c.createdAt)}</span>
                       </div>
-                      {c.text && <p className="text-slate-600 leading-snug">{c.text}</p>}
+                      {c.text && <p className="text-slate-600 leading-snug">{renderWithMentions(c.text, allUsers)}</p>}
                       {c.attachments?.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 mt-1.5">
                           {c.attachments.map((url, i) => {
@@ -256,8 +299,8 @@ export function RequestCommentThread({ plan, currentUser, allUsers }: Props) {
               onChange={e => setDraftText(e.target.value)}
               placeholder={
                 isMOT
-                  ? 'Ask for clarification or leave a note…'
-                  : 'Reply to MOT or provide additional context…'
+                  ? 'Ask for clarification or leave a note… use @name to tag someone'
+                  : 'Reply to MOT or provide additional context… use @name to tag someone'
               }
               rows={2}
               className="w-full px-3 py-2 text-[12px] text-slate-700 placeholder-slate-400 outline-none resize-none"
