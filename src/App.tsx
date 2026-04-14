@@ -150,6 +150,11 @@ function AppContent() {
   const [globalLogs, setGlobalLogs] = useState<GlobalLogEntry[]>([]);
   useEffect(() => subscribeToGlobalLog(setGlobalLogs), []);
 
+  // Show welcome screen for new users (profileComplete === false, not null)
+  const showWelcomeScreen = loaded && !!currentUser && profileComplete === false;
+
+  const { plans, locs, users, appRequests, appTodos, reportTemplate, appConfig, setAppConfig } = firestoreData;
+
   // Auto-open a plan card when ?plan=LOC-XXX is in the URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -161,11 +166,6 @@ function AppContent() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [plans]);
-
-  // Show welcome screen for new users (profileComplete === false, not null)
-  const showWelcomeScreen = loaded && !!currentUser && profileComplete === false;
-
-  const { plans, locs, users, appRequests, appTodos, reportTemplate, appConfig, setAppConfig } = firestoreData;
   const { fieldPermissions } = permissions;
 
   const getUserLabel = () => {
