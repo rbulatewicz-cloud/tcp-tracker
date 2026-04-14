@@ -21,20 +21,28 @@ export const PlanHeader: React.FC = () => {
   const [renewing, setRenewing] = useState(false);
   const [togglingFollow, setTogglingFollow] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  // Optimistic local state so the button flips immediately without waiting for Firestore
+  const [localFollowing, setLocalFollowing] = useState<boolean | null>(null);
 
-  const isFollowing = !!(currentUser?.email && selectedPlan.subscribers?.includes(currentUser.email));
+  const isFollowing = localFollowing !== null
+    ? localFollowing
+    : !!(currentUser?.email && selectedPlan.subscribers?.includes(currentUser.email));
 
   const handleToggleFollow = async () => {
     if (!currentUser?.email) return;
     setTogglingFollow(true);
+    const nextState = !isFollowing;
+    setLocalFollowing(nextState); // optimistic update
     try {
-      if (isFollowing) {
+      if (!nextState) {
         await removePlanSubscriber(selectedPlan.id, currentUser.email);
         showToast('Unfollowed — you won\'t receive notifications for this plan.', 'info');
       } else {
         await addPlanSubscriber(selectedPlan.id, currentUser.email);
         showToast('Following — you\'ll be notified on status changes and comments.', 'success');
       }
+    } catch {
+      setLocalFollowing(!nextState); // revert on error
     } finally {
       setTogglingFollow(false);
     }

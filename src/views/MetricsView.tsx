@@ -2,10 +2,12 @@ import React from 'react';
 import { daysBetween } from '../utils/plans';
 import { Plan, ReportTemplate, FilterState } from '../types';
 import { CLOCK_TARGETS } from '../constants';
+import type { GlobalLogEntry } from '../services/logService';
 
 interface MetricsViewProps {
   filtered: Plan[];
   allPlans?: Plan[];
+  globalLogs?: GlobalLogEntry[];
   metrics: Record<string, unknown>;
   monoFont: string;
   TODAY: Date;
@@ -462,29 +464,43 @@ function NeedsAttentionTable({ filtered, monoFont, setSelectedPlan, setView }: {
 
 // ── Recent Activity Feed ──────────────────────────────────────────────────────
 
-function RecentActivityFeed({ filtered, allPlans, setSelectedPlan, setView }: {
-  filtered: any[]; allPlans?: any[]; setSelectedPlan: (p: any) => void; setView: (v: string) => void;
+function RecentActivityFeed({ filtered, allPlans, globalLogs, setSelectedPlan, setView }: {
+  filtered: any[]; allPlans?: any[]; globalLogs?: GlobalLogEntry[];
+  setSelectedPlan: (p: any) => void; setView: (v: string) => void;
 }) {
   const entries = React.useMemo(() => {
     const source = allPlans && allPlans.length > 0 ? allPlans : filtered;
-    const allLogs = source.flatMap(p =>
-      (p.log ?? []).map((l: any) => ({ ...l, planId: p.id, loc: p.loc, plan: p }))
+    // Plan-level log entries
+    const planEntries = source.flatMap(p =>
+      (p.log ?? []).map((l: any) => ({
+        ...l,
+        planId: p.id,
+        loc: p.loc,
+        plan: p,
+        _sortKey: l.uniqueId ?? l.date ?? '',
+      }))
     );
-    return allLogs
-      .filter(l => l.date && l.action)
-      .sort((a, b) => {
-        // Primary: date string (YYYY-MM-DD) descending
-        const dateCmp = b.date.localeCompare(a.date);
-        if (dateCmp !== 0) return dateCmp;
-        // Secondary: uniqueId (timestamp string) descending for intra-day ordering
-        const aId = a.uniqueId ?? '';
-        const bId = b.uniqueId ?? '';
-        return bId.localeCompare(aId);
-      })
-      .slice(0, 10);
-  }, [filtered, allPlans]);
+    // Global log entries (Library, CR Hub) — normalised into the same shape
+    const globalEntries = (globalLogs ?? []).map(g => ({
+      date: g.date,
+      action: g.action,
+      user: g.user,
+      planId: null,
+      loc: g.planLoc ?? g.reference,
+      plan: null,
+      source: g.source,
+      _sortKey: g.createdAt ?? g.date,
+    }));
 
-  const getStyle = (action: string): { icon: string; color: string; bg: string } => {
+    return [...planEntries, ...globalEntries]
+      .filter(l => l.date && l.action)
+      .sort((a, b) => b._sortKey.localeCompare(a._sortKey))
+      .slice(0, 15);
+  }, [filtered, allPlans, globalLogs]);
+
+  const getStyle = (action: string, source?: string): { icon: string; color: string; bg: string } => {
+    if (source === 'library')  return { icon: '📐', color: '#0891B2', bg: '#CFFAFE' };
+    if (source === 'cr_hub')   return { icon: '🏘', color: '#9333EA', bg: '#F3E8FF' };
     if (action.includes('Status changed'))  return { icon: '🔄', color: '#3B82F6', bg: '#DBEAFE' };
     if (action.includes('Uploaded'))        return { icon: '📎', color: '#10B981', bg: '#D1FAE5' };
     if (action.includes('Deleted'))         return { icon: '🗑', color: '#EF4444', bg: '#FEE2E2' };
@@ -500,9 +516,12 @@ function RecentActivityFeed({ filtered, allPlans, setSelectedPlan, setView }: {
       {entries.length === 0
         ? <div style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center', padding: '16px 0' }}>No recent activity</div>
         : entries.map((e, i) => {
-            const s = getStyle(e.action);
+            const s = getStyle(e.action, e.source);
+            const handleClick = e.plan
+              ? () => { setSelectedPlan(e.plan); setView('table'); }
+              : () => setView(e.source === 'cr_hub' ? 'cr_hub' : 'library');
             return (
-              <div key={i} onClick={() => { setSelectedPlan(e.plan); setView('table'); }}
+              <div key={i} onClick={handleClick}
                 style={{ display: 'flex', gap: 10, padding: '7px 0', borderBottom: '1px solid #F8FAFC', alignItems: 'flex-start', cursor: 'pointer' }}
               >
                 <div style={{ width: 26, height: 26, borderRadius: 6, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0, marginTop: 1 }}>{s.icon}</div>
@@ -579,7 +598,7 @@ function AvgCycleTimes({ filtered, monoFont }: { filtered: any[]; monoFont: stri
 // ── MetricsView ───────────────────────────────────────────────────────────────
 
 function MetricsView({
-  filtered, allPlans, metrics, monoFont, TODAY, setSelectedPlan, setView, setFilter,
+  filtered, allPlans, globalLogs, metrics, monoFont, TODAY, setSelectedPlan, setView, setFilter,
 }: MetricsViewProps) {
 
   const INACTIVE = new Set(['approved','plan_approved','implemented','tcp_approved_final','closed','cancelled','expired']);
@@ -685,7 +704,7 @@ function MetricsView({
 
         {/* Right sidebar: activity feed + cycle times */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <RecentActivityFeed filtered={filtered} allPlans={allPlans} setSelectedPlan={setSelectedPlan} setView={setView} />
+          <RecentActivityFeed filtered={filtered} allPlans={allPlans} globalLogs={globalLogs} setSelectedPlan={setSelectedPlan} setView={setView} />
           <AvgCycleTimes filtered={filtered} monoFont={monoFont} />
         </div>
 

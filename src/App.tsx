@@ -238,7 +238,10 @@ function AppContent() {
     if (filter.quickFilter === 'my_plans') {
       const userName = currentUser?.name || '';
       const firstName = userName.split(' ')[0];
-      if (p.lead !== userName && p.lead !== firstName) return false;
+      const userEmail = currentUser?.email || '';
+      const isLead = p.lead === userName || p.lead === firstName;
+      const isSubscribed = userEmail && (p.subscribers ?? []).includes(userEmail);
+      if (!isLead && !isSubscribed) return false;
     }
     if (filter.quickFilter === 'at_risk') {
       const INACTIVE = ['approved','plan_approved','implemented','tcp_approved_final','closed','cancelled','expired'];
@@ -822,6 +825,7 @@ function AppContent() {
           <MetricsView
             filtered={filtered}
             allPlans={plans}
+            globalLogs={globalLogs}
             metrics={metrics}
             monoFont={monoFont}
             TODAY={TODAY}
