@@ -200,7 +200,7 @@ export const PlanHeader: React.FC = () => {
           )}
           <Tooltip text="Open this plan in a new window." position="bottom">
             <button
-              onClick={() => window.open(`${window.location.origin}${window.location.pathname}?plan=${encodeURIComponent(selectedPlan.loc || selectedPlan.id)}`, '_blank')}
+              onClick={() => window.open(`${window.location.origin}${window.location.pathname}?plan=${encodeURIComponent(selectedPlan.loc || selectedPlan.id)}`, '_blank', 'width=620,height=920,left=200,top=60,toolbar=0,location=0,menubar=0,scrollbars=1,resizable=1')}
               className="text-[11px] px-2 py-1 border border-slate-300 rounded-md bg-white text-slate-500 hover:bg-slate-50 flex items-center gap-1"
             >
               <ExternalLink size={11} />

@@ -155,17 +155,6 @@ function AppContent() {
 
   const { plans, locs, users, appRequests, appTodos, reportTemplate, appConfig, setAppConfig } = firestoreData;
 
-  // Auto-open a plan card when ?plan=LOC-XXX is in the URL
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const locParam = params.get('plan');
-    if (!locParam || !plans?.length) return;
-    const target = plans.find(p => (p.loc || p.id) === locParam);
-    if (target) {
-      setSelectedPlan(target);
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, [plans]);
   const { fieldPermissions } = permissions;
 
   const getUserLabel = () => {
