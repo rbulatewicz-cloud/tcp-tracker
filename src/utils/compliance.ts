@@ -378,7 +378,9 @@ export function initializeComplianceTracks(
 ): PlanCompliance {
   const compliance: PlanCompliance = { ...(existing || {}) };
 
-  if (triggers.phe && !compliance.phe) {
+  // Only auto-create a track when the value is strictly undefined (never been set).
+  // null means the track was intentionally removed by the user — never recreate it.
+  if (triggers.phe && compliance.phe === undefined) {
     compliance.phe = {
       status: 'not_started',
       triggeredBy: triggers.pheReasons,
@@ -386,7 +388,7 @@ export function initializeComplianceTracks(
     } as PHETrack;
   }
 
-  if (triggers.noiseVariance && !compliance.noiseVariance) {
+  if (triggers.noiseVariance && compliance.noiseVariance === undefined) {
     compliance.noiseVariance = {
       status: 'not_started',
       triggeredBy: triggers.nvReasons,
@@ -394,7 +396,7 @@ export function initializeComplianceTracks(
     } as NoiseVarianceTrack;
   }
 
-  if (triggers.cdConcurrence && !compliance.cdConcurrence) {
+  if (triggers.cdConcurrence && compliance.cdConcurrence === undefined) {
     // Auto-suggest applicable districts based on streets; default all true if no match
     const suggested = triggers.suggestedCDs ?? ['CD2', 'CD6', 'CD7'];
     compliance.cdConcurrence = {
@@ -408,7 +410,7 @@ export function initializeComplianceTracks(
     } as CDConcurrenceTrack;
   }
 
-  if (triggers.drivewayNotices && !compliance.drivewayNotices) {
+  if (triggers.drivewayNotices && compliance.drivewayNotices === undefined) {
     compliance.drivewayNotices = {
       status: 'not_started',
       triggeredBy: triggers.drivewayReasons,

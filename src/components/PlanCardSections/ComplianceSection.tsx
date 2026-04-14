@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { updateDoc, deleteField, doc } from 'firebase/firestore';
+import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import {
   PlanCompliance, NoiseVariance, DrivewayNoticeStatus,
@@ -121,9 +121,10 @@ export const ComplianceSection: React.FC = React.memo(() => {
   const removeTrack = (track: 'phe' | 'noiseVariance' | 'cdConcurrence' | 'drivewayNotices') => {
     const { [track]: _removed, ...rest } = compliance as Record<string, unknown>;
     setLocalCompliance(rest as PlanCompliance);
-    // Use deleteField() with dot-notation so Firestore actually removes the sub-field.
-    // Writing the whole compliance object via updateDoc only merges — it never deletes keys.
-    updateDoc(doc(db, 'plans', selectedPlan.id), { [`compliance.${track}`]: deleteField() });
+    // Write null (not deleteField) as a persistent "intentionally removed" sentinel.
+    // initializeComplianceTracks only auto-creates tracks when the value is === undefined
+    // (never set). null means the user explicitly removed it — it will never be recreated.
+    updateDoc(doc(db, 'plans', selectedPlan.id), { [`compliance.${track}`]: null });
     setDirty(false);
     setRemoveConfirm(null);
     if (expandedTrack === track) setExpandedTrack(null);
