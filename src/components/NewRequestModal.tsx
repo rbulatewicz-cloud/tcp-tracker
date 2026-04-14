@@ -370,89 +370,6 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
             />
           </CollapsibleSection>
 
-          {/* ── Work Conditions ── */}
-          <GroupLabel label="Work Conditions" />
-
-          <CollapsibleSection title="Hours of Work">
-            <div className="text-[10px] text-slate-400 mb-3">
-              Required — specify when work will occur so the traffic team can plan accordingly.
-            </div>
-            <HoursOfWorkForm
-              value={form.work_hours as WorkHours | undefined}
-              onChange={wh => update('work_hours', wh)}
-            />
-          </CollapsibleSection>
-
-          <CollapsibleSection title="Traffic Impacts">
-            {/* Direction flags + Krail */}
-            <div className="flex flex-wrap gap-4 pb-3 mb-3 border-b border-slate-100">
-              {DIR_FIELDS.map(k => {
-                const v = FIELD_REGISTRY[k];
-                if (!v) return null;
-                return (
-                  <label key={k} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!form[k]}
-                      onChange={e => update(k, e.target.checked)}
-                      className="rounded border-slate-300"
-                    />
-                    {v.label}
-                  </label>
-                );
-              })}
-              <div className="w-px bg-slate-200 self-stretch" />
-              <label className="flex items-center gap-2 text-xs text-violet-700 font-semibold cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!form.impact_krail}
-                  onChange={e => {
-                    const checked = e.target.checked;
-                    setForm(f => ({
-                      ...f,
-                      impact_krail: checked,
-                      // Checking Krail forces continuous shift; unchecking clears it
-                      // so compliance triggers reset correctly
-                      work_hours: checked
-                        ? { shift: 'continuous' as const, days: [] }
-                        : undefined,
-                    }));
-                  }}
-                  className="rounded border-slate-300 accent-violet-600"
-                />
-                Krail
-              </label>
-            </div>
-
-            {/* Closure / impact checkboxes */}
-            <div className="grid grid-cols-2 gap-2">
-              {IMPACT_FIELDS.map(field => (
-                <label key={field.key} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={!!form[field.key]}
-                    onChange={e => update(field.key, e.target.checked)}
-                    className="rounded border-slate-300"
-                  />
-                  {field.label}
-                </label>
-              ))}
-            </div>
-          </CollapsibleSection>
-
-          <CollapsibleSection title="Compliance Preview">
-            <ComplianceBanner
-              form={form}
-              onJustificationChange={val => update('phe_justification', val)}
-              properties={properties}
-              plans={firestoreData.plans}
-              drivewayAddresses={(form.driveway_addresses as Array<{ address: string; propertyId?: string }>) ?? []}
-              onDrivewayAddressesChange={addrs => update('driveway_addresses', addrs)}
-              cdSlideFile={cdSlideFile}
-              onCdSlideChange={setCdSlideFile}
-            />
-          </CollapsibleSection>
-
           {/* ── Similar Plans Check ── */}
           {(similarity.exact.length > 0 || similarity.near.length > 0) && (
             <div className="px-7 py-4 space-y-3">
@@ -558,6 +475,89 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
 
             </div>
           )}
+
+          {/* ── Work Conditions ── */}
+          <GroupLabel label="Work Conditions" />
+
+          <CollapsibleSection title="Hours of Work">
+            <div className="text-[10px] text-slate-400 mb-3">
+              Required — specify when work will occur so the traffic team can plan accordingly.
+            </div>
+            <HoursOfWorkForm
+              value={form.work_hours as WorkHours | undefined}
+              onChange={wh => update('work_hours', wh)}
+            />
+          </CollapsibleSection>
+
+          <CollapsibleSection title="Traffic Impacts">
+            {/* Direction flags + Krail */}
+            <div className="flex flex-wrap gap-4 pb-3 mb-3 border-b border-slate-100">
+              {DIR_FIELDS.map(k => {
+                const v = FIELD_REGISTRY[k];
+                if (!v) return null;
+                return (
+                  <label key={k} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!form[k]}
+                      onChange={e => update(k, e.target.checked)}
+                      className="rounded border-slate-300"
+                    />
+                    {v.label}
+                  </label>
+                );
+              })}
+              <div className="w-px bg-slate-200 self-stretch" />
+              <label className="flex items-center gap-2 text-xs text-violet-700 font-semibold cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!form.impact_krail}
+                  onChange={e => {
+                    const checked = e.target.checked;
+                    setForm(f => ({
+                      ...f,
+                      impact_krail: checked,
+                      // Checking Krail forces continuous shift; unchecking clears it
+                      // so compliance triggers reset correctly
+                      work_hours: checked
+                        ? { shift: 'continuous' as const, days: [] }
+                        : undefined,
+                    }));
+                  }}
+                  className="rounded border-slate-300 accent-violet-600"
+                />
+                Krail
+              </label>
+            </div>
+
+            {/* Closure / impact checkboxes */}
+            <div className="grid grid-cols-2 gap-2">
+              {IMPACT_FIELDS.map(field => (
+                <label key={field.key} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!form[field.key]}
+                    onChange={e => update(field.key, e.target.checked)}
+                    className="rounded border-slate-300"
+                  />
+                  {field.label}
+                </label>
+              ))}
+            </div>
+          </CollapsibleSection>
+
+          <CollapsibleSection title="Compliance Preview">
+            <ComplianceBanner
+              form={form}
+              onJustificationChange={val => update('phe_justification', val)}
+              properties={properties}
+              plans={firestoreData.plans}
+              drivewayAddresses={(form.driveway_addresses as Array<{ address: string; propertyId?: string }>) ?? []}
+              onDrivewayAddressesChange={addrs => update('driveway_addresses', addrs)}
+              cdSlideFile={cdSlideFile}
+              onCdSlideChange={setCdSlideFile}
+            />
+          </CollapsibleSection>
 
           {/* ── Submission ── */}
           <GroupLabel label="Submission" />
