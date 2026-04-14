@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { updateDoc, deleteField, doc } from 'firebase/firestore';
+import { db } from '../../firebase';
 import {
   PlanCompliance, NoiseVariance, DrivewayNoticeStatus,
   DrivewayProperty, DrivewayLetter, DrivewayLetterStatus, DrivewayNoticeTrack, UserRole,
@@ -117,9 +119,11 @@ export const ComplianceSection: React.FC = React.memo(() => {
   };
 
   const removeTrack = (track: 'phe' | 'noiseVariance' | 'cdConcurrence' | 'drivewayNotices') => {
-    const updated = { ...compliance, [track]: undefined };
-    setLocalCompliance(updated);
-    updatePlanField(selectedPlan.id, 'compliance', updated, false); // false = bypass draft, write directly to Firestore
+    const { [track]: _removed, ...rest } = compliance as Record<string, unknown>;
+    setLocalCompliance(rest as PlanCompliance);
+    // Use deleteField() with dot-notation so Firestore actually removes the sub-field.
+    // Writing the whole compliance object via updateDoc only merges — it never deletes keys.
+    updateDoc(doc(db, 'plans', selectedPlan.id), { [`compliance.${track}`]: deleteField() });
     setDirty(false);
     setRemoveConfirm(null);
     if (expandedTrack === track) setExpandedTrack(null);
