@@ -700,6 +700,8 @@ export interface PlanForm {
   impact_transit: boolean;
   work_hours?: WorkHours;
   phe_justification?: string;   // "Why is peak hour work required?" — captured at request time
+  revisionSuffix?: string;      // ".1", ".2" — set when submitting a renewal
+  parentLocId?: string;         // original plan's LOC ID, set for renewals
   planDurationDays?: number;    // how many days the work window lasts; end = needByDate + planDurationDays
   driveway_addresses?: Array<{ address: string; propertyId?: string }>;
   attachments: File[];

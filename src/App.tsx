@@ -1215,6 +1215,10 @@ function AppContent() {
         handleSubmit={handleSubmit}
         loading={loading}
         motAllAnswered={motAllAnswered}
+        onNavigateToPlan={(locId) => {
+          const plan = plans.find(p => (p.loc || p.id) === locId);
+          if (plan) { setSelectedPlan(plan); resetForm(); }
+        }}
       />
 
       {/* LOC FORM MODAL */}

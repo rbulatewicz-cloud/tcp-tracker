@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { AlertTriangle, Info, ArrowRight, RefreshCw } from 'lucide-react';
 import { IMPACT_FIELDS, FIELD_REGISTRY } from '../constants';
 import { useAppLists } from '../context/AppListsContext';
 import { CollapsibleSection } from './CollapsibleSection';
@@ -10,8 +11,39 @@ import { formatFileSize } from '../utils/plans';
 import { usePermissions } from '../hooks/usePermissions';
 import { useApp } from '../hooks/useApp';
 import { getTurnaroundStats } from '../utils/planStats';
-import { User, ReportTemplate, LoadingState, PlanForm, WorkHours, UserRole, DrivewayProperty } from '../types';
+import { User, ReportTemplate, LoadingState, PlanForm, WorkHours, UserRole, DrivewayProperty, Plan } from '../types';
 import { subscribeToDrivewayProperties } from '../services/drivewayPropertyService';
+
+// ── Similarity detection helpers ──────────────────────────────────────────────
+
+function normalizeStreet(s: string): string {
+  return s.toLowerCase().trim()
+    .replace(/\bstreet\b/g, 'st').replace(/\bavenue\b/g, 'ave')
+    .replace(/\bboulevard\b/g, 'blvd').replace(/\bdrive\b/g, 'dr')
+    .replace(/\broad\b/g, 'rd').replace(/\bplace\b/g, 'pl')
+    .replace(/\s+/g, ' ');
+}
+
+function isPlanExpired(plan: Plan): boolean {
+  const end = plan.implementationWindow?.endDate || plan.softImplementationWindow?.endDate;
+  if (!end) return false;
+  return new Date(end) < new Date();
+}
+
+function getNextRevisionLoc(baseLoc: string, plans: Plan[]): string {
+  const base = baseLoc.replace(/\.\d+$/, '');
+  const existing = plans
+    .map(p => p.loc || p.id)
+    .filter(loc => loc.startsWith(base + '.'))
+    .map(loc => parseInt(loc.slice(base.length + 1), 10))
+    .filter(n => !isNaN(n));
+  return `${base}.${existing.length > 0 ? Math.max(...existing) + 1 : 1}`;
+}
+
+interface SimilarityResult {
+  exact: Plan[];
+  near: Plan[];
+}
 
 // Workflow path info — updates live as plan type changes
 const WORKFLOW_INFO: Record<string, { label: string; color: string; steps: string; description: string }> = {
@@ -60,20 +92,47 @@ interface NewRequestModalProps {
   handleSubmit: () => void;
   loading: LoadingState;
   motAllAnswered: boolean;
+  onNavigateToPlan: (locId: string) => void;
 }
 
 export const NewRequestModal: React.FC<NewRequestModalProps> = ({
   showForm, setShowForm, onCancel, form, setForm, currentUser, canView, reportTemplate,
-  setWarningMessage, setShowNeedByWarningModal, handleSubmit, loading, motAllAnswered
+  setWarningMessage, setShowNeedByWarningModal, handleSubmit, loading, motAllAnswered,
+  onNavigateToPlan,
 }) => {
   const { fieldPermissions, setFieldPermissions } = usePermissions();
   const { planTypes } = useAppLists();
   const { firestoreData } = useApp();
   const [validationErrors, setValidationErrors] = React.useState<string[]>([]);
+  const [acknowledged, setAcknowledged] = React.useState(false);
   // CD slide file attached at request time — uploaded after plan creation
   const [cdSlideFile, setCdSlideFile] = useState<File | null>(null);
   const [properties, setProperties] = React.useState<DrivewayProperty[]>([]);
   React.useEffect(() => subscribeToDrivewayProperties(setProperties), []);
+
+  // Reset acknowledgment whenever streets change
+  React.useEffect(() => { setAcknowledged(false); }, [form.street1, form.street2]);
+
+  // Compute similar plans whenever street fields change
+  const similarity = React.useMemo((): SimilarityResult => {
+    const s1 = normalizeStreet(form.street1 || '');
+    if (!s1) return { exact: [], near: [] };
+    const s2 = normalizeStreet(form.street2 || '');
+    const plans = firestoreData.plans || [];
+    const exact: Plan[] = [];
+    const near: Plan[] = [];
+    for (const p of plans) {
+      const p1 = normalizeStreet(p.street1 || '');
+      const p2 = normalizeStreet(p.street2 || '');
+      const isExact = (s1 === p1 && s2 === p2) || (s1 === p2 && s2 === p1);
+      if (isExact) { exact.push(p); continue; }
+      const oneMatches = s1 === p1 || s1 === p2 || (s2 && (s2 === p1 || s2 === p2));
+      if (oneMatches) near.push(p);
+    }
+    return { exact, near };
+  }, [form.street1, form.street2, firestoreData.plans]);
+
+  const hasExactMatches = similarity.exact.length > 0;
 
   const turnaroundStats = React.useMemo(
     () => getTurnaroundStats(form.type, firestoreData.plans),
@@ -118,12 +177,31 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
       setValidationErrors(missing);
       return;
     }
+    if (hasExactMatches && !acknowledged) {
+      setValidationErrors(['You must review and acknowledge the similar existing plans before submitting.']);
+      return;
+    }
     setValidationErrors([]);
     // Attach the CD slide file to form state so planService can upload it post-creation
     if (cdSlideFile) {
       setForm(f => ({ ...f, cd_slide_file: cdSlideFile } as typeof f));
     }
     handleSubmit();
+  };
+
+  const handleRenewal = (original: Plan) => {
+    const newLoc = getNextRevisionLoc(original.loc || original.id, firestoreData.plans || []);
+    const suffix = newLoc.slice((original.loc || original.id).replace(/\.\d+$/, '').length);
+    setForm(f => ({
+      ...f,
+      loc: newLoc,
+      street1: original.street1 || f.street1,
+      street2: original.street2 || f.street2,
+      scope: original.scope || f.scope,
+      parentLocId: original.id,
+      revisionSuffix: suffix,
+    }));
+    setAcknowledged(true);
   };
 
   const workflowInfo = form.type ? WORKFLOW_INFO[form.type] ?? null : null;
@@ -149,10 +227,17 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
                   {form.loc || <span className="text-slate-300">LOC-—</span>}
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 mt-1">
-                <div className="w-2 h-2 rounded-full bg-slate-400" />
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Draft</span>
-              </div>
+              {form.parentLocId ? (
+                <div className="flex items-center gap-1.5 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-200 mt-1">
+                  <RefreshCw size={10} className="text-indigo-500" />
+                  <span className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider">Renewal</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 mt-1">
+                  <div className="w-2 h-2 rounded-full bg-slate-400" />
+                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Draft</span>
+                </div>
+              )}
             </div>
             <div className="text-sm font-medium text-slate-500">
               {street1 ? street1 : <span className="text-slate-300 italic text-xs">Street 1</span>}
@@ -367,6 +452,112 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
               onCdSlideChange={setCdSlideFile}
             />
           </CollapsibleSection>
+
+          {/* ── Similar Plans Check ── */}
+          {(similarity.exact.length > 0 || similarity.near.length > 0) && (
+            <div className="px-7 py-4 space-y-3">
+
+              {/* Exact matches — hard warning */}
+              {similarity.exact.length > 0 && (
+                <div className="rounded-xl border border-amber-300 bg-amber-50 overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-100 border-b border-amber-200">
+                    <AlertTriangle size={13} className="text-amber-600 flex-shrink-0" />
+                    <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">
+                      Similar Plans Found — Review Required
+                    </span>
+                  </div>
+                  <div className="p-3 space-y-2">
+                    {similarity.exact.map(p => {
+                      const expired = isPlanExpired(p);
+                      const isRenewal = !!form.parentLocId && form.parentLocId === p.id;
+                      return (
+                        <div key={p.id} className="flex items-center gap-2 bg-white rounded-lg border border-amber-100 px-3 py-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[12px] font-bold text-slate-800 font-mono">{p.loc || p.id}</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-slate-100 text-slate-600">{p.stage}</span>
+                              {expired && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-red-100 text-red-600">Expired</span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-0.5 truncate">
+                              {p.street1}{p.street2 ? ` / ${p.street2}` : ''}{p.scope ? ` · ${p.scope}` : ''}
+                            </p>
+                          </div>
+                          {expired ? (
+                            isRenewal ? (
+                              <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                                <RefreshCw size={10} /> Renewal: {form.loc}
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleRenewal(p)}
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700 transition-colors flex-shrink-0"
+                              >
+                                <RefreshCw size={10} /> Request Renewal
+                              </button>
+                            )
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => { onNavigateToPlan(p.loc || p.id); }}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 text-white text-[10px] font-bold hover:bg-slate-600 transition-colors flex-shrink-0"
+                            >
+                              <ArrowRight size={10} /> Use This Plan
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {!acknowledged && (
+                      <label className="flex items-start gap-2 cursor-pointer pt-1">
+                        <input
+                          type="checkbox"
+                          checked={acknowledged}
+                          onChange={e => setAcknowledged(e.target.checked)}
+                          className="mt-0.5 w-3.5 h-3.5 rounded accent-amber-600 flex-shrink-0"
+                        />
+                        <span className="text-[11px] text-amber-800 font-semibold leading-snug">
+                          I have reviewed these plans and confirm this request is not a duplicate.
+                        </span>
+                      </label>
+                    )}
+                    {acknowledged && (
+                      <div className="flex items-center gap-1.5 pt-1">
+                        <div className="w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
+                          <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4l2 2 3-3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </div>
+                        <span className="text-[11px] text-emerald-700 font-semibold">Acknowledged — you may proceed.</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Near matches — informational */}
+              {similarity.near.length > 0 && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-2 bg-blue-100 border-b border-blue-200">
+                    <Info size={12} className="text-blue-500 flex-shrink-0" />
+                    <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wide">Nearby Plans (informational)</span>
+                  </div>
+                  <div className="p-3 space-y-1.5">
+                    {similarity.near.slice(0, 4).map(p => (
+                      <div key={p.id} className="flex items-center gap-2 bg-white rounded-lg border border-blue-100 px-3 py-1.5">
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[11px] font-bold text-slate-700 font-mono">{p.loc || p.id}</span>
+                          <span className="text-[10px] text-slate-400 ml-1.5">{p.street1}{p.street2 ? ` / ${p.street2}` : ''}</span>
+                        </div>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{p.stage}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+          )}
 
           {/* ── Submission ── */}
           <GroupLabel label="Submission" />
