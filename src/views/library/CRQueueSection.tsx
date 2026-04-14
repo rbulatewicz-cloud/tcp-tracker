@@ -7,6 +7,7 @@ import { subscribeToDrivewayLetters, updateDrivewayLetter } from '../../services
 import { subscribeToDrivewayProperties } from '../../services/drivewayPropertyService';
 import { fmtDate as fmt } from '../../utils/plans';
 import { DraftLetterModal } from './DraftLetterModal';
+import { BulkNoticeUploadWizard } from '../cr_hub/BulkNoticeUploadWizard';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -767,6 +768,7 @@ export function CRQueueSection({ plans, appConfig, onOpenPlanLetters, currentUse
   const [letters,    setLetters]    = useState<DrivewayLetter[]>([]);
   const [properties, setProperties] = useState<DrivewayProperty[]>([]);
   const [draftTarget, setDraftTarget] = useState<{ plan: Plan; addr: DrivewayAddress; parentLetter?: DrivewayLetter } | null>(null);
+  const [showBulkWizard, setShowBulkWizard] = useState(false);
   useEffect(() => subscribeToDrivewayLetters(setLetters), []);
   useEffect(() => subscribeToDrivewayProperties(setProperties), []);
 
@@ -878,7 +880,7 @@ export function CRQueueSection({ plans, appConfig, onOpenPlanLetters, currentUse
   return (
     <div className="space-y-6">
       {/* Summary bar */}
-      <div className="flex gap-3 flex-wrap">
+      <div className="flex gap-3 flex-wrap items-center">
         {TIER_ORDER.filter(t => byTier[t].length > 0).map(t => {
           const meta = TIER_META[t];
           return (
@@ -889,6 +891,13 @@ export function CRQueueSection({ plans, appConfig, onOpenPlanLetters, currentUse
             </div>
           );
         })}
+        <button
+          onClick={() => setShowBulkWizard(true)}
+          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors ml-auto"
+        >
+          <Upload size={13} />
+          Bulk Upload
+        </button>
       </div>
 
       {/* Grouped lists */}
@@ -946,6 +955,15 @@ export function CRQueueSection({ plans, appConfig, onOpenPlanLetters, currentUse
             setDraftTarget(null);
             onOpenPlanLetters(draftTarget.plan);
           }}
+        />
+      )}
+
+      {/* Bulk Upload Wizard */}
+      {showBulkWizard && (
+        <BulkNoticeUploadWizard
+          onClose={() => setShowBulkWizard(false)}
+          plans={plans}
+          currentUser={currentUser}
         />
       )}
     </div>
