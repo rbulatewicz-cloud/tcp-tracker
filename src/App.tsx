@@ -338,43 +338,67 @@ function AppContent() {
     "Status": "stage", "Submitted": "submitDate", "Need By": "needByDate", "Wait": "wait"
   }), []);
 
-  const sortedData = useMemo(() => [...filtered].sort((a, b) => {
-    if (!sortConfig) {
-      const isACompleted = COMPLETED_STAGES.includes(a.stage);
-      const isBCompleted = COMPLETED_STAGES.includes(b.stage);
-      if (isACompleted !== isBCompleted) return isACompleted ? 1 : -1;
+  const sortedData = useMemo(() => {
+    // For renewal families (LOC-345, LOC-345.1 … LOC-345.6), sort the whole group
+    // by the highest-revision member's need-by date so the family sits in the list
+    // where the latest renewal belongs, not where older predecessors would land.
+    const locBase = (loc: string) => { const m = loc.match(/^(.+?)\.\d+$/); return m ? m[1] : loc; };
+    const locRev  = (loc: string) => { const m = loc.match(/\.(\d+)$/); return m ? parseInt(m[1]) : -1; };
 
-      const aPrio = PRIORITY_MAP[a.priority] || 0;
-      const bPrio = PRIORITY_MAP[b.priority] || 0;
-      if (aPrio !== bPrio) return bPrio - aPrio;
-
-      const aDate = a.needByDate ? new Date(a.needByDate).getTime() : Infinity;
-      const bDate = b.needByDate ? new Date(b.needByDate).getTime() : Infinity;
-      return aDate - bDate;
+    const groupMaxRev  = new Map<string, number>();
+    const groupNeedBy  = new Map<string, string>();
+    for (const p of filtered) {
+      const base = locBase(p.loc || p.id);
+      const rev  = locRev(p.loc || p.id);
+      if (rev > (groupMaxRev.get(base) ?? -Infinity)) {
+        groupMaxRev.set(base, rev);
+        groupNeedBy.set(base, p.needByDate || '');
+      }
     }
-    const { key, direction } = sortConfig;
-    const dataKey = SORT_KEY_MAP[key] || key;
-    let aValue: any;
-    let bValue: any;
+    const effectiveNeedBy = (p: { loc?: string; id: string; needByDate?: string }) =>
+      groupNeedBy.get(locBase(p.loc || p.id)) ?? p.needByDate ?? '';
 
-    if (key === "Wait") {
-      aValue = a.submitDate && !COMPLETED_STAGES.includes(a.stage) ? daysBetween(a.submitDate, td) : a.submitDate && a.approvedDate ? daysBetween(a.submitDate, a.approvedDate) : -1;
-      bValue = b.submitDate && !COMPLETED_STAGES.includes(b.stage) ? daysBetween(b.submitDate, td) : b.submitDate && b.approvedDate ? daysBetween(b.submitDate, b.approvedDate) : -1;
-    } else if (key === "Priority") {
-      aValue = PRIORITY_MAP[a.priority] || 0;
-      bValue = PRIORITY_MAP[b.priority] || 0;
-    } else if (key === "LOC #") {
-      aValue = parseFloat(String(a.loc ?? '').replace(/^LOC-/i, '')) || 0;
-      bValue = parseFloat(String(b.loc ?? '').replace(/^LOC-/i, '')) || 0;
-    } else {
-      aValue = a[dataKey] || "";
-      bValue = b[dataKey] || "";
-    }
+    return [...filtered].sort((a, b) => {
+      if (!sortConfig) {
+        const isACompleted = COMPLETED_STAGES.includes(a.stage);
+        const isBCompleted = COMPLETED_STAGES.includes(b.stage);
+        if (isACompleted !== isBCompleted) return isACompleted ? 1 : -1;
 
-    if (aValue < bValue) return direction === 'asc' ? -1 : 1;
-    if (aValue > bValue) return direction === 'asc' ? 1 : -1;
-    return 0;
-  }), [filtered, sortConfig, td, PRIORITY_MAP, SORT_KEY_MAP]);
+        const aPrio = PRIORITY_MAP[a.priority] || 0;
+        const bPrio = PRIORITY_MAP[b.priority] || 0;
+        if (aPrio !== bPrio) return bPrio - aPrio;
+
+        const aDate = effectiveNeedBy(a) ? new Date(effectiveNeedBy(a)).getTime() : Infinity;
+        const bDate = effectiveNeedBy(b) ? new Date(effectiveNeedBy(b)).getTime() : Infinity;
+        return aDate - bDate;
+      }
+      const { key, direction } = sortConfig;
+      const dataKey = SORT_KEY_MAP[key] || key;
+      let aValue: any;
+      let bValue: any;
+
+      if (key === "Wait") {
+        aValue = a.submitDate && !COMPLETED_STAGES.includes(a.stage) ? daysBetween(a.submitDate, td) : a.submitDate && a.approvedDate ? daysBetween(a.submitDate, a.approvedDate) : -1;
+        bValue = b.submitDate && !COMPLETED_STAGES.includes(b.stage) ? daysBetween(b.submitDate, td) : b.submitDate && b.approvedDate ? daysBetween(b.submitDate, b.approvedDate) : -1;
+      } else if (key === "Priority") {
+        aValue = PRIORITY_MAP[a.priority] || 0;
+        bValue = PRIORITY_MAP[b.priority] || 0;
+      } else if (key === "LOC #") {
+        aValue = parseFloat(String(a.loc ?? '').replace(/^LOC-/i, '')) || 0;
+        bValue = parseFloat(String(b.loc ?? '').replace(/^LOC-/i, '')) || 0;
+      } else if (key === "Need By") {
+        aValue = effectiveNeedBy(a);
+        bValue = effectiveNeedBy(b);
+      } else {
+        aValue = a[dataKey] || "";
+        bValue = b[dataKey] || "";
+      }
+
+      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filtered, sortConfig, td, PRIORITY_MAP, SORT_KEY_MAP]);
 
   const metrics = useMemo(() => calcMetrics(filtered.filter(p => !p.isHistorical), LEADS, td, TODAY), [filtered, td]);
 
