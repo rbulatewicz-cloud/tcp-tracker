@@ -5,6 +5,7 @@ import { NoiseVariance, VarianceExpiryStatus, Plan, PlanCompliance } from '../ty
 import { SEGMENT_STREETS, SCOPES } from '../constants';
 import { showToast } from '../lib/toast';
 import { writeGlobalLog } from './logService';
+import { fmtDate as formatDate } from '../utils/plans';
 
 // ── Subscriptions ─────────────────────────────────────────────────────────────
 
@@ -590,8 +591,3 @@ export function recommendVariances(
     .sort((a, b) => b.score - a.score);
 }
 
-function formatDate(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}

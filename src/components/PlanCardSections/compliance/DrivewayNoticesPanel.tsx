@@ -1,12 +1,5 @@
 import { DrivewayNoticeTrack, DrivewayAddress, DrivewayLetterStatus, Plan, AppConfig, DrivewayProperty } from '../../../types';
-import { fmtDate as fmt } from '../../../utils/plans';
-
-function daysUntil(isoDate: string): number {
-  const target = new Date(isoDate + 'T00:00:00');
-  const today  = new Date();
-  today.setHours(0, 0, 0, 0);
-  return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-}
+import { fmtDate as fmt, daysUntil } from '../../../utils/plans';
 
 /** Returns the number of days the plan window has shifted since the notice was sent, or null if no shift / already dismissed. */
 function detectDateShift(addr: DrivewayAddress, plan: Plan, reissueDays: number): number | null {

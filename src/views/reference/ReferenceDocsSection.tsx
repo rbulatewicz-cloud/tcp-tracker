@@ -7,6 +7,7 @@ import {
   deleteReferenceDoc,
 } from '../../services/referenceService';
 import { showToast } from '../../lib/toast';
+import { fmtDate as formatDate } from '../../utils/plans';
 
 interface Props {
   canUpload: boolean;
@@ -28,13 +29,6 @@ const CATEGORY_BADGE: Record<ReferenceDocCategory, string> = {
   'Other':             'bg-slate-100 text-slate-600',
 };
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
 
 export default function ReferenceDocsSection({ canUpload, uploadedBy }: Props) {
   const [docs, setDocs] = useState<(ReferenceDoc & { _fid: string })[]>([]);

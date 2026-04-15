@@ -5,19 +5,10 @@ import { db } from '../../firebase';
 import { Plan, AppConfig, DrivewayLetter, DrivewayAddress, DrivewayLetterStatus, DrivewayProperty, User } from '../../types';
 import { subscribeToDrivewayLetters, updateDrivewayLetter } from '../../services/drivewayLetterService';
 import { subscribeToDrivewayProperties } from '../../services/drivewayPropertyService';
-import { fmtDate as fmt } from '../../utils/plans';
+import { fmtDate as fmt, daysUntil } from '../../utils/plans';
 import { DraftLetterModal } from './DraftLetterModal';
 import { BulkNoticeUploadWizard } from '../cr_hub/BulkNoticeUploadWizard';
 import { BulkLinkModal } from '../cr_hub/BulkLinkModal';
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function daysUntil(isoDate: string): number {
-  const target = new Date(isoDate + 'T00:00:00');
-  const today  = new Date();
-  today.setHours(0, 0, 0, 0);
-  return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-}
 
 function refDate(plan: Plan): string | null {
   return plan.softImplementationWindow?.startDate || plan.needByDate || null;

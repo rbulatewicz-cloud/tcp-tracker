@@ -94,6 +94,14 @@ export const getStageDurations = (plan: any, STAGES: any[], getLocalDateString: 
 
 export const daysFromToday = (d: string, TODAY: Date) => Math.floor((new Date(d).getTime() - TODAY.getTime()) / 86400000);
 
+/** Days from today until an ISO date string (negative = past). */
+export function daysUntil(isoDate: string): number {
+  const target = new Date(isoDate + 'T00:00:00');
+  const today  = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 export const formatFileSize = (bytes: number) => {
   if (!bytes || bytes === 0) return '—';
   const k = 1024;
