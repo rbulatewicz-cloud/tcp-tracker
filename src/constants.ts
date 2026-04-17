@@ -41,6 +41,39 @@ export const ALL_STAGES = [
   { key: "approved",          label: "Plan Approved",          color: "#10B981" },
 ];
 
+// Filter-only groupings — collapse "submitted" + "review cycle" pairs in the
+// plans filter dropdown. Does NOT change the stage stored on a plan; only
+// the plans-table filter predicate consumes these group keys.
+export const STAGE_FILTER_GROUPS: Array<{ key: string; label: string; members: string[] }> = [
+  { key: "group_at_dot",          label: "At DOT",          members: ["submitted_to_dot", "dot_review", "in_review"] },
+  { key: "group_loc_at_dot",      label: "LOC at DOT",      members: ["loc_submitted", "loc_review"] },
+  { key: "group_resubmit_at_dot", label: "Resubmit at DOT", members: ["resubmitted", "resubmit_review"] },
+];
+
+// Ordered list of options for the plans filter dropdown: collapses grouped
+// stages into a single option at the position of the first member.
+export const STAGE_FILTER_OPTIONS: Array<{ key: string; label: string }> = (() => {
+  const memberToGroup = new Map<string, typeof STAGE_FILTER_GROUPS[number]>();
+  STAGE_FILTER_GROUPS.forEach(g => g.members.forEach(m => memberToGroup.set(m, g)));
+  const emitted = new Set<string>();
+  const out: Array<{ key: string; label: string }> = [];
+  for (const s of ALL_STAGES) {
+    if (["submitted", "approved"].includes(s.key)) continue;  // legacy aliases
+    const g = memberToGroup.get(s.key);
+    if (g) {
+      if (!emitted.has(g.key)) { emitted.add(g.key); out.push({ key: g.key, label: g.label }); }
+      continue;
+    }
+    out.push({ key: s.key, label: s.label });
+  }
+  return out;
+})();
+
+// Lookup for the filter predicate: group key → member stage set
+export const STAGE_GROUP_MEMBERS: Map<string, Set<string>> = new Map(
+  STAGE_FILTER_GROUPS.map(g => [g.key, new Set(g.members)])
+);
+
 // Progress bar milestone stages (excludes review-cycle sub-states)
 export const ENGINEERED_PROGRESS_STAGES = [
   { key: "requested",         label: "Requested",        color: "#6B7280" },

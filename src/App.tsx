@@ -54,6 +54,7 @@ import {
   MOT_FIELDS,
   COMPLETED_STAGES,
   APPROVED_STAGES,
+  STAGE_GROUP_MEMBERS,
 } from './constants';
 
 import { useMasterFileImport } from './hooks/useMasterFileImport';
@@ -227,7 +228,10 @@ function AppContent() {
     const normalizedStage = p.stage === 'approved' ? 'plan_approved'
       : p.stage === 'submitted' ? 'submitted_to_dot'
       : p.stage;
-    if(filter.stage!=="all"&&normalizedStage!==filter.stage) return false;
+    if (filter.stage !== "all") {
+      const groupMembers = STAGE_GROUP_MEMBERS.get(filter.stage);
+      if (groupMembers ? !groupMembers.has(normalizedStage) : normalizedStage !== filter.stage) return false;
+    }
     if(filter.type!=="all"&&p.type!==filter.type) return false;
     if(filter.lead!=="all"&&p.lead!==filter.lead) return false;
     if(filter.priority!=="all"&&p.priority!==filter.priority) return false;

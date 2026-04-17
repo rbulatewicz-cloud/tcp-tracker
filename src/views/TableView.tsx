@@ -1,7 +1,7 @@
 import React from 'react';
 import { Spinner } from '../components/Spinner';
 import { daysFromToday, daysBetween } from '../utils/plans';
-import { COMPLETED_STAGES, APPROVED_STAGES, ALL_STAGES } from '../constants';
+import { COMPLETED_STAGES, APPROVED_STAGES, ALL_STAGES, STAGE_FILTER_OPTIONS } from '../constants';
 import { UserRole, Plan, Stage, FilterState, SortConfig, ColumnDef, LoadingState, User, NoiseVariance } from '../types';
 import { detectComplianceTriggers } from '../utils/compliance';
 import { getVarianceExpiryStatus } from '../services/varianceService';
@@ -267,8 +267,8 @@ function TableView({
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#94A3B8', marginBottom: 4 }}>Status</div>
                 <select value={filter.stage} onChange={e => setFilter(pr => ({ ...pr, stage: e.target.value }))} style={{ ...inp, padding: '6px 10px', fontSize: 12 }}>
                   <option value="all">All Statuses</option>
-                  {ALL_STAGES.filter(s => !['submitted', 'approved'].includes(s.key)).map(s => (
-                    <option key={s.key} value={s.key}>{s.label}</option>
+                  {STAGE_FILTER_OPTIONS.map(o => (
+                    <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
               </div>
