@@ -6,6 +6,7 @@ import { showToast } from '../lib/toast';
 import { Tooltip } from './Tooltip';
 import { addPlanSubscriber, removePlanSubscriber } from '../services/notificationService';
 import { PDFExportModal } from './PDFExportModal';
+import { usePlanRequest } from '../context/PlanRequestContext';
 
 export const PlanHeader: React.FC = () => {
   const {
@@ -61,7 +62,12 @@ export const PlanHeader: React.FC = () => {
 
   const daysOpen = calculateDaysOpen(selectedPlan);
   const canDelete = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.MOT;
-  const canRenew = canDelete && ['plan_approved', 'approved', 'expired'].includes(selectedPlan.stage || '');
+  const isFinalStage = ['plan_approved', 'approved', 'expired'].includes(selectedPlan.stage || '');
+  // MOT/ADMIN: direct renewal (creates .N plan immediately)
+  const canRenew = canDelete && isFinalStage;
+  // SFTC: renewal goes through the request queue for MOT to triage
+  const canRequestRenewal = currentUser?.role === UserRole.SFTC && isFinalStage;
+  const { onRequestRenewal } = usePlanRequest();
 
   const handleRenew = async () => {
     setRenewing(true);
@@ -195,6 +201,16 @@ export const PlanHeader: React.FC = () => {
                 }`}
               >
                 ↻ Renew
+              </button>
+            </Tooltip>
+          )}
+          {canRequestRenewal && (
+            <Tooltip text="Open a new request pre-filled as a renewal of this plan. The MOT team will pick it up from the Requests queue." position="bottom">
+              <button
+                onClick={() => onRequestRenewal(selectedPlan)}
+                className="text-[11px] px-3 py-1 rounded-md border font-bold transition-colors bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100"
+              >
+                ↻ Request Renewal
               </button>
             </Tooltip>
           )}

@@ -1,6 +1,18 @@
 import { COMPLETED_STAGES, AT_DOT_STAGES } from '../constants';
+import type { Plan } from '../types';
 
 export const getLocalDateString = () => new Date().toLocaleDateString('en-CA');
+
+/** Compute the next `.N` renewal LOC for a base LOC, scanning existing plans. */
+export function getNextRevisionLoc(baseLoc: string, plans: Plan[]): string {
+  const base = baseLoc.replace(/\.\d+$/, '');
+  const existing = plans
+    .map(p => p.loc || p.id)
+    .filter(loc => loc.startsWith(base + '.'))
+    .map(loc => parseInt(loc.slice(base.length + 1), 10))
+    .filter(n => !isNaN(n));
+  return `${base}.${existing.length > 0 ? Math.max(...existing) + 1 : 1}`;
+}
 
 /** Format an ISO date string (YYYY-MM-DD or full ISO timestamp) to "Jan 1, 2024". Returns "—" for empty/invalid. */
 export function fmtDate(iso: string | null | undefined): string {

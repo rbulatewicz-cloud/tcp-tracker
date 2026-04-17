@@ -7,7 +7,7 @@ import { Spinner } from './Spinner';
 import { RequestFormFields } from './NewRequestModal/RequestFormFields';
 import { HoursOfWorkForm } from './HoursOfWorkForm';
 import { ComplianceBanner } from './ComplianceBanner';
-import { formatFileSize } from '../utils/plans';
+import { formatFileSize, getNextRevisionLoc } from '../utils/plans';
 import { usePermissions } from '../hooks/usePermissions';
 import { useApp } from '../hooks/useApp';
 import { getTurnaroundStats } from '../utils/planStats';
@@ -28,16 +28,6 @@ function isPlanExpired(plan: Plan): boolean {
   const end = plan.implementationWindow?.endDate || plan.softImplementationWindow?.endDate;
   if (!end) return false;
   return new Date(end) < new Date();
-}
-
-function getNextRevisionLoc(baseLoc: string, plans: Plan[]): string {
-  const base = baseLoc.replace(/\.\d+$/, '');
-  const existing = plans
-    .map(p => p.loc || p.id)
-    .filter(loc => loc.startsWith(base + '.'))
-    .map(loc => parseInt(loc.slice(base.length + 1), 10))
-    .filter(n => !isNaN(n));
-  return `${base}.${existing.length > 0 ? Math.max(...existing) + 1 : 1}`;
 }
 
 interface SimilarityResult {
@@ -167,7 +157,8 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
     if (!form.needByDate) missing.push('Need By Date is required');
     if (!atLeastOneDirChecked) missing.push('Select at least one direction (NB, SB, DIR, or Side Street)');
     if (!workHoursValid()) missing.push('Hours of Work: select a shift and at least one day (or 24/7 Continuous)');
-    if (form.attachments.length === 0) missing.push('At least one PDF attachment is required');
+    // Renewal requests inherit parent's drawings — uploads are optional. For non-renewals, drawings are required.
+    if (!form.parentLocId && form.attachments.length === 0) missing.push('At least one PDF attachment is required');
     return missing;
   };
 
@@ -645,8 +636,13 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
                 className="hidden"
               />
             </label>
-            {form.attachments.length === 0 && (
+            {form.attachments.length === 0 && !form.parentLocId && (
               <p className="mt-2 text-[10px] text-red-500 font-semibold">At least one PDF attachment is required to submit.</p>
+            )}
+            {form.parentLocId && (
+              <p className="mt-2 text-[10px] text-indigo-600 font-semibold">
+                Renewal: drawings from {form.parentLocId} carry over. Upload revised drawings only if the plan changed.
+              </p>
             )}
             {form.attachments.length > 0 && (
               <div className="mt-3 grid grid-cols-2 gap-2">

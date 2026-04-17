@@ -62,6 +62,8 @@ import { usePlanForm } from './hooks/usePlanForm';
 import { PlanCard } from './components/PlanCard';
 import { AppProvider } from './context/AppProvider';
 import { AppListsProvider } from './context/AppListsContext';
+import { PlanRequestContext } from './context/PlanRequestContext';
+import { getNextRevisionLoc } from './utils/plans';
 import { useApp } from './hooks/useApp';
 import { useDarkMode } from './hooks/useDarkMode';
 import { WelcomeScreen } from './components/WelcomeScreen';
@@ -182,6 +184,40 @@ function AppContent() {
     handleSubmit: handlePlanSubmit,
     resetForm
   } = usePlanForm(plans, td, getUserLabel, setShowForm, setSubmissionSuccess, setLoading, currentUser);
+
+  // Request Renewal — opens the New Request modal pre-filled as a renewal of the
+  // given plan. MOT/ADMIN have the direct Renew path in PlanHeader; this exists
+  // so SFTC engineers can hand a renewal back to MOT as a request.
+  const handleRequestRenewal = useCallback((plan: Plan) => {
+    const newLoc = getNextRevisionLoc(plan.loc || plan.id, plans);
+    const suffix = newLoc.slice((plan.loc || plan.id).replace(/\.\d+$/, '').length);
+    setForm(f => ({
+      ...f,
+      loc: newLoc,
+      type: plan.type || f.type,
+      scope: plan.scope || f.scope,
+      segment: plan.segment || f.segment,
+      street1: plan.street1 || f.street1,
+      street2: plan.street2 || f.street2,
+      dir_nb: !!plan.dir_nb,
+      dir_sb: !!plan.dir_sb,
+      dir_directional: !!plan.dir_directional,
+      side_street: !!plan.side_street,
+      impact_krail: !!plan.impact_krail,
+      impact_driveway: !!plan.impact_driveway,
+      impact_fullClosure: !!plan.impact_fullClosure,
+      impact_busStop: !!plan.impact_busStop,
+      impact_transit: !!plan.impact_transit,
+      work_hours: plan.work_hours,
+      requestedBy: currentUser?.name || f.requestedBy,
+      needByDate: '',            // fresh — new implementation window
+      attachments: [],           // parent drawings carry over on MOT's side
+      parentLocId: plan.id,
+      revisionSuffix: suffix,
+    }));
+    setSelectedPlan(null);       // close the plan card
+    setShowForm(true);           // open the new request modal
+  }, [plans, currentUser, setForm, setSelectedPlan, setShowForm]);
 
   const {
     showImportWizard,
@@ -1269,7 +1305,9 @@ function AppContent() {
 
       {/* PLAN DETAIL MODAL */}
       {selectedPlan && (
-        <PlanCard />
+        <PlanRequestContext.Provider value={{ onRequestRenewal: handleRequestRenewal }}>
+          <PlanCard />
+        </PlanRequestContext.Provider>
       )}
       {submissionSuccess.show && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }}>
