@@ -452,6 +452,7 @@ function TableView({
               { label: 'DAY',  bg: '#FFFBEB', color: '#D97706', title: 'Daytime only' },
               { label: 'NGT',  bg: '#EFF6FF', color: '#1D4ED8', title: 'Nighttime only' },
               { label: 'BOTH', bg: '#FDF4FF', color: '#A21CAF', title: 'Day + Night' },
+              { label: 'MIX',  bg: '#FEF3C7', color: '#B45309', title: 'Mixed — per day' },
               { label: '24/7', bg: '#F5F3FF', color: '#7C3AED', title: '24/7 Continuous' },
             ].map(h => (
               <span key={h.label} title={h.title} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -658,6 +659,7 @@ function TableView({
                           both:       { label: 'BOTH',  bg: '#FDF4FF', color: '#A21CAF' },
                           nighttime:  { label: 'NGT',   bg: '#EFF6FF', color: '#1D4ED8' },
                           daytime:    { label: 'DAY',   bg: '#FFFBEB', color: '#D97706' },
+                          mixed:      { label: 'MIX',   bg: '#FEF3C7', color: '#B45309' },
                         };
                         const h = wh ? hoursMap[wh.shift] : null;
                         return (
