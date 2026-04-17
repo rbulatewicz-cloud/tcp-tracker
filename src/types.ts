@@ -350,12 +350,22 @@ export interface DrivewayLetter {
   sentAt?: string;
 }
 
+export interface MetroCommentAttachment {
+  id: string;
+  name: string;               // original filename
+  url: string;                // download URL
+  storagePath: string;        // full storage path for deletion
+  size?: number;              // bytes
+  contentType?: string;       // MIME type
+}
+
 export interface MetroComment {
   id: string;
   text: string;
   addedAt: string;
   addedBy: string;
   isRevisionRequest?: boolean;  // true = added as part of a "revision needed" action
+  attachments?: MetroCommentAttachment[];  // Metro response docs, markups, etc.
 }
 
 export type DrivewayNoticeStatus = 'not_started' | 'in_progress' | 'sent' | 'completed' | 'na';
