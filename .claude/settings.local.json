@@ -112,7 +112,19 @@
       "Bash(find 'C:\\\\Users\\\\rbula\\\\Desktop\\\\TCP Tracker\\\\src' -name *AccessTab* -o -name *access* -type f)",
       "Bash(cd /c/Users/rbula/Desktop/\"TCP Tracker\")",
       "Bash(sed -n '599,606p' src/App.tsx)",
-      "Bash(sed -n '25,32p' src/views/settings/AccessTab.tsx)"
+      "Bash(sed -n '25,32p' src/views/settings/AccessTab.tsx)",
+      "Bash(grep -v \"^[^:]*:[^:]*:[[:space:]]*$\")",
+      "Bash(grep -rn \"color: ''''#\\\\|bg: ''''#\\\\|background: ''''#\\\\|color: \"\"#\" --include=\"*.tsx\")",
+      "Bash(sed -n '17,22p' \"C:\\\\Users\\\\rbula\\\\Desktop\\\\TCP Tracker\\\\src\\\\components\\\\HoursOfWorkForm.tsx\")",
+      "Bash(sed -n '36,42p' \"C:\\\\Users\\\\rbula\\\\Desktop\\\\TCP Tracker\\\\src\\\\components\\\\PlanCardSections\\\\HoursOfWorkDisplay.tsx\")",
+      "Bash(grep -rn \"showMetricCharts\\\\|MetricChart\\\\b\" 'C:\\\\Users\\\\rbula\\\\Desktop\\\\TCP Tracker\\\\src' --include=*.tsx --include=*.ts)",
+      "Bash(grep -rn \"MetricChart\\\\b\\\\|import.*MetricChart\" 'C:\\\\Users\\\\rbula\\\\Desktop\\\\TCP Tracker\\\\src' --include=*.tsx --include=*.ts)",
+      "Bash(grep -A5 -B5 \"view === ''cr_hub''\" \"C:\\\\Users\\\\rbula\\\\Desktop\\\\TCP Tracker\\\\src\\\\App.tsx\")",
+      "Bash(find \"/c/Users/rbula/Desktop/TCP Tracker/src\" -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec wc -l {} +)",
+      "Bash(find /c/Users/rbula/Desktop/TCP Tracker/.claude/worktrees/agent-af861d1b/src -name *.tsx -newer /c/Users/rbula/Desktop/TCP Tracker/.claude/worktrees/agent-af861d1b/.claude/settings.local.json)",
+      "Bash(sed -n '132,200p' src/types.ts)",
+      "Bash(sed -n '383,400p' src/types.ts)",
+      "Bash(sed -n '629,680p' src/types.ts)"
     ]
   }
 }
