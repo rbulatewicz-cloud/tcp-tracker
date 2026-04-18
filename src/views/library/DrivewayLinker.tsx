@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Link2, FileText, ChevronRight, CheckCircle, SkipForward, AlertCircle, Image, Map } from 'lucide-react';
 import { Plan, DrivewayLetter, PlanDocument, StageAttachment } from '../../types';
 import { linkDrivewayLetterToPlan } from '../../services/drivewayLetterService';
@@ -160,8 +160,6 @@ export function DrivewayLinker({ plans, letters }: DrivewayLinkerProps) {
       .sort((a, b) => b.score - a.score)
       .slice(0, 15);
   }, [selectedLetter, plans]);
-
-  const drawings = useMemo(() => reviewPlan ? getPlanDrawings(reviewPlan) : [], [reviewPlan]);
 
   const handleSelectLetter = (letter: DrivewayLetter) => {
     setSelectedLetter(letter);

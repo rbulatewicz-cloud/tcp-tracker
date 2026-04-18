@@ -7,7 +7,6 @@ import { detectComplianceTriggers, initializeComplianceTracks } from '../utils/c
 import { FIELD_REGISTRY, ALL_STAGES } from '../constants';
 import { fmt12 } from '../utils/plans';
 import { showToast } from '../lib/toast';
-import { sendPlanAssignedEmail } from './emailTriggerActions';
 
 // ── Log formatting helpers ─────────────────────────────────────────────────────
 
@@ -253,7 +252,6 @@ export const submitPlan = async (
     // If a CD slide was attached at request time, upload it now that we have the plan ID
     if (cdSlideFile instanceof File && compliance.cdConcurrence) {
       try {
-        const ext = (cdSlideFile as File).name.split('.').pop() ?? 'pptx';
         const slidePath = `cd-slides/${locNumber}/${Date.now()}_${(cdSlideFile as File).name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
         const slideRef = ref(storage, slidePath);
         await uploadBytes(slideRef, cdSlideFile as File);

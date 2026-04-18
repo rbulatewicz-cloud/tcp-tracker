@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { CheckCircle, AlertTriangle, Clock, ExternalLink, Mail, Home, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle, AlertTriangle, ExternalLink, Mail, Home } from 'lucide-react';
 import { Plan, DrivewayLetter, DrivewayAddress } from '../../types';
 import { COMPLETED_STAGES } from '../../constants';
 import { fmtDate as fmt } from '../../utils/plans';

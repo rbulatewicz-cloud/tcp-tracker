@@ -13,7 +13,6 @@ export const useUIState = () => {
   const [showTodoSidebar, setShowTodoSidebar] = useState(false);
   const [todoCompletedExpanded, setTodoCompletedExpanded] = useState(false);
   const [hoveredPlanId, setHoveredPlanId] = useState<string | null>(null);
-  const [hoveredMetricIndex, setHoveredMetricIndex] = useState<number | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
   const [isPermissionEditingMode, setIsPermissionEditingMode] = useState(false);
@@ -42,7 +41,6 @@ export const useUIState = () => {
     showTodoSidebar, setShowTodoSidebar,
     todoCompletedExpanded, setTodoCompletedExpanded,
     hoveredPlanId, setHoveredPlanId,
-    hoveredMetricIndex, setHoveredMetricIndex,
     previewImage, setPreviewImage,
     deletingRequestId, setDeletingRequestId,
     isPermissionEditingMode, setIsPermissionEditingMode,

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LayoutGrid, Ticket, MapPin, Map as MapIcon, Calendar as CalendarIcon, Users, BarChart3, FileText, Menu, X, ShieldCheck, HelpCircle, FileWarning, BookOpen, CalendarRange, FileBarChart, ChevronDown, Inbox } from 'lucide-react';
+import { LayoutGrid, Ticket, Map as MapIcon, Calendar as CalendarIcon, Users, BarChart3, FileText, Menu, X, ShieldCheck, HelpCircle, FileWarning, BookOpen, CalendarRange, FileBarChart, ChevronDown, Inbox } from 'lucide-react';
 import { NavTab } from './NavTab';
 import { User, AppConfig, AppNotification } from '../types';
 import { SearchInput } from '../features/search/SearchInput';

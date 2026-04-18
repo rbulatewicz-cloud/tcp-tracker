@@ -17,7 +17,6 @@ import { db, loginWithGoogle, logout, storage } from './firebase';
 import { doc, setDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { UserManagementView } from './views/UserManagementView';
-import { SummaryStatsBar } from './components/SummaryStatsBar';
 import { Spinner } from './components/Spinner';
 import { Header } from './components/Header';
 import { AdminToolbar } from './components/AdminToolbar';
@@ -102,7 +101,6 @@ function AppContent() {
     showTodoSidebar, setShowTodoSidebar,
     todoCompletedExpanded, setTodoCompletedExpanded,
     hoveredPlanId, setHoveredPlanId,
-    hoveredMetricIndex, setHoveredMetricIndex,
     previewImage, setPreviewImage,
     deletingRequestId, setDeletingRequestId,
     isPermissionEditingMode, setIsPermissionEditingMode,

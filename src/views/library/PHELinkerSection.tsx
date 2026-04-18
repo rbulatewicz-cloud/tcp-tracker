@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { CheckCircle, Link2, AlertTriangle, MapPin, Calendar, Activity, ChevronRight, ExternalLink } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CheckCircle, Link2, Activity, ExternalLink } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { Plan, PlanCompliance, PHETrack } from '../../types';

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { WorkHours, WorkDay } from '../../types';
+import { WorkHours } from '../../types';
 import { usePlanData, usePlanActions, usePlanPermissions } from '../PlanCardContext';
 import { HoursOfWorkForm } from '../HoursOfWorkForm';
 import { DAY_LABELS, DAY_ORDER } from '../../constants';
