@@ -34,6 +34,8 @@ export interface PlanActions {
   convertPlanType: (pid: string, newType: string) => Promise<{ remappedStage: string | null }>;
   assignLocToTBD: (pid: string, customLoc: string | null) => Promise<string>;
   deleteStageAttachment: (pid: string, attachmentId: string, plan: any) => Promise<void>;
+  revertPlanStage: (pid: string, reason: string) => Promise<string | null>;
+  getPreviousStage: (pid: string) => { target: string; dropReviewCycle: boolean } | null;
 }
 
 export interface PlanPermissions {

@@ -1,4 +1,4 @@
-import { updatePlanStage, handleClearPlans, updatePlanField as updatePlanFieldService, updatePlanFields as updatePlanFieldsService, deletePlan as deletePlanService, convertPlanType as convertPlanTypeService } from '../services/planService';
+import { updatePlanStage, handleClearPlans, updatePlanField as updatePlanFieldService, updatePlanFields as updatePlanFieldsService, deletePlan as deletePlanService, convertPlanType as convertPlanTypeService, revertPlanStage as revertPlanStageService, getPreviousStage as getPreviousStageUtil } from '../services/planService';
 import { uploadTCPRevision, deleteDocument, uploadStageAttachment as uploadStageAttachmentService, batchUploadStageAttachments as batchUploadStageAttachmentsService, deleteStageAttachment as deleteStageAttachmentService } from '../services/planDocumentService';
 import { renewLoc as renewLocService, assignLocToTBD as assignLocToTBDService, linkNewLOC } from '../services/locService';
 import { addLogEntry, clearLog, handleClearLog } from '../services/logService';
@@ -279,6 +279,18 @@ const deleteLogEntryHandler = async (pid: string, logEntryIndex: string) => {
     await deletePlanService(pid, setSelectedPlan, plan, deletionReason);
   };
 
+  const revertPlanStage = async (pid: string, reason: string): Promise<string | null> => {
+    const plan = plansById.get(pid) ?? selectedPlan;
+    if (!plan) return null;
+    return revertPlanStageService(plan, reason, getUserLabel, setSelectedPlan, td);
+  };
+
+  const getPreviousStage = (pid: string) => {
+    const plan = plansById.get(pid) ?? selectedPlan;
+    if (!plan) return null;
+    return getPreviousStageUtil(plan);
+  };
+
   const renewLoc = async (pid: string): Promise<string | null> => {
     const plan = plansById.get(pid) ?? selectedPlan;
     if (!plan) return null;
@@ -345,5 +357,7 @@ const deleteLogEntryHandler = async (pid: string, logEntryIndex: string) => {
     renewLoc,
     convertPlanType,
     assignLocToTBD,
+    revertPlanStage,
+    getPreviousStage,
   };
 };

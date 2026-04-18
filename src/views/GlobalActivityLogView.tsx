@@ -25,10 +25,14 @@ const ACTION_STYLES: Record<string, { color: string; bg: string; label: string }
 };
 
 function getActionType(action: string, source?: string): string {
-  if (source === 'plan')    return 'DELETE';  // source==='plan' is only used for delete audit entries
+  // source==='plan' covers both plan deletes and stage reverts — differentiate by action text
+  if (source === 'plan') {
+    if (action.includes('Stage Reverted')) return 'STATUS';
+    return 'DELETE';
+  }
   if (source === 'cr_hub')  return 'CR_HUB';
   if (source === 'library') return 'LIBRARY';
-  if (action.includes('Status changed')) return 'STATUS';
+  if (action.includes('Status changed') || action.includes('Stage Reverted')) return 'STATUS';
   if (action.includes('Uploaded'))       return 'UPLOAD';
   if (action.includes('Deleted'))        return 'DELETE';
   if (action.includes('New request'))    return 'CREATE';
@@ -251,7 +255,8 @@ export function GlobalActivityLogView({
                               <span className="text-[10px] text-slate-400 dark:text-slate-500">
                                 {isGlobal
                                   ? (entry.source === 'cr_hub' ? 'CR Hub'
-                                    : entry.source === 'plan'   ? 'Plan Delete'
+                                    : entry.source === 'plan'
+                                      ? (entry.action?.includes('Stage Reverted') ? 'Stage Revert' : 'Plan Delete')
                                     : 'Library')
                                   : 'System User'}
                               </span>
