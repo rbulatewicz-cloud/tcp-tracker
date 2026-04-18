@@ -7,7 +7,7 @@ import { Spinner } from './Spinner';
 import { RequestFormFields } from './NewRequestModal/RequestFormFields';
 import { HoursOfWorkForm } from './HoursOfWorkForm';
 import { ComplianceBanner } from './ComplianceBanner';
-import { formatFileSize, getNextRevisionLoc } from '../utils/plans';
+import { formatFileSize, getNextRevisionLoc, formatPlanLoc } from '../utils/plans';
 import { usePermissions } from '../hooks/usePermissions';
 import { useApp } from '../hooks/useApp';
 import { getTurnaroundStats } from '../utils/planStats';
@@ -506,7 +506,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
                           <button type="button" onClick={() => setExpandedPlanId(isExpanded ? null : p.id)}
                             className="w-full flex items-center gap-2 px-3 py-1.5 text-left">
                             <div className="flex-1 min-w-0">
-                              <span className="text-[11px] font-bold text-slate-700 font-mono">{p.loc || p.id}</span>
+                              <span className="text-[11px] font-bold text-slate-700 font-mono">{formatPlanLoc(p)}</span>
                               <span className="text-[10px] text-slate-400 ml-1.5">{p.street1}{p.street2 ? ` / ${p.street2}` : ''}</span>
                             </div>
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">{p.stage}</span>

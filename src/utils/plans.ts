@@ -3,6 +3,18 @@ import type { Plan } from '../types';
 
 export const getLocalDateString = () => new Date().toLocaleDateString('en-CA');
 
+/**
+ * Display-safe LOC formatter. Guarantees a single "LOC-" prefix regardless of
+ * whether plan.loc was stored with or without the prefix (historical data is
+ * inconsistent — some records have "LOC-371", some have "371"). Prefer this
+ * over `p.loc || p.id` for user-facing renders.
+ */
+export function formatPlanLoc(plan: { loc?: string | null; id?: string }): string {
+  const raw = plan.loc || plan.id || '';
+  if (!raw) return '—';
+  return raw.startsWith('LOC-') ? raw : `LOC-${raw}`;
+}
+
 /** Compute the next `.N` renewal LOC for a base LOC, scanning existing plans. */
 export function getNextRevisionLoc(baseLoc: string, plans: Plan[]): string {
   const base = baseLoc.replace(/\.\d+$/, '');
