@@ -103,15 +103,24 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
   // Reset acknowledgment whenever streets change
   React.useEffect(() => { setAcknowledged(false); }, [form.street1, form.street2]);
 
-  // Compute similar plans whenever street fields change
+  // Compute similar plans whenever street fields change.
+  // On a renewal, exclude the entire renewal family (parent + all dot-revisions)
+  // since prior revisions share the address by design and aren't duplicates.
   const similarity = React.useMemo((): SimilarityResult => {
     const s1 = normalizeStreet(form.street1 || '');
     if (!s1) return { exact: [], near: [] };
     const s2 = normalizeStreet(form.street2 || '');
     const plans = firestoreData.plans || [];
+    const renewalBase = form.parentLocId ? form.parentLocId.split('.')[0] : null;
+    const isFamilyMember = (p: Plan) => {
+      if (!renewalBase) return false;
+      const loc = p.loc || p.id;
+      return loc === renewalBase || loc.startsWith(renewalBase + '.');
+    };
     const exact: Plan[] = [];
     const near: Plan[] = [];
     for (const p of plans) {
+      if (isFamilyMember(p)) continue;
       const p1 = normalizeStreet(p.street1 || '');
       const p2 = normalizeStreet(p.street2 || '');
       const isExact = (s1 === p1 && s2 === p2) || (s1 === p2 && s2 === p1);
@@ -120,7 +129,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
       if (oneMatches) near.push(p);
     }
     return { exact, near };
-  }, [form.street1, form.street2, firestoreData.plans]);
+  }, [form.street1, form.street2, form.parentLocId, firestoreData.plans]);
 
   const hasExactMatches = similarity.exact.length > 0;
   const [expandedPlanId, setExpandedPlanId] = React.useState<string | null>(null);
@@ -252,7 +261,13 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
             <div className="flex flex-col gap-3">
 
               {/* LOC # */}
-              {currentUser?.role === UserRole.SFTC ? (
+              {form.parentLocId ? (
+                <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+                  <div className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest mb-2">LOC # — Primary Identifier</div>
+                  <div className="text-sm font-bold text-slate-900 font-mono p-2">{form.loc}</div>
+                  <div className="text-[10px] text-indigo-400 mt-1">Automatic revision of {form.parentLocId}. Cannot be changed.</div>
+                </div>
+              ) : currentUser?.role === UserRole.SFTC ? (
                 <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
                   <div className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest mb-2">LOC # — Primary Identifier</div>
                   <div className="text-sm font-bold text-slate-400 font-mono p-2">Auto-assigned on submit</div>
