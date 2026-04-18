@@ -1,4 +1,4 @@
-import { ReportTemplate } from './types';
+import { ReportTemplate, WorkDay } from './types';
 
 export const DEFAULT_REPORT_TEMPLATE: ReportTemplate = {
   logo: null,
@@ -149,12 +149,12 @@ export const DEFAULT_APP_CONFIG = {
 export const PLAN_TYPES = ["WATCH", "Standard", "Engineered"];
 
 // ── Work Hours shared constants ───────────────────────────────────────────────
-export const DAY_LABELS: Record<string, string> = {
+export const DAY_LABELS: Record<WorkDay, string> = {
   weekday:  'Mon–Fri',
   saturday: 'Saturday',
   sunday:   'Sunday',
 };
-export const DAY_ORDER: string[] = ['weekday', 'saturday', 'sunday'];
+export const DAY_ORDER: WorkDay[] = ['weekday', 'saturday', 'sunday'];
 
 export const SHIFT_LABELS: Record<string, string> = {
   day:       'Day shift',
