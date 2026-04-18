@@ -317,9 +317,34 @@ export const convertPlanType = async (
 
 export const deletePlan = async (
   pid: string,
-  setSelectedPlan: (plan: Plan | null) => void
+  setSelectedPlan: (plan: Plan | null) => void,
+  plan?: Plan | null,
+  deletionReason?: string,
 ) => {
   try {
+    // Write an audit entry to global_log BEFORE deleting — the plan's own log
+    // array dies with the document, so this is the only surviving trail.
+    if (plan) {
+      const { writeGlobalLog } = await import('./logService');
+      const loc = plan.loc || plan.id;
+      const street = [plan.street1, plan.street2].filter(Boolean).join(' / ');
+      const reason = (deletionReason ?? '').trim();
+      const actionSuffix = reason ? ` — reason: ${reason}` : '';
+      await writeGlobalLog(
+        `Plan Deleted: ${loc}${actionSuffix}`,
+        'plan',
+        loc,
+        pid,
+        'plan',
+        loc,
+        {
+          deletedPlanStage: plan.stage,
+          deletedPlanStreet: street,
+          deletedPlanRequestedBy: plan.requestedBy || '',
+          deletionReason: reason,
+        },
+      );
+    }
     await deleteDoc(doc(db, 'plans', pid));
     setSelectedPlan(null);
   } catch (error) {
@@ -566,7 +591,25 @@ export const handleClearPlans = async (
 ) => {
   try {
     setLoading(prev => ({ ...prev, bulk: true }));
+    const { writeGlobalLog } = await import('./logService');
     for (const p of plans) {
+      const loc = p.loc || p.id;
+      const street = [p.street1, p.street2].filter(Boolean).join(' / ');
+      // Best-effort audit per plan — writeGlobalLog swallows its own errors
+      await writeGlobalLog(
+        `Plan Deleted: ${loc} — reason: Bulk clear (admin wipe all plans)`,
+        'plan',
+        loc,
+        p.id,
+        'plan',
+        loc,
+        {
+          deletedPlanStage: p.stage,
+          deletedPlanStreet: street,
+          deletedPlanRequestedBy: p.requestedBy || '',
+          deletionReason: 'Bulk clear (admin wipe all plans)',
+        },
+      );
       await deleteDoc(doc(db, 'plans', p.id));
     }
     setPlans([]);

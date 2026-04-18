@@ -131,20 +131,27 @@ export interface GlobalLogEntry {
   createdAt: string;     // ISO timestamp for precise sort
   action: string;
   user: string;
-  source: 'cr_hub' | 'library';
-  reference: string;     // e.g. "123 Main St" or "NV Permit 2345"
+  source: 'cr_hub' | 'library' | 'plan';
+  reference: string;     // e.g. "123 Main St" or "NV Permit 2345" or "LOC-390"
   referenceId: string;
-  referenceType: 'letter' | 'variance';
+  referenceType: 'letter' | 'variance' | 'plan';
   planLoc?: string;
+  // Plan-delete audit snapshot — only populated when source === 'plan'
+  deletedPlanStage?: string;
+  deletedPlanStreet?: string;
+  deletedPlanRequestedBy?: string;
+  deletionReason?: string;
 }
 
 export const writeGlobalLog = async (
   action: string,
-  source: 'cr_hub' | 'library',
+  source: 'cr_hub' | 'library' | 'plan',
   reference: string,
   referenceId: string,
-  referenceType: 'letter' | 'variance',
-  planLoc?: string
+  referenceType: 'letter' | 'variance' | 'plan',
+  planLoc?: string,
+  extras?: Partial<Pick<GlobalLogEntry,
+    'deletedPlanStage' | 'deletedPlanStreet' | 'deletedPlanRequestedBy' | 'deletionReason'>>,
 ): Promise<void> => {
   try {
     const user = auth.currentUser;
@@ -160,6 +167,7 @@ export const writeGlobalLog = async (
       referenceId,
       referenceType,
       planLoc: planLoc || '',
+      ...(extras || {}),
     });
   } catch {
     // Global log writes are best-effort — never block the main action

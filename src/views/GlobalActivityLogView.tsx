@@ -25,6 +25,7 @@ const ACTION_STYLES: Record<string, { color: string; bg: string; label: string }
 };
 
 function getActionType(action: string, source?: string): string {
+  if (source === 'plan')    return 'DELETE';  // source==='plan' is only used for delete audit entries
   if (source === 'cr_hub')  return 'CR_HUB';
   if (source === 'library') return 'LIBRARY';
   if (action.includes('Status changed')) return 'STATUS';
@@ -36,7 +37,7 @@ function getActionType(action: string, source?: string): string {
   return 'INFO';
 }
 
-const FILTER_TABS = ['ALL', 'STATUS', 'UPLOAD', 'CR HUB', 'LIBRARY', 'NOTE'] as const;
+const FILTER_TABS = ['ALL', 'STATUS', 'UPLOAD', 'DELETE', 'CR HUB', 'LIBRARY', 'NOTE'] as const;
 
 // Normalise any date to YYYY-MM-DD for consistent sorting
 function toSortKey(entry: any): string {
@@ -248,7 +249,11 @@ export function GlobalActivityLogView({
                             <div className="flex flex-col items-end">
                               <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">{entry.user}</span>
                               <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                                {isGlobal ? (entry.source === 'cr_hub' ? 'CR Hub' : 'Library') : 'System User'}
+                                {isGlobal
+                                  ? (entry.source === 'cr_hub' ? 'CR Hub'
+                                    : entry.source === 'plan'   ? 'Plan Delete'
+                                    : 'Library')
+                                  : 'System User'}
                               </span>
                             </div>
                           </td>

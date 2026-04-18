@@ -274,9 +274,9 @@ const deleteLogEntryHandler = async (pid: string, logEntryIndex: string) => {
     }
   };
 
-  const deletePlan = async (pid: string) => {
-    if (!window.confirm(`Are you sure you want to permanently delete ${pid}? This cannot be undone.`)) return;
-    await deletePlanService(pid, setSelectedPlan);
+  const deletePlan = async (pid: string, deletionReason?: string) => {
+    const plan = plansById.get(pid) ?? selectedPlan;
+    await deletePlanService(pid, setSelectedPlan, plan, deletionReason);
   };
 
   const renewLoc = async (pid: string): Promise<string | null> => {

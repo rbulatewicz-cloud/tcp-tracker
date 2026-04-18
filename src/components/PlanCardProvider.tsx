@@ -14,7 +14,7 @@ export interface PlanData {
 
 export interface PlanActions {
   handleClosePlanCard: () => void;
-  deletePlan: (pid: string) => Promise<void>;
+  deletePlan: (pid: string, deletionReason?: string) => Promise<void>;
   updatePlanField: (pid: string, field: string, value: any, isDraft?: boolean) => void;
   saveDraft: () => void;
   discardDraft: () => void;
