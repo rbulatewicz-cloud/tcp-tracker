@@ -2,6 +2,7 @@ import { collection, deleteDoc, getDocs, query, doc, updateDoc, arrayUnion, addD
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase';
+import { LogEntry } from '../types';
 
 export const addLogEntry = async (
   pid: string,
@@ -12,7 +13,7 @@ export const addLogEntry = async (
   field?: string,
   previousValue?: any,
   newValue?: any
-) => {
+): Promise<LogEntry> => {
   try {
     let uploadedAttachments: { name: string, data: string }[] = [];
     if (attachments && attachments.length > 0) {
@@ -29,7 +30,7 @@ export const addLogEntry = async (
     }
 
     // Build entry without undefined fields — Firestore arrayUnion doesn't accept undefined
-    const newLogEntry: Record<string, any> = {
+    const newLogEntry: LogEntry & { userId?: string } = {
       uniqueId: Date.now().toString(),
       date: td,
       action: entry,

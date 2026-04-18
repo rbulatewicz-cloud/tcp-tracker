@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle, Link2, SkipForward, Zap, AlertTriangle, Clock, Tag, MapPin, Calendar, RefreshCw, Eye, X, LayoutList, Layers, Wrench, Pin } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { Plan, NoiseVariance, PlanCompliance } from '../../types';
+import { Plan, NoiseVariance, PlanCompliance, NoiseVarianceTrack } from '../../types';
 import { subscribeToVariances, daysUntilExpiry, getVarianceExpiryStatus, rescanVarianceFromUrl, unlinkVarianceFromPlan } from '../../services/varianceService';
 import { COMPLETED_STAGES } from '../../constants';
 import { fmtDate as fmt } from '../../utils/plans';
@@ -117,8 +117,9 @@ async function applyLink(plan: Plan, variance: NoiseVariance) {
   if (existingIds.includes(rootId)) return; // already linked
 
   const newIds = [...existingIds, rootId];
-  const updatedNV = {
+  const updatedNV: NoiseVarianceTrack = {
     ...(currentNV ?? {}),
+    triggeredBy: currentNV?.triggeredBy ?? [],
     linkedVarianceIds: newIds,
     linkedVarianceId: newIds[0],   // legacy compat — always reflects first linked
     existingPermitNumber: variance.permitNumber || (currentNV?.existingPermitNumber ?? ''),

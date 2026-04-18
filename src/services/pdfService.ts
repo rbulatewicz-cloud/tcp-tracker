@@ -598,8 +598,7 @@ export const exportPlanToPDF = async (
         // ── Attempt 1: Firebase SDK getBytes (uses internal auth, no CORS issues) ──
         try {
           const parsed = parseStorageUrl(att.url);
-          const uint8  = await getBytes(storageRef(storage, parsed?.path ?? att.url));
-          const bytes  = uint8.buffer.slice(uint8.byteOffset, uint8.byteOffset + uint8.byteLength);
+          const bytes  = await getBytes(storageRef(storage, parsed?.path ?? att.url));
           return { att, fileBytes: bytes as ArrayBuffer, error: null };
         } catch (e1) { lastErr = e1; }
 

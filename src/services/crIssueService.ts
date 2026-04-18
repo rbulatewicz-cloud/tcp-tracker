@@ -4,7 +4,7 @@ import {
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '../firebase';
-import { CRIssue, CRIssueNote, CRIssueStatus, CRIssueAttachment } from '../types';
+import { CRIssue, CRIssueNote, CRIssueStatus, CRIssueAttachment, CRIssueCategory, CRIssuePriority, CRIssueLogMethod } from '../types';
 import {
   sendCRIssueAssignedEmail,
   sendCRIssueUpdatedEmail,
@@ -24,7 +24,7 @@ export function subscribeToCRIssues(
 }
 
 export async function createCRIssue(
-  data: Omit<CRIssue, 'id' | 'createdAt' | 'updatedAt' | 'resolvedAt' | 'notes'>,
+  data: Omit<CRIssue, 'id' | 'createdAt' | 'updatedAt' | 'resolvedAt' | 'notes' | 'createdBy'>,
   createdBy: string
 ): Promise<string> {
   const ref = await addDoc(collection(db, COL), {

@@ -158,7 +158,7 @@ export function PlanPopoutView({ locId }: Props) {
     ...(plan.approvedTCPs ?? []).map(d => ({ name: d.name, url: d.url, tag: 'TCP' })),
     ...(plan.approvedLOCs ?? []).map(d => ({ name: d.name, url: d.url, tag: 'LOC' })),
     ...(plan.reviewCycles ?? []).flatMap(rc =>
-      (rc.attachments ?? []).map(a => ({ name: a.name || `Cycle ${rc.cycleNumber}`, url: a.url || a.data || '', tag: `Cycle ${rc.cycleNumber}` }))
+      (rc.attachments ?? []).map(a => ({ name: a.name || `Cycle ${rc.cycleNumber}`, url: a.url || '', tag: `Cycle ${rc.cycleNumber}` }))
     ),
   ].filter(d => d.url);
   const appUrl = `${window.location.origin}${window.location.pathname}?plan=${encodeURIComponent(locId)}`;
