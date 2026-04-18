@@ -5,6 +5,7 @@ import { useAppLists } from '../context/AppListsContext';
 import { CollapsibleSection } from './CollapsibleSection';
 import { Spinner } from './Spinner';
 import { RequestFormFields } from './NewRequestModal/RequestFormFields';
+import { findSimilarPlans, isPlanExpired } from './NewRequestModal/similarity';
 import { HoursOfWorkForm } from './HoursOfWorkForm';
 import { ComplianceBanner } from './ComplianceBanner';
 import { formatFileSize, getNextRevisionLoc, formatPlanLoc } from '../utils/plans';
@@ -13,27 +14,6 @@ import { useApp } from '../hooks/useApp';
 import { getTurnaroundStats } from '../utils/planStats';
 import { User, ReportTemplate, LoadingState, PlanForm, WorkHours, UserRole, DrivewayProperty, Plan } from '../types';
 import { subscribeToDrivewayProperties } from '../services/drivewayPropertyService';
-
-// ── Similarity detection helpers ──────────────────────────────────────────────
-
-function normalizeStreet(s: string): string {
-  return s.toLowerCase().trim()
-    .replace(/\bstreet\b/g, 'st').replace(/\bavenue\b/g, 'ave')
-    .replace(/\bboulevard\b/g, 'blvd').replace(/\bdrive\b/g, 'dr')
-    .replace(/\broad\b/g, 'rd').replace(/\bplace\b/g, 'pl')
-    .replace(/\s+/g, ' ');
-}
-
-function isPlanExpired(plan: Plan): boolean {
-  const end = plan.implementationWindow?.endDate || plan.softImplementationWindow?.endDate;
-  if (!end) return false;
-  return new Date(end) < new Date();
-}
-
-interface SimilarityResult {
-  exact: Plan[];
-  near: Plan[];
-}
 
 // Workflow path info — updates live as plan type changes
 const WORKFLOW_INFO: Record<string, { label: string; color: string; steps: string; description: string }> = {
@@ -104,32 +84,17 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
   React.useEffect(() => { setAcknowledged(false); }, [form.street1, form.street2]);
 
   // Compute similar plans whenever street fields change.
-  // On a renewal, exclude the entire renewal family (parent + all dot-revisions)
-  // since prior revisions share the address by design and aren't duplicates.
-  const similarity = React.useMemo((): SimilarityResult => {
-    const s1 = normalizeStreet(form.street1 || '');
-    if (!s1) return { exact: [], near: [] };
-    const s2 = normalizeStreet(form.street2 || '');
-    const plans = firestoreData.plans || [];
-    const renewalBase = form.parentLocId ? form.parentLocId.split('.')[0] : null;
-    const isFamilyMember = (p: Plan) => {
-      if (!renewalBase) return false;
-      const loc = p.loc || p.id;
-      return loc === renewalBase || loc.startsWith(renewalBase + '.');
-    };
-    const exact: Plan[] = [];
-    const near: Plan[] = [];
-    for (const p of plans) {
-      if (isFamilyMember(p)) continue;
-      const p1 = normalizeStreet(p.street1 || '');
-      const p2 = normalizeStreet(p.street2 || '');
-      const isExact = (s1 === p1 && s2 === p2) || (s1 === p2 && s2 === p1);
-      if (isExact) { exact.push(p); continue; }
-      const oneMatches = s1 === p1 || s1 === p2 || (s2 && (s2 === p1 || s2 === p2));
-      if (oneMatches) near.push(p);
-    }
-    return { exact, near };
-  }, [form.street1, form.street2, form.parentLocId, firestoreData.plans]);
+  // On a renewal, the renewal family (parent + all dot-revisions) is excluded
+  // by findSimilarPlans — they share the address by design.
+  const similarity = React.useMemo(
+    () => findSimilarPlans(
+      form.street1 || '',
+      form.street2 || '',
+      form.parentLocId,
+      firestoreData.plans || []
+    ),
+    [form.street1, form.street2, form.parentLocId, firestoreData.plans]
+  );
 
   const hasExactMatches = similarity.exact.length > 0;
   const [expandedPlanId, setExpandedPlanId] = React.useState<string | null>(null);
