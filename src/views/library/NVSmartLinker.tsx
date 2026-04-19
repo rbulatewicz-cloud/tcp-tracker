@@ -9,106 +9,14 @@ import { fmtDate as fmt } from '../../utils/plans';
 import { showToast } from '../../lib/toast';
 import { writeGlobalLog } from '../../services/logService';
 import { sortStreetsByCorridorOrder, findGapsInCoverage, findExtrasOutsideCorridors, getStreetsBetween } from '../../utils/corridor';
-
-// ── Scoring ────────────────────────────────────────────────────────────────────
-
-interface MatchSignals {
-  segment: boolean;
-  scope: boolean;
-  date: boolean;
-  hours: boolean;
-  streets: boolean;   // structured street match from coveredStreets
-  location: boolean;  // soft text match from scopeLanguage (fallback)
-}
-
-interface MatchResult {
-  variance: NoiseVariance;
-  score: number;
-  signals: MatchSignals;
-}
-
-function normalizeStreet(s: string): string {
-  return s.toLowerCase()
-    .replace(/\b(street|st|boulevard|blvd|avenue|ave|road|rd|drive|dr|lane|ln|way|wy)\b\.?/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function streetMatch(planStreet: string | undefined, varianceStreets: string[]): boolean {
-  if (!planStreet || varianceStreets.length === 0) return false;
-  const planNorm = normalizeStreet(planStreet);
-  return varianceStreets.some(vs => {
-    const vsNorm = normalizeStreet(vs);
-    return vsNorm === planNorm || vsNorm.includes(planNorm) || planNorm.includes(vsNorm);
-  });
-}
-
-function scoreMatch(plan: Plan, variance: NoiseVariance): MatchResult {
-  let score = 0;
-  const signals: MatchSignals = { segment: false, scope: false, date: false, hours: false, streets: false, location: false };
-
-  // 1. Segment match (+5) — primary location anchor
-  if (plan.segment && variance.coveredSegments.includes(plan.segment)) {
-    score += 5; signals.segment = true;
-  }
-
-  // 2. Scope match (+2) — generic variances cover everything; correctness check
-  if (variance.isGeneric || (plan.scope && variance.coveredScopes.includes(plan.scope))) {
-    score += 2; signals.scope = true;
-  }
-
-  // 3. Date validity (+1) — soft freshness hint; variances get renewed so weight is low
-  if (plan.needByDate && variance.validFrom && variance.validThrough) {
-    const needBy = new Date(plan.needByDate);
-    const from   = new Date(variance.validFrom);
-    const thru   = new Date(variance.validThrough);
-    if (needBy >= from && needBy <= thru) { score += 1; signals.date = true; }
-  }
-
-  // 4. Hours compatibility (+2) — plan does night work, variance covers nights
-  const shift = plan.work_hours?.shift;
-  const planHasNight = shift === 'nighttime' || shift === 'both' || shift === 'continuous';
-  const varCoversNight = variance.applicableHours === 'nighttime' || variance.applicableHours === '24_7' || variance.applicableHours === 'both';
-  if (planHasNight && varCoversNight) { score += 2; signals.hours = true; }
-
-  // 5a. Structured street match (+4) — AI-extracted + human-verified streets
-  // plan.expandedStreets lists all corridor cross streets between street1→street2, improving range match accuracy
-  // variance.verifiedStreets are human-confirmed from PDF — treated with same confidence as coveredStreets
-  const varStreets = [
-    ...(variance.coveredStreets ?? []),
-    ...(variance.verifiedStreets ?? []),
-  ].filter((s, i, arr) => arr.indexOf(s) === i); // dedupe
-  const planStreets = [plan.street1, plan.street2, ...(plan.expandedStreets ?? [])].filter((s): s is string => !!s);
-  if (varStreets.length > 0) {
-    if (planStreets.some(ps => streetMatch(ps, varStreets))) {
-      score += 4; signals.streets = true;
-    }
-  } else {
-    // 5b. Soft text match fallback (+1) — scopeLanguage text search (pre-rescan data)
-    const scopeLang = (variance.scopeLanguage || '').toLowerCase();
-    if (planStreets.some(s => scopeLang.includes(s.toLowerCase()))) {
-      score += 1; signals.location = true;
-    }
-  }
-
-  return { variance, score, signals };
-}
-
-function confidenceLabel(score: number): { label: string; color: string; bg: string } {
-  if (score >= 10) return { label: 'Strong match',    color: '#166534', bg: '#DCFCE7' };
-  if (score >= 6)  return { label: 'Possible match',  color: '#92400E', bg: '#FEF3C7' };
-  if (score >= 3)  return { label: 'Weak match',      color: '#991B1B', bg: '#FEE2E2' };
-  return              { label: 'No match signals', color: '#64748B', bg: '#F1F5F9' };
-}
+import {
+  MatchResult,
+  scoreMatch,
+  confidenceLabel,
+  getLinkedVarianceIds,
+} from './NVSmartLinker/scoring';
 
 // ── Multi-variance link helpers ────────────────────────────────────────────────
-
-/** Reads both legacy single-link and new multi-link fields transparently */
-function getLinkedVarianceIds(track: { linkedVarianceIds?: string[]; linkedVarianceId?: string }): string[] {
-  if (track.linkedVarianceIds && track.linkedVarianceIds.length > 0) return track.linkedVarianceIds;
-  if (track.linkedVarianceId) return [track.linkedVarianceId];
-  return [];
-}
 
 async function applyLink(plan: Plan, variance: NoiseVariance) {
   const rootId = variance.parentVarianceId ?? variance.id;
