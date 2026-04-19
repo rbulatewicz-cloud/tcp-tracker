@@ -1,47 +1,123 @@
 rules_version = '2';
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  TCP Tracker — Firestore Security Rules
+//
+//  Gates are driven by the `role` custom claim on the user's ID token. That
+//  claim is set server-side by the `syncUserClaims` Cloud Function whenever
+//  `users_private/{email}` changes — so a client cannot grant itself a role
+//  by editing its own private doc (writes to the `role` field are admin-only
+//  here, and even if they weren't, the trusted source for enforcement is the
+//  signed token, not the doc).
+//
+//  Role tiers mirror `src/types.ts`:
+//    GUEST   — read-only
+//    SFTC, CR, DOT, METRO — can read + edit plans/locs/variances
+//    MOT     — everything above + settings + reference library writes
+//    ADMIN   — everything
+// ─────────────────────────────────────────────────────────────────────────────
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Plans and LOCs are publicly readable (guests can view)
+    // ── Helpers ─────────────────────────────────────────────────────────────
+    function authed()  { return request.auth != null; }
+    function role()    { return authed() ? request.auth.token.get('role', 'GUEST') : 'GUEST'; }
+    function isAdmin() { return role() == 'ADMIN'; }
+    function isMot()   { return role() == 'MOT' || isAdmin(); }
+    // Anyone with a writer role — i.e. not unauthenticated and not GUEST.
+    function isWriter() { return authed() && role() != 'GUEST'; }
+    function isSelf(email) {
+      return authed() && request.auth.token.email.lower() == email.lower();
+    }
+    // For user-profile self-edits: ensure the caller isn't trying to change
+    // their own `role` or `uid` (those are admin-only fields).
+    function selfProfileEdit() {
+      return !request.resource.data.diff(resource.data)
+        .affectedKeys().hasAny(['role', 'uid', 'claimsUpdatedAt', 'claimsRole']);
+    }
+
+    // ── Core collections ────────────────────────────────────────────────────
+
     match /plans/{planId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+      allow read:  if authed();
+      allow write: if isWriter();
     }
 
     match /locs/{locId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+      allow read:  if authed();
+      allow write: if isWriter();
     }
 
-    // Notifications: users can only read/write their own
+    match /variances/{varianceId} {
+      allow read:  if authed();
+      allow write: if isWriter();
+    }
+
+    // Reference library — MOT+ only
+    match /reference_docs/{docId} {
+      allow read:  if authed();
+      allow write: if isMot();
+    }
+
+    // App-wide settings (fieldPermissions, aiConfig, etc.) — MOT+ write
+    match /settings/{settingId} {
+      allow read:  if authed();
+      allow write: if isMot();
+    }
+
+    // ── User directories ────────────────────────────────────────────────────
+    //
+    // users_public: visible to all authed users (display names, profile fields).
+    // Self can create/update their own doc; admin can manage any.
+    match /users_public/{email} {
+      allow read:   if authed();
+      allow create: if isSelf(email) || isAdmin();
+      allow update: if isSelf(email) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // users_private: role + notification prefs.
+    //   Read: authed users can list (email-trigger service needs recipient prefs).
+    //         TODO: move that logic server-side and tighten read to self+admin.
+    //   Create: self (first login) or admin.
+    //   Update: self may edit own non-role fields; only admin may set role.
+    //   Delete: admin only.
+    match /users_private/{email} {
+      allow read:   if authed();
+      allow create: if isSelf(email) || isAdmin();
+      allow update: if isAdmin() || (isSelf(email) && selfProfileEdit());
+      allow delete: if isAdmin();
+    }
+
+    // ── Notifications ───────────────────────────────────────────────────────
     match /notifications/{notifId} {
-      allow read, update: if request.auth != null
+      allow read, update: if authed()
         && resource.data.userId == request.auth.token.email;
-      allow create: if request.auth != null;
+      allow create: if authed();
       allow delete: if false;
     }
 
-    // Noise variance library — all authenticated users read, MOT/ADMIN write
-    match /variances/{varianceId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+    // ── Compliance alert dedup state (written by scheduled function only) ───
+    match /compliance_alert_state/{alertId} {
+      allow read:  if authed();
+      allow write: if isAdmin(); // functions bypass rules; block all client writes
     }
 
-    // Reference documents — all authenticated users read, MOT/ADMIN write
-    match /reference_docs/{docId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+    // ── App feedback / tickets ─────────────────────────────────────────────
+    // Any authed user may submit and read; admin/MOT can moderate.
+    match /app_feedback/{docId} {
+      allow read:   if authed();
+      allow create: if authed();
+      allow update: if isMot() || (authed() && resource.data.userEmail == request.auth.token.email);
+      allow delete: if isAdmin();
     }
 
-    // AI config — admin only
-    match /settings/aiConfig {
-      allow read, write: if request.auth != null;
-    }
-
-    // Everything else requires authentication
+    // ── Catch-all ───────────────────────────────────────────────────────────
+    // Legacy / unclassified collections: require auth. If a new collection is
+    // added, add an explicit rule above rather than relying on this fallback.
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if authed();
     }
   }
 }

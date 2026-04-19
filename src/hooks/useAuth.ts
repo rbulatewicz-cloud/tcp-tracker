@@ -71,17 +71,32 @@ export function useAuth() {
         setShowLogin(false);
         setLoaded(true);
 
+        // Track the last-seen claims timestamp so we only force-refresh the ID
+        // token when the server-side `syncUserClaims` function bumps it.
+        let lastClaimsAtMs: number | null = null;
+
         // Live listener for role + profileComplete changes
         unsubRoleRef.current = onSnapshot(
           doc(db, 'users_private', userEmail),
           (snap) => {
             if (!snap.exists()) return;
-            let liveRole = (snap.data().role as UserRole) ?? UserRole.GUEST;
+            const data = snap.data();
+            let liveRole = (data.role as UserRole) ?? UserRole.GUEST;
             if (isBootstrapAdmin) liveRole = UserRole.ADMIN;
-            const livePC = snap.data().profileComplete === true;
+            const livePC = data.profileComplete === true;
             setCurrentUser(prev => prev ? { ...prev, role: liveRole } : prev);
             setIsRealAdmin(liveRole === UserRole.ADMIN);
             setProfileComplete(livePC);
+
+            // If `syncUserClaims` just ran (claimsUpdatedAt advanced), force a
+            // token refresh so Firestore rules see the new `role` claim.
+            const claimsAtMs = data.claimsUpdatedAt?.toMillis?.() ?? null;
+            if (claimsAtMs && claimsAtMs !== lastClaimsAtMs) {
+              lastClaimsAtMs = claimsAtMs;
+              firebaseUser.getIdToken(true).catch(err =>
+                console.error('[Auth] failed to refresh ID token after claims change:', err)
+              );
+            }
           },
           (error) => { console.error(`[Auth] role listener error for ${userEmail}:`, error); }
         );
