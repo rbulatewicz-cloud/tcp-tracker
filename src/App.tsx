@@ -54,6 +54,7 @@ import {
   COMPLETED_STAGES,
   APPROVED_STAGES,
   STAGE_GROUP_MEMBERS,
+  STAGES_IN_DOT_REVIEW,
 } from './constants';
 
 import { useMasterFileImport } from './hooks/useMasterFileImport';
@@ -315,8 +316,9 @@ function AppContent() {
       if (!phePending && !nvPending && !cdPending) return false;
     }
     if (filter.quickFilter === 'overdue_dot') {
-      const AT_DOT = ['submitted_to_dot','dot_review','resubmit_review','loc_review'];
-      if (!AT_DOT.includes(p.stage)) return false;
+      // "Stuck at DOT" = actively in DOT review for > 20 days. Uses the canonical
+      // in-review set from constants.ts so this stays aligned with calcMetrics.
+      if (!STAGES_IN_DOT_REVIEW.includes(p.stage)) return false;
       if (!p.submitDate) return false;
       if (daysBetween(p.submitDate, td) <= 20) return false;
     }

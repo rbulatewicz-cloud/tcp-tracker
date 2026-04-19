@@ -1,4 +1,4 @@
-import { COMPLETED_STAGES, AT_DOT_STAGES } from '../constants';
+import { COMPLETED_STAGES, STAGES_IN_DOT_REVIEW } from '../constants';
 import type { Plan } from '../types';
 
 export const getLocalDateString = () => new Date().toLocaleDateString('en-CA');
@@ -136,7 +136,7 @@ export const formatFileSize = (bytes: number) => {
 
 export const calcMetrics = (plans: any[], LEADS: string[], td: string, TODAY: Date) => {
   const active = plans.filter(p => !COMPLETED_STAGES.includes(p.stage));
-  const atDOT = plans.filter(p => AT_DOT_STAGES.includes(p.stage));
+  const atDOT = plans.filter(p => STAGES_IN_DOT_REVIEW.includes(p.stage));
   const approved = plans.filter(p => p.approvedDate && p.submitDate);
   const approvedWatch = approved.filter(p => p.type === 'WATCH');
   const approvedStandard = approved.filter(p => p.type === 'Standard');

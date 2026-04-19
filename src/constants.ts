@@ -105,7 +105,25 @@ export const LEGACY_STAGE_MAP: Record<string, string> = {
 export const COMPLETED_STAGES = ["approved", "implemented", "plan_approved", "tcp_approved_final", "expired", "closed", "cancelled"]; // terminal stages — stop the active/wait counter
 // Stages where the plan was genuinely approved (show ✓ in wait column)
 export const APPROVED_STAGES = ["approved", "implemented", "plan_approved", "tcp_approved_final"];
-export const AT_DOT_STAGES = ["submitted", "in_review", "submitted_to_dot", "dot_review"];
+// "At DOT, actively in review" — plan is in DOT's review queue for a decision.
+// Used for avg-wait math in calcMetrics and the "Stuck at DOT > 20 days" filter chip.
+// NOTE: includes legacy `submitted` (alias of submitted_to_dot) and `in_review`
+// (legacy alias of dot_review) for back-compat with older plan records.
+export const STAGES_IN_DOT_REVIEW = [
+  "submitted_to_dot", "submitted",    // submitted, awaiting first look (modern + legacy)
+  "dot_review", "in_review",          // first review cycle (modern + legacy)
+  "resubmit_review",                   // post-expiry resubmission review cycle
+  "loc_review",                        // LOC review cycle
+];
+
+// "At DOT, broad pipeline" — any stage where DOT has the plan in hand, including
+// pre-review waiting stages (`loc_submitted`, `resubmitted`). Used by the
+// pipeline-by-type metrics card on the Metrics tab.
+export const STAGES_AT_DOT_PIPELINE = [
+  ...STAGES_IN_DOT_REVIEW,
+  "loc_submitted",
+  "resubmitted",
+];
 
 // Clock targets (in calendar days) per plan type per phase
 // Used to color-code day counts in progression history (green/yellow/red)

@@ -1,7 +1,7 @@
 import React from 'react';
 import { daysBetween } from '../utils/plans';
 import { Plan, ReportTemplate, FilterState } from '../types';
-import { CLOCK_TARGETS } from '../constants';
+import { CLOCK_TARGETS, STAGES_AT_DOT_PIPELINE } from '../constants';
 import type { GlobalLogEntry } from '../services/logService';
 
 interface MetricsViewProps {
@@ -87,7 +87,7 @@ function Tag({ label, color, bg }: { label: string; color: string; bg: string })
 
 // ── Plan Type Breakdown ───────────────────────────────────────────────────────
 
-const AT_DOT_STAGE_SET = new Set(['submitted_to_dot','submitted','dot_review','loc_submitted','loc_review','resubmit_review','resubmitted']);
+const AT_DOT_STAGE_SET = new Set(STAGES_AT_DOT_PIPELINE);
 const INACTIVE_STAGE_SET = new Set(['approved','plan_approved','implemented','tcp_approved_final','closed','cancelled','expired']);
 
 const TYPE_META: Record<string, { color: string; bg: string; border: string; emoji: string }> = {
