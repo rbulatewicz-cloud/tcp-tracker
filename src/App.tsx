@@ -40,7 +40,7 @@ import { AppFeedbackView } from './views/AppFeedbackView';
 import { GanttView } from './views/GanttView';
 import { ReportsView } from './views/ReportsView';
 import { MyRequestsModal } from './views/MyRequestsModal';
-import { daysBetween, formatFileSize, calcMetrics, getLocalDateString } from './utils/plans';
+import { daysBetween, daysFromToday, formatFileSize, calcMetrics, getLocalDateString } from './utils/plans';
 import { TodoSidebar } from './components/TodoSidebar';
 import { Tooltip } from './components/Tooltip';
 import { AppRequestSidebar } from './features/appRequests/AppRequestSidebar';
@@ -286,11 +286,22 @@ function AppContent() {
       if (!isLead && !isSubscribed) return false;
     }
     if (filter.quickFilter === 'at_risk') {
-      const INACTIVE = ['approved','plan_approved','implemented','tcp_approved_final','closed','cancelled','expired'];
-      if (INACTIVE.includes(p.stage)) return false;
+      // Matches TableView.tsx `statsAtRisk`: due in 0-14 days (exclusive of past-due).
+      // Past-due plans are covered by the separate `past_due` filter.
+      if (COMPLETED_STAGES.includes(p.stage)) return false;
       if (!p.needByDate) return false;
-      const daysLeft = Math.ceil((new Date(p.needByDate + 'T00:00:00').getTime() - TODAY.getTime()) / 86_400_000);
-      if (daysLeft > 14) return false;
+      const d = daysFromToday(p.needByDate, TODAY);
+      if (d < 0 || d > 14) return false;
+    }
+    if (filter.quickFilter === 'at_dot') {
+      // Matches TableView.tsx `statsAtDOT`.
+      if (p.stage !== 'submitted_to_dot' && p.stage !== 'submitted') return false;
+    }
+    if (filter.quickFilter === 'past_due') {
+      // Matches TableView.tsx `statsOverdue`: past need-by-date, not terminal stage.
+      if (COMPLETED_STAGES.includes(p.stage)) return false;
+      if (!p.needByDate) return false;
+      if (daysFromToday(p.needByDate, TODAY) >= 0) return false;
     }
     if (filter.quickFilter === 'needs_compliance') {
       const phe = p.compliance?.phe;
@@ -823,7 +834,7 @@ function AppContent() {
             { key: 'my_plans',         label: 'My Plans',         emoji: '👤', activeColor: '#1D4ED8', activeBg: '#DBEAFE' },
             { key: 'at_risk',          label: 'At Risk',          emoji: '⚠️', activeColor: '#D97706', activeBg: '#FEF3C7' },
             { key: 'needs_compliance', label: 'Needs Compliance', emoji: '🏛', activeColor: '#7C3AED', activeBg: '#EDE9FE' },
-            { key: 'overdue_dot',      label: 'Overdue at DOT',   emoji: '🕐', activeColor: '#DC2626', activeBg: '#FEE2E2' },
+            { key: 'overdue_dot',      label: 'Stuck at DOT',     emoji: '🕐', activeColor: '#DC2626', activeBg: '#FEE2E2' },
           ] as { key: FilterState['quickFilter']; label: string; emoji: string; activeColor: string; activeBg: string }[]).map(p => {
             const active = (filter.quickFilter ?? 'all') === p.key;
             const btn = (
