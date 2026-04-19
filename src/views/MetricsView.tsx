@@ -8,7 +8,7 @@ interface MetricsViewProps {
   filtered: Plan[];
   allPlans?: Plan[];
   globalLogs?: GlobalLogEntry[];
-  metrics: Record<string, unknown>;
+  metrics: { total: number } & Record<string, unknown>;
   monoFont: string;
   TODAY: Date;
   setSelectedPlan: (plan: Plan | null) => void;

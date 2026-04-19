@@ -1,5 +1,5 @@
 import {
-  Document, Packer, Paragraph, TextRun, AlignmentType, ImageRun, PageBreak,
+  Document, Packer, Paragraph, TextRun, AlignmentType, ImageRun,
   Table, TableRow, TableCell, WidthType, BorderStyle, VerticalAlign,
 } from 'docx';
 import { getDoc, doc } from 'firebase/firestore';

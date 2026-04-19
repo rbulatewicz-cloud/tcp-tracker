@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import {
   Mail, CheckCircle, Clock, Send, Download, ExternalLink,
   Trash2, ChevronDown, ChevronUp, Filter, Upload, Loader,
-  AlertTriangle, MessageSquare, RefreshCw,
+  AlertTriangle, MessageSquare, RefreshCw, Paperclip, X,
 } from 'lucide-react';
 import {
   subscribeToDrivewayLetters,
@@ -324,7 +324,7 @@ interface LetterCardProps {
   parentLetter?: DrivewayLetter;  // Prior letter this is a re-notice of (for display only)
   onSubmitToMetro: (date: string) => void;
   onMetroApprove: (date: string) => void;
-  onMetroRevision: (comment: string) => void;
+  onMetroRevision: (comment: string, files?: File[]) => void;
   onResubmit: (date: string) => void;
   onDirectApprove: () => void;
   onMarkSent: (date: string) => void;
@@ -332,7 +332,7 @@ interface LetterCardProps {
   onEditSentDate: (dateStr: string) => void;
   onDelete: () => void;
   onDownload: () => void;
-  onAddMetroComment: (text: string) => void;
+  onAddMetroComment: (text: string, files?: File[]) => void;
   onRescan?: () => void;
   properties: DrivewayProperty[];
   onLinkProperty: (propertyId: string) => void;
@@ -377,8 +377,13 @@ function LetterCard({
   // Inline revision feedback input
   const [showRevisionInput, setShowRevisionInput] = useState(false);
   const [revisionText, setRevisionText] = useState('');
+  const [revisionFiles, setRevisionFiles] = useState<File[]>([]);
+  const revisionFileInputRef = useRef<HTMLInputElement>(null);
   // Inline metro note input (expanded panel)
   const [noteText, setNoteText] = useState('');
+  const [noteFiles, setNoteFiles] = useState<File[]>([]);
+  const noteFileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingComment, setUploadingComment] = useState(false);
   // Editable sent date (for historical backfilling)
   const [editingSentDate, setEditingSentDate] = useState(false);
   const [draftSentDate, setDraftSentDate] = useState('');
@@ -449,6 +454,23 @@ function LetterCard({
                 Rev ×{letter.metroRevisionCount}
               </span>
             )}
+            {/* Attachment count — sum across all Metro comments */}
+            {(() => {
+              const attachCount = (letter.metroComments ?? []).reduce(
+                (n, c) => n + (c.attachments?.length ?? 0), 0
+              );
+              if (attachCount === 0) return null;
+              return (
+                <button
+                  onClick={() => setExpanded(true)}
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 transition-colors"
+                  title={`${attachCount} Metro attachment${attachCount === 1 ? '' : 's'} — click to view`}
+                >
+                  <Paperclip size={9} />
+                  {attachCount}
+                </button>
+              );
+            })()}
             {/* Re-notice chain badge */}
             {letter.parentLetterId && (
               <span
@@ -662,20 +684,67 @@ function LetterCard({
             rows={2}
             className="w-full rounded border border-orange-200 bg-white px-2.5 py-1.5 text-[12px] outline-none focus:border-orange-400 resize-none"
           />
+          {/* Attached file chips */}
+          {revisionFiles.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {revisionFiles.map((f, i) => (
+                <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-orange-200 text-[11px] text-slate-700 max-w-[200px]">
+                  <Paperclip size={10} className="text-orange-500 shrink-0" />
+                  <span className="truncate" title={f.name}>{f.name}</span>
+                  <button
+                    onClick={() => setRevisionFiles(files => files.filter((_, j) => j !== i))}
+                    className="text-slate-300 hover:text-red-500 transition-colors"
+                    title="Remove file"
+                  >
+                    <X size={10} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <input
+            ref={revisionFileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={e => {
+              const list = Array.from(e.target.files || []);
+              if (list.length) setRevisionFiles(prev => [...prev, ...list]);
+              if (e.target) e.target.value = '';
+            }}
+          />
           <div className="flex items-center gap-2 mt-2">
             <button
-              onClick={() => {
-                onMetroRevision(revisionText.trim());
-                setRevisionText('');
-                setShowRevisionInput(false);
+              onClick={async () => {
+                setUploadingComment(true);
+                try {
+                  await onMetroRevision(revisionText.trim(), revisionFiles.length ? revisionFiles : undefined);
+                  setRevisionText('');
+                  setRevisionFiles([]);
+                  setShowRevisionInput(false);
+                } finally {
+                  setUploadingComment(false);
+                }
               }}
-              className="px-3 py-1.5 rounded bg-orange-600 text-white text-[11px] font-bold hover:bg-orange-700 transition-colors"
+              disabled={uploadingComment}
+              className="px-3 py-1.5 rounded bg-orange-600 text-white text-[11px] font-bold hover:bg-orange-700 transition-colors disabled:opacity-50 flex items-center gap-1.5"
             >
+              {uploadingComment && <Loader size={11} className="animate-spin" />}
               Confirm Revision Request
             </button>
             <button
-              onClick={() => { setRevisionText(''); setShowRevisionInput(false); }}
-              className="px-3 py-1.5 rounded border border-slate-200 text-[11px] text-slate-500 hover:text-slate-700 transition-colors"
+              onClick={() => revisionFileInputRef.current?.click()}
+              disabled={uploadingComment}
+              className="px-2.5 py-1.5 rounded border border-orange-200 bg-white text-[11px] text-orange-700 font-semibold hover:bg-orange-100 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              title="Attach Metro's response documents"
+            >
+              <Paperclip size={12} />
+              Attach
+            </button>
+            <button
+              onClick={() => { setRevisionText(''); setRevisionFiles([]); setShowRevisionInput(false); }}
+              disabled={uploadingComment}
+              className="px-3 py-1.5 rounded border border-slate-200 text-[11px] text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
@@ -770,6 +839,29 @@ function LetterCard({
                       <span className="text-[10px] text-slate-400 ml-2">
                         {fmt(c.addedAt)} · {c.addedBy}
                       </span>
+                      {/* Attachments */}
+                      {c.attachments && c.attachments.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {c.attachments.map(a => (
+                            <a
+                              key={a.id}
+                              href={a.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border text-[10px] font-medium max-w-[220px] transition-colors ${
+                                c.isRevisionRequest
+                                  ? 'border-orange-200 text-orange-800 hover:bg-orange-100'
+                                  : 'border-indigo-200 text-indigo-800 hover:bg-indigo-100'
+                              }`}
+                              title={a.name}
+                            >
+                              <Paperclip size={9} className="shrink-0" />
+                              <span className="truncate">{a.name}</span>
+                              <Download size={9} className="shrink-0 opacity-60" />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -779,31 +871,83 @@ function LetterCard({
 
               {/* Add note input */}
               {canApprove && (
-                <div className="flex items-center gap-2">
+                <div className="space-y-1.5">
+                  {/* File chip preview */}
+                  {noteFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {noteFiles.map((f, i) => (
+                        <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-[11px] text-indigo-800 max-w-[220px]">
+                          <Paperclip size={10} className="text-indigo-500 shrink-0" />
+                          <span className="truncate" title={f.name}>{f.name}</span>
+                          <button
+                            onClick={() => setNoteFiles(files => files.filter((_, j) => j !== i))}
+                            className="text-indigo-300 hover:text-red-500 transition-colors"
+                            title="Remove file"
+                          >
+                            <X size={10} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <input
-                    value={noteText}
-                    onChange={e => setNoteText(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && noteText.trim()) {
-                        onAddMetroComment(noteText.trim());
-                        setNoteText('');
-                      }
+                    ref={noteFileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={e => {
+                      const list = Array.from(e.target.files || []);
+                      if (list.length) setNoteFiles(prev => [...prev, ...list]);
+                      if (e.target) e.target.value = '';
                     }}
-                    placeholder="Add Metro note… (Enter to save)"
-                    className="flex-1 rounded border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] outline-none focus:border-indigo-400"
                   />
-                  <button
-                    onClick={() => {
-                      if (noteText.trim()) {
-                        onAddMetroComment(noteText.trim());
-                        setNoteText('');
-                      }
-                    }}
-                    disabled={!noteText.trim()}
-                    className="px-2.5 py-1.5 rounded bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-40"
-                  >
-                    Add
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => noteFileInputRef.current?.click()}
+                      disabled={uploadingComment}
+                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors disabled:opacity-40"
+                      title="Attach file"
+                    >
+                      <Paperclip size={14} />
+                    </button>
+                    <input
+                      value={noteText}
+                      onChange={e => setNoteText(e.target.value)}
+                      onKeyDown={async e => {
+                        if (e.key === 'Enter' && (noteText.trim() || noteFiles.length) && !uploadingComment) {
+                          setUploadingComment(true);
+                          try {
+                            await onAddMetroComment(noteText.trim(), noteFiles.length ? noteFiles : undefined);
+                            setNoteText('');
+                            setNoteFiles([]);
+                          } finally {
+                            setUploadingComment(false);
+                          }
+                        }
+                      }}
+                      disabled={uploadingComment}
+                      placeholder="Add Metro note… (Enter to save)"
+                      className="flex-1 rounded border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] outline-none focus:border-indigo-400 disabled:opacity-60"
+                    />
+                    <button
+                      onClick={async () => {
+                        if ((!noteText.trim() && !noteFiles.length) || uploadingComment) return;
+                        setUploadingComment(true);
+                        try {
+                          await onAddMetroComment(noteText.trim(), noteFiles.length ? noteFiles : undefined);
+                          setNoteText('');
+                          setNoteFiles([]);
+                        } finally {
+                          setUploadingComment(false);
+                        }
+                      }}
+                      disabled={(!noteText.trim() && !noteFiles.length) || uploadingComment}
+                      className="px-2.5 py-1.5 rounded bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-40 flex items-center gap-1.5"
+                    >
+                      {uploadingComment && <Loader size={11} className="animate-spin" />}
+                      Add
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -974,8 +1118,8 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
     }
   }
 
-  async function handleMetroRevision(id: string, comment: string) {
-    try { await metroRequestRevision(id, comment || '(no notes)', currentUserEmail); }
+  async function handleMetroRevision(id: string, comment: string, files?: File[]) {
+    try { await metroRequestRevision(id, comment || '(no notes)', currentUserEmail, files); }
     catch (e) { showToast(`Revision request failed: ${(e as Error).message}`, 'error'); }
   }
 
@@ -989,8 +1133,8 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
     catch (e) { showToast(`Update failed: ${(e as Error).message}`, 'error'); }
   }
 
-  async function handleAddMetroComment(id: string, text: string) {
-    try { await addMetroComment(id, text, currentUserEmail); }
+  async function handleAddMetroComment(id: string, text: string, files?: File[]) {
+    try { await addMetroComment(id, text, currentUserEmail, files); }
     catch (e) { showToast(`Comment failed: ${(e as Error).message}`, 'error'); }
   }
 
@@ -1208,7 +1352,7 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
               deleteConfirmId={deleteConfirm}
               onSubmitToMetro={date => handleSubmitToMetro(letter.id, date, letter.address)}
               onMetroApprove={date => handleMetroApprove(letter, date)}
-              onMetroRevision={comment => handleMetroRevision(letter.id, comment)}
+              onMetroRevision={(comment, files) => handleMetroRevision(letter.id, comment, files)}
               onResubmit={date => handleResubmit(letter.id, date)}
               onDirectApprove={() => handleDirectApprove(letter)}
               onMarkSent={date => handleMarkSent(letter, date)}
@@ -1218,7 +1362,7 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
               onDeleteClick={() => handleDeleteClick(letter.id)}
               onDelete={() => handleDelete(letter.id)}
               onDownload={() => handleDownload(letter)}
-              onAddMetroComment={text => handleAddMetroComment(letter.id, text)}
+              onAddMetroComment={(text, files) => handleAddMetroComment(letter.id, text, files)}
               properties={properties}
               onLinkProperty={propId => handleLinkProperty(letter.id, propId)}
               onUnlinkProperty={() => handleUnlinkProperty(letter.id)}

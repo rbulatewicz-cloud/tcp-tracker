@@ -43,7 +43,6 @@ export function CRHubView({ currentUser, appConfig, plans, setSelectedPlan }: CR
     return track.cds.some(c => c.applicable && !['concurred', 'na', 'declined'].includes(c.status));
   }).length;
 
-  const unsentCount    = letters.filter(l => l.status !== 'sent').length;
   const openIssues     = issues.filter(i => i.status === 'open' || i.status === 'in_progress');
   const openIssueCount = openIssues.length;
 

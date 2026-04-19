@@ -1,7 +1,7 @@
 import React from 'react';
 import { Spinner } from '../components/Spinner';
 import { daysFromToday, daysBetween } from '../utils/plans';
-import { COMPLETED_STAGES, APPROVED_STAGES, ALL_STAGES } from '../constants';
+import { COMPLETED_STAGES, APPROVED_STAGES, ALL_STAGES, STAGE_FILTER_OPTIONS } from '../constants';
 import { UserRole, Plan, Stage, FilterState, SortConfig, ColumnDef, LoadingState, User, NoiseVariance } from '../types';
 import { detectComplianceTriggers } from '../utils/compliance';
 import { getVarianceExpiryStatus } from '../services/varianceService';
@@ -267,8 +267,8 @@ function TableView({
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#94A3B8', marginBottom: 4 }}>Status</div>
                 <select value={filter.stage} onChange={e => setFilter(pr => ({ ...pr, stage: e.target.value }))} style={{ ...inp, padding: '6px 10px', fontSize: 12 }}>
                   <option value="all">All Statuses</option>
-                  {ALL_STAGES.filter(s => !['submitted', 'approved'].includes(s.key)).map(s => (
-                    <option key={s.key} value={s.key}>{s.label}</option>
+                  {STAGE_FILTER_OPTIONS.map(o => (
+                    <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
               </div>
@@ -452,6 +452,7 @@ function TableView({
               { label: 'DAY',  bg: '#FFFBEB', color: '#D97706', title: 'Daytime only' },
               { label: 'NGT',  bg: '#EFF6FF', color: '#1D4ED8', title: 'Nighttime only' },
               { label: 'BOTH', bg: '#FDF4FF', color: '#A21CAF', title: 'Day + Night' },
+              { label: 'MIX',  bg: '#FEF3C7', color: '#B45309', title: 'Mixed — per day' },
               { label: '24/7', bg: '#F5F3FF', color: '#7C3AED', title: '24/7 Continuous' },
             ].map(h => (
               <span key={h.label} title={h.title} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -658,6 +659,7 @@ function TableView({
                           both:       { label: 'BOTH',  bg: '#FDF4FF', color: '#A21CAF' },
                           nighttime:  { label: 'NGT',   bg: '#EFF6FF', color: '#1D4ED8' },
                           daytime:    { label: 'DAY',   bg: '#FFFBEB', color: '#D97706' },
+                          mixed:      { label: 'MIX',   bg: '#FEF3C7', color: '#B45309' },
                         };
                         const h = wh ? hoursMap[wh.shift] : null;
                         return (

@@ -6,6 +6,7 @@ import { showToast } from '../lib/toast';
 import { Tooltip } from './Tooltip';
 import { addPlanSubscriber, removePlanSubscriber } from '../services/notificationService';
 import { PDFExportModal } from './PDFExportModal';
+import { usePlanRequest } from '../context/PlanRequestContext';
 
 export const PlanHeader: React.FC = () => {
   const {
@@ -20,6 +21,9 @@ export const PlanHeader: React.FC = () => {
 
   const [confirmRenew, setConfirmRenew] = useState(false);
   const [renewing, setRenewing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const [togglingFollow, setTogglingFollow] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   // Optimistic local state so the button flips immediately without waiting for Firestore
@@ -61,7 +65,12 @@ export const PlanHeader: React.FC = () => {
 
   const daysOpen = calculateDaysOpen(selectedPlan);
   const canDelete = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.MOT;
-  const canRenew = canDelete && ['plan_approved', 'approved', 'expired'].includes(selectedPlan.stage || '');
+  const isFinalStage = ['plan_approved', 'approved', 'expired'].includes(selectedPlan.stage || '');
+  // MOT/ADMIN: direct renewal (creates .N plan immediately)
+  const canRenew = canDelete && isFinalStage;
+  // SFTC: renewal goes through the request queue for MOT to triage
+  const canRequestRenewal = currentUser?.role === UserRole.SFTC && isFinalStage;
+  const { onRequestRenewal } = usePlanRequest();
 
   const handleRenew = async () => {
     setRenewing(true);
@@ -76,8 +85,60 @@ export const PlanHeader: React.FC = () => {
     }
   };
 
+  const handleDelete = async () => {
+    const reason = deleteReason.trim();
+    if (!reason) return;  // required
+    setDeleting(true);
+    try {
+      await deletePlan(selectedPlan.id, reason);
+      showToast(`Deleted ${selectedPlan.loc || selectedPlan.id}. Audit entry saved to System Log.`, 'success');
+    } catch {
+      showToast('Failed to delete plan. Please try again.', 'error');
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
+      setDeleteReason('');
+    }
+  };
+
   return (
     <div className="pb-2 mb-2">
+      {/* Delete confirm banner — requires a reason, writes audit before delete */}
+      {confirmDelete && (
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+          <div className="text-[11px] font-bold text-red-800 mb-1">
+            Delete {selectedPlan.loc || selectedPlan.id}?
+          </div>
+          <div className="text-[10px] text-red-600 mb-2">
+            This permanently removes the plan and its log. An audit entry with your reason will be saved to the System Log.
+          </div>
+          <textarea
+            autoFocus
+            value={deleteReason}
+            onChange={e => setDeleteReason(e.target.value)}
+            placeholder="Reason for deletion (required) — e.g. 'duplicate of LOC-391'"
+            rows={2}
+            className="w-full rounded border border-red-200 bg-white px-2 py-1 text-[11px] outline-none focus:border-red-400 resize-none mb-2"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleDelete}
+              disabled={deleting || !deleteReason.trim()}
+              className="px-3 py-1 text-[11px] font-bold text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {deleting ? 'Deleting…' : 'Confirm Delete'}
+            </button>
+            <button
+              onClick={() => { setConfirmDelete(false); setDeleteReason(''); }}
+              disabled={deleting}
+              className="px-3 py-1 text-[11px] font-bold text-red-600 bg-white border border-red-200 rounded-md hover:bg-red-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* LOC Renewal confirm banner — shown at top when triggered */}
       {confirmRenew && (
         <div className="mb-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2.5">
@@ -175,10 +236,14 @@ export const PlanHeader: React.FC = () => {
           )}
 
           {canDelete && (
-            <Tooltip text="Permanently delete this plan record. This cannot be undone." position="bottom">
+            <Tooltip text="Permanently delete this plan. You'll be asked for a reason; an audit entry is saved to the System Log before deletion." position="bottom">
               <button
-                onClick={() => deletePlan(selectedPlan.id)}
-                className="text-[11px] px-3 py-1 bg-red-50 text-red-600 rounded-md border border-red-100 font-bold hover:bg-red-100"
+                onClick={() => setConfirmDelete(v => !v)}
+                className={`text-[11px] px-3 py-1 rounded-md border font-bold transition-colors ${
+                  confirmDelete
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100'
+                }`}
               >
                 Delete
               </button>
@@ -195,6 +260,16 @@ export const PlanHeader: React.FC = () => {
                 }`}
               >
                 ↻ Renew
+              </button>
+            </Tooltip>
+          )}
+          {canRequestRenewal && (
+            <Tooltip text="Open a new request pre-filled as a renewal of this plan. The MOT team will pick it up from the Requests queue." position="bottom">
+              <button
+                onClick={() => onRequestRenewal(selectedPlan)}
+                className="text-[11px] px-3 py-1 rounded-md border font-bold transition-colors bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100"
+              >
+                ↻ Request Renewal
               </button>
             </Tooltip>
           )}

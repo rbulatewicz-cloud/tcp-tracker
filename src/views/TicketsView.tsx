@@ -199,6 +199,14 @@ export function TicketsView({
                     {ticket.isCriticalPath && !COMPLETED_STAGES.includes(ticket.stage) && (
                       <span style={{ padding: '3px 7px', borderRadius: 6, fontSize: 10, fontWeight: 700, background: '#FEF2F2', color: '#DC2626', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>🔥 Critical Path</span>
                     )}
+                    {ticket.parentLocId && (
+                      <span
+                        title={`Renewal of ${ticket.parentLocId} — new implementation window`}
+                        style={{ padding: '3px 7px', borderRadius: 6, fontSize: 10, fontWeight: 700, background: '#EEF2FF', color: '#4F46E5', border: '1px solid #C7D2FE', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
+                      >
+                        ↻ Renewal of {ticket.parentLocId}
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: 15, fontWeight: 600, color: '#1E293B', marginBottom: 3 }}>
                     {ticket.street1}{ticket.street2 ? ` / ${ticket.street2}` : ''}

@@ -26,5 +26,7 @@
     "noEmit": true,
     "noUnusedLocals": true,
     "types": ["vite/client"]
-  }
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "functions"]
 }

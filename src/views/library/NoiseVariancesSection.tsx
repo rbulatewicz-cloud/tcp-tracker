@@ -12,7 +12,7 @@ import {
 import { NoiseVariance, VarianceExpiryStatus, User, UserRole, AppConfig, Plan } from '../../types';
 import { SEGMENT_STREETS, ALL_STAGES, COMPLETED_STAGES } from '../../constants';
 import { VarianceLetterModal } from '../../components/VarianceLetterModal';
-import { fmtDate as fmt } from '../../utils/plans';
+import { fmtDate as fmt, formatPlanLoc } from '../../utils/plans';
 import { sortStreetsByCorridorOrder, findGapsInCoverage, findExtrasOutsideCorridors } from '../../utils/corridor';
 
 const HOURS_LABEL: Record<string, string> = {
@@ -370,7 +370,7 @@ function LinkedPlansBadge({ rootId, plans, setSelectedPlan, canManage }: { rootI
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">
-                          {p.loc ? `LOC-${p.loc}` : '—'}
+                          {formatPlanLoc(p)}
                           {p.street1 ? <span className="font-normal text-slate-500 dark:text-slate-400"> · {p.street1}</span> : null}
                         </div>
                         {p.requestedBy && (

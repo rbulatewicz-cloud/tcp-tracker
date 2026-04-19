@@ -2,6 +2,7 @@ import { collection, deleteDoc, getDocs, query, doc, updateDoc, arrayUnion, addD
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase';
+import { LogEntry } from '../types';
 
 export const addLogEntry = async (
   pid: string,
@@ -12,7 +13,7 @@ export const addLogEntry = async (
   field?: string,
   previousValue?: any,
   newValue?: any
-) => {
+): Promise<LogEntry> => {
   try {
     let uploadedAttachments: { name: string, data: string }[] = [];
     if (attachments && attachments.length > 0) {
@@ -29,7 +30,7 @@ export const addLogEntry = async (
     }
 
     // Build entry without undefined fields — Firestore arrayUnion doesn't accept undefined
-    const newLogEntry: Record<string, any> = {
+    const newLogEntry: LogEntry & { userId?: string } = {
       uniqueId: Date.now().toString(),
       date: td,
       action: entry,
@@ -131,20 +132,27 @@ export interface GlobalLogEntry {
   createdAt: string;     // ISO timestamp for precise sort
   action: string;
   user: string;
-  source: 'cr_hub' | 'library';
-  reference: string;     // e.g. "123 Main St" or "NV Permit 2345"
+  source: 'cr_hub' | 'library' | 'plan';
+  reference: string;     // e.g. "123 Main St" or "NV Permit 2345" or "LOC-390"
   referenceId: string;
-  referenceType: 'letter' | 'variance';
+  referenceType: 'letter' | 'variance' | 'plan';
   planLoc?: string;
+  // Plan-delete audit snapshot — only populated when source === 'plan'
+  deletedPlanStage?: string;
+  deletedPlanStreet?: string;
+  deletedPlanRequestedBy?: string;
+  deletionReason?: string;
 }
 
 export const writeGlobalLog = async (
   action: string,
-  source: 'cr_hub' | 'library',
+  source: 'cr_hub' | 'library' | 'plan',
   reference: string,
   referenceId: string,
-  referenceType: 'letter' | 'variance',
-  planLoc?: string
+  referenceType: 'letter' | 'variance' | 'plan',
+  planLoc?: string,
+  extras?: Partial<Pick<GlobalLogEntry,
+    'deletedPlanStage' | 'deletedPlanStreet' | 'deletedPlanRequestedBy' | 'deletionReason'>>,
 ): Promise<void> => {
   try {
     const user = auth.currentUser;
@@ -160,6 +168,7 @@ export const writeGlobalLog = async (
       referenceId,
       referenceType,
       planLoc: planLoc || '',
+      ...(extras || {}),
     });
   } catch {
     // Global log writes are best-effort — never block the main action

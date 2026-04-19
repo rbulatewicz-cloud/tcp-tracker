@@ -4,7 +4,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
-import { DrivewayLetter, DrivewayLetterStatus, MetroComment } from '../types';
+import { DrivewayLetter, DrivewayLetterStatus, MetroComment, MetroCommentAttachment } from '../types';
 import { writeGlobalLog } from './logService';
 import { DrivewayNoticeFields } from './drivewayNoticeService';
 import { SEGMENT_STREETS } from '../constants';
@@ -91,17 +91,49 @@ export async function metroApproveLetter(id: string, dateStr?: string, address?:
   writeGlobalLog(`Driveway notice approved by Metro: ${address || id}`, 'cr_hub', address || id, id, 'letter');
 }
 
+/** Upload files to Storage under a comment and return attachment metadata. */
+async function uploadMetroCommentAttachments(
+  letterId: string,
+  commentId: string,
+  files: File[]
+): Promise<MetroCommentAttachment[]> {
+  const out: MetroCommentAttachment[] = [];
+  for (const f of files) {
+    // Sanitize filename to avoid storage path issues
+    const safeName = f.name.replace(/[^\w.\-]+/g, '_');
+    const storagePath = `driveway-letters/${letterId}/metro-comments/${commentId}/${safeName}`;
+    const storageRef = ref(storage, storagePath);
+    await uploadBytes(storageRef, f);
+    const url = await getDownloadURL(storageRef);
+    out.push({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+      name: f.name,
+      url,
+      storagePath,
+      size: f.size,
+      contentType: f.type || undefined,
+    });
+  }
+  return out;
+}
+
 export async function metroRequestRevision(
   id: string,
   commentText: string,
-  addedBy: string
+  addedBy: string,
+  files?: File[]
 ): Promise<void> {
+  const commentId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+  const attachments = files && files.length
+    ? await uploadMetroCommentAttachments(id, commentId, files)
+    : undefined;
   const comment: MetroComment = {
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+    id: commentId,
     text: commentText,
     addedAt: new Date().toISOString(),
     addedBy,
     isRevisionRequest: true,
+    ...(attachments && attachments.length ? { attachments } : {}),
   };
   await updateDoc(doc(db, COL, id), {
     status: 'metro_revision_requested' as DrivewayLetterStatus,
@@ -146,13 +178,19 @@ export async function revertDrivewayLetterStatus(
 export async function addMetroComment(
   id: string,
   text: string,
-  addedBy: string
+  addedBy: string,
+  files?: File[]
 ): Promise<void> {
+  const commentId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+  const attachments = files && files.length
+    ? await uploadMetroCommentAttachments(id, commentId, files)
+    : undefined;
   const comment: MetroComment = {
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+    id: commentId,
     text,
     addedAt: new Date().toISOString(),
     addedBy,
+    ...(attachments && attachments.length ? { attachments } : {}),
   };
   await updateDoc(doc(db, COL, id), {
     metroComments: arrayUnion(comment),

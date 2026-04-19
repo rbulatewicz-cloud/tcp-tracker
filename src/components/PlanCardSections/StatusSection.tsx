@@ -24,7 +24,7 @@ function getStatusColor(statusKey: string): string {
 
 export const StatusSection: React.FC = React.memo(() => {
   const { selectedPlan } = usePlanData();
-  const { updateStage, updatePlanField, batchUploadStageAttachments, addLogEntry, convertPlanType, linkNewLOC } = usePlanActions();
+  const { updateStage, updatePlanField, batchUploadStageAttachments, addLogEntry, convertPlanType, linkNewLOC, revertPlanStage, getPreviousStage } = usePlanActions();
   const { getLocalDateString } = usePlanUtils();
   const {
     canEditPlan,
@@ -57,6 +57,11 @@ export const StatusSection: React.FC = React.memo(() => {
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [convertTargetType, setConvertTargetType] = useState('');
   const [convertLoading, setConvertLoading] = useState(false);
+
+  // Admin/MOT: revert stage one step back
+  const [showRevertPanel, setShowRevertPanel] = useState(false);
+  const [revertReason, setRevertReason] = useState('');
+  const [reverting, setReverting] = useState(false);
 
   if (!selectedPlan) return null;
 
@@ -239,6 +244,29 @@ export const StatusSection: React.FC = React.memo(() => {
   const convertNeedsRemap =
     convertTargetType !== 'Engineered' &&
     ENGINEERED_ONLY_STAGES.includes(normalizedStage);
+
+  // Revert stage handler — MOT/ADMIN one-step-back
+  const prevStage = getPreviousStage(selectedPlan.id);
+  const canRevertStage = canChangeStatus && prevStage !== null;
+  const prevStageLabel = prevStage
+    ? ALL_STAGES.find(s => s.key === prevStage.target)?.label ?? prevStage.target
+    : null;
+
+  const handleRevertConfirm = async () => {
+    const reason = revertReason.trim();
+    if (!reason) return;
+    setReverting(true);
+    try {
+      const target = await revertPlanStage(selectedPlan.id, reason);
+      if (target) showToast(`Stage reverted to ${prevStageLabel}. Audit entry saved.`, 'success');
+    } catch (e) {
+      showToast((e as Error).message || 'Failed to revert stage.', 'error');
+    } finally {
+      setReverting(false);
+      setShowRevertPanel(false);
+      setRevertReason('');
+    }
+  };
 
   const handleConvertConfirm = async () => {
     if (!convertTargetType) return;
@@ -657,7 +685,58 @@ export const StatusSection: React.FC = React.memo(() => {
             ~ {selectedPlan.softImplementationWindow.startDate} → {selectedPlan.softImplementationWindow.endDate} (est.)
           </span>
         )}
+        {/* Revert stage — MOT/ADMIN only, shown only when a previous stage is well-defined */}
+        {canRevertStage && !showRevertPanel && (
+          <button
+            onClick={() => setShowRevertPanel(true)}
+            className="text-[10px] font-semibold text-slate-400 hover:text-amber-600 transition-colors ml-auto"
+            title={`Revert stage one step back to ${prevStageLabel}. Requires a reason; writes an audit entry.`}
+          >
+            ↩ Revert stage…
+          </button>
+        )}
       </div>
+
+      {/* Revert stage inline panel */}
+      {canRevertStage && showRevertPanel && (
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+          <div className="text-[11px] font-bold text-amber-800 mb-1">
+            Revert stage to {prevStageLabel}?
+          </div>
+          <div className="text-[10px] text-amber-700 mb-2 leading-relaxed">
+            {prevStage?.dropReviewCycle && (
+              <>
+                The most recent <span className="font-bold">review cycle will be deleted</span>.{' '}
+              </>
+            )}
+            An audit entry (who, when, reason) will be saved to the System Log and preserved even if the plan is later deleted.
+          </div>
+          <textarea
+            autoFocus
+            value={revertReason}
+            onChange={e => setRevertReason(e.target.value)}
+            placeholder="Reason for revert (required) — e.g. 'clicked Push to DOT Review by mistake, no comments received yet'"
+            rows={2}
+            className="w-full rounded border border-amber-200 bg-white px-2 py-1 text-[11px] outline-none focus:border-amber-400 resize-none mb-2"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleRevertConfirm}
+              disabled={reverting || !revertReason.trim()}
+              className="px-3 py-1 text-[11px] font-bold text-white bg-amber-600 rounded-md hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {reverting ? 'Reverting…' : 'Confirm Revert'}
+            </button>
+            <button
+              onClick={() => { setShowRevertPanel(false); setRevertReason(''); }}
+              disabled={reverting}
+              className="px-3 py-1 text-[11px] font-bold text-amber-700 bg-white border border-amber-200 rounded-md hover:bg-amber-100 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Post-approval implementation window editor */}
       {normalizedStage === 'plan_approved' && canChangeStatus && (

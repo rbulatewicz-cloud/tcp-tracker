@@ -7,7 +7,6 @@ import { detectComplianceTriggers, initializeComplianceTracks } from '../utils/c
 import { FIELD_REGISTRY, ALL_STAGES } from '../constants';
 import { fmt12 } from '../utils/plans';
 import { showToast } from '../lib/toast';
-import { sendPlanAssignedEmail } from './emailTriggerActions';
 
 // ── Log formatting helpers ─────────────────────────────────────────────────────
 
@@ -253,7 +252,6 @@ export const submitPlan = async (
     // If a CD slide was attached at request time, upload it now that we have the plan ID
     if (cdSlideFile instanceof File && compliance.cdConcurrence) {
       try {
-        const ext = (cdSlideFile as File).name.split('.').pop() ?? 'pptx';
         const slidePath = `cd-slides/${locNumber}/${Date.now()}_${(cdSlideFile as File).name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
         const slideRef = ref(storage, slidePath);
         await uploadBytes(slideRef, cdSlideFile as File);
@@ -315,11 +313,181 @@ export const convertPlanType = async (
   return { remappedStage: needsRemap ? targetStage : null };
 };
 
+// ── Stage revert (one-step-back admin tool) ─────────────────────────────────
+// Lives next to deletePlan because both are "backwards" actions that need an
+// audit trail before the Firestore write.
+
+/** Linear stage order for index comparison (clearing future-dated timestamps). */
+const STAGE_ORDER: string[] = [
+  'requested',
+  'drafting',
+  'submitted',              // legacy alias for submitted_to_dot
+  'submitted_to_dot',
+  'dot_review',
+  'tcp_approved',
+  'loc_submitted',
+  'loc_review',
+  'approved',               // legacy alias for plan_approved
+  'plan_approved',
+  'expired',
+  'resubmitted',
+  'resubmit_review',
+  'tcp_approved_final',
+  'closed',
+  'cancelled',
+];
+
+/**
+ * Compute the single "previous" stage for a one-step-back revert.
+ * Returns null for terminal or root states that have no well-defined predecessor.
+ */
+export function getPreviousStage(
+  plan: Plan,
+): { target: string; dropReviewCycle: boolean } | null {
+  const cur = plan.stage;
+  const cycleCount = (plan.reviewCycles ?? []).length;
+  const isEngineered = plan.type === 'Engineered';
+
+  // Review cycle stages → pre-review, drop the latest cycle entry
+  if (cur === 'dot_review')      return { target: 'submitted_to_dot', dropReviewCycle: true };
+  if (cur === 'loc_review')      return { target: 'loc_submitted',    dropReviewCycle: true };
+  if (cur === 'resubmit_review') return { target: 'resubmitted',      dropReviewCycle: true };
+
+  // Simple linear predecessors
+  const linear: Record<string, string> = {
+    drafting:         'requested',
+    submitted_to_dot: 'drafting',
+    submitted:        'drafting',          // legacy
+    loc_submitted:    'tcp_approved',
+    expired:          'plan_approved',
+    resubmitted:      'expired',
+  };
+  if (linear[cur]) return { target: linear[cur], dropReviewCycle: false };
+
+  // Approved stages: target depends on whether a review cycle ran
+  if (cur === 'tcp_approved') {
+    return { target: cycleCount > 0 ? 'dot_review' : 'submitted_to_dot', dropReviewCycle: false };
+  }
+  if (cur === 'plan_approved' || cur === 'approved') {
+    if (isEngineered) {
+      return { target: cycleCount > 0 ? 'loc_review' : 'loc_submitted', dropReviewCycle: false };
+    }
+    return { target: cycleCount > 0 ? 'dot_review' : 'submitted_to_dot', dropReviewCycle: false };
+  }
+  if (cur === 'tcp_approved_final') {
+    return { target: cycleCount > 0 ? 'resubmit_review' : 'resubmitted', dropReviewCycle: false };
+  }
+
+  // requested / closed / cancelled → no clear single predecessor (v1 limitation)
+  return null;
+}
+
+/**
+ * Admin tool: revert a plan one stage backwards.
+ * Required reason is recorded in plan.log AND global_log (survives plan deletion).
+ */
+export const revertPlanStage = async (
+  plan: Plan,
+  reason: string,
+  getUserLabel: () => string,
+  setSelectedPlan: (plan: Plan | null) => void,
+  td: string,
+): Promise<string> => {
+  const prev = getPreviousStage(plan);
+  if (!prev) throw new Error('No earlier stage to revert to.');
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) throw new Error('A reason is required.');
+
+  const { target, dropReviewCycle } = prev;
+  const fromLabel = ALL_STAGES.find(s => s.key === plan.stage)?.label ?? plan.stage;
+  const toLabel   = ALL_STAGES.find(s => s.key === target)?.label ?? target;
+
+  const existingCycles = plan.reviewCycles ?? [];
+  const newReviewCycles = dropReviewCycle ? existingCycles.slice(0, -1) : existingCycles;
+
+  // Clear timestamps that belong to stages now in the future
+  const tIdx = STAGE_ORDER.indexOf(target);
+  const clears: Record<string, null> = {};
+  if (tIdx < STAGE_ORDER.indexOf('submitted_to_dot')) clears.submitDate = null;
+  if (tIdx < STAGE_ORDER.indexOf('plan_approved'))    clears.approvedDate = null;
+
+  // plan.log entry — survives in the plan doc, shows up in the card's activity log
+  const logEntry: LogEntry = {
+    uniqueId: Date.now().toString(),
+    date: td,
+    action: `Stage Reverted: ${fromLabel} → ${toLabel} — reason: ${trimmedReason}`,
+    user: getUserLabel(),
+    field: 'stage',
+    previousValue: plan.stage,
+    newValue: target,
+  };
+  const newLog = [...(plan.log || []), logEntry];
+  const newStatusHistory = [...(plan.statusHistory || []), logEntry];
+
+  // Audit to global_log — survives if the plan is later deleted
+  try {
+    const { writeGlobalLog } = await import('./logService');
+    const loc = plan.loc || plan.id;
+    await writeGlobalLog(
+      `Stage Reverted: ${loc} · ${fromLabel} → ${toLabel} — reason: ${trimmedReason}`,
+      'plan',
+      loc,
+      plan.id,
+      'plan',
+      loc,
+    );
+  } catch {
+    // best-effort
+  }
+
+  const writes: Record<string, unknown> = {
+    stage: target,
+    log: newLog,
+    statusHistory: newStatusHistory,
+    reviewCycles: newReviewCycles,
+    ...clears,
+  };
+
+  try {
+    await updateDoc(doc(db, 'plans', plan.id), writes);
+    setSelectedPlan({ ...plan, ...writes } as Plan);
+    return target;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `plans/${plan.id}`);
+    throw error;
+  }
+};
+
 export const deletePlan = async (
   pid: string,
-  setSelectedPlan: (plan: Plan | null) => void
+  setSelectedPlan: (plan: Plan | null) => void,
+  plan?: Plan | null,
+  deletionReason?: string,
 ) => {
   try {
+    // Write an audit entry to global_log BEFORE deleting — the plan's own log
+    // array dies with the document, so this is the only surviving trail.
+    if (plan) {
+      const { writeGlobalLog } = await import('./logService');
+      const loc = plan.loc || plan.id;
+      const street = [plan.street1, plan.street2].filter(Boolean).join(' / ');
+      const reason = (deletionReason ?? '').trim();
+      const actionSuffix = reason ? ` — reason: ${reason}` : '';
+      await writeGlobalLog(
+        `Plan Deleted: ${loc}${actionSuffix}`,
+        'plan',
+        loc,
+        pid,
+        'plan',
+        loc,
+        {
+          deletedPlanStage: plan.stage,
+          deletedPlanStreet: street,
+          deletedPlanRequestedBy: plan.requestedBy || '',
+          deletionReason: reason,
+        },
+      );
+    }
     await deleteDoc(doc(db, 'plans', pid));
     setSelectedPlan(null);
   } catch (error) {
@@ -566,7 +734,25 @@ export const handleClearPlans = async (
 ) => {
   try {
     setLoading(prev => ({ ...prev, bulk: true }));
+    const { writeGlobalLog } = await import('./logService');
     for (const p of plans) {
+      const loc = p.loc || p.id;
+      const street = [p.street1, p.street2].filter(Boolean).join(' / ');
+      // Best-effort audit per plan — writeGlobalLog swallows its own errors
+      await writeGlobalLog(
+        `Plan Deleted: ${loc} — reason: Bulk clear (admin wipe all plans)`,
+        'plan',
+        loc,
+        p.id,
+        'plan',
+        loc,
+        {
+          deletedPlanStage: p.stage,
+          deletedPlanStreet: street,
+          deletedPlanRequestedBy: p.requestedBy || '',
+          deletionReason: 'Bulk clear (admin wipe all plans)',
+        },
+      );
       await deleteDoc(doc(db, 'plans', p.id));
     }
     setPlans([]);

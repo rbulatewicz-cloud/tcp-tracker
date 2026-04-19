@@ -14,7 +14,7 @@ export interface PlanData {
 
 export interface PlanActions {
   handleClosePlanCard: () => void;
-  deletePlan: (pid: string) => Promise<void>;
+  deletePlan: (pid: string, deletionReason?: string) => Promise<void>;
   updatePlanField: (pid: string, field: string, value: any, isDraft?: boolean) => void;
   saveDraft: () => void;
   discardDraft: () => void;
@@ -34,6 +34,8 @@ export interface PlanActions {
   convertPlanType: (pid: string, newType: string) => Promise<{ remappedStage: string | null }>;
   assignLocToTBD: (pid: string, customLoc: string | null) => Promise<string>;
   deleteStageAttachment: (pid: string, attachmentId: string, plan: any) => Promise<void>;
+  revertPlanStage: (pid: string, reason: string) => Promise<string | null>;
+  getPreviousStage: (pid: string) => { target: string; dropReviewCycle: boolean } | null;
 }
 
 export interface PlanPermissions {
