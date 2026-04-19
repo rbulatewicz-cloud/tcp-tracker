@@ -606,7 +606,7 @@ export interface FilterState {
   importStatus: string;
   requestedBy: string;
   scope: string;
-  quickFilter: 'all' | 'my_plans' | 'at_risk' | 'needs_compliance' | 'overdue_dot';
+  quickFilter: 'all' | 'my_plans' | 'at_risk' | 'needs_compliance' | 'overdue_dot' | 'at_dot' | 'past_due';
 }
 
 export interface SortConfig {

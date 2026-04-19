@@ -406,15 +406,45 @@ function TableView({
           </div>
         )}
 
-        {/* Inline summary stats */}
+        {/* Inline summary stats — three of these pills are clickable filters */}
         <div style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
           <span style={{ fontWeight: 800, color: 'var(--text-primary)' }}>{plans.length}</span> plans
           <span style={{ color: 'var(--border)', margin: '0 2px' }}>·</span>
-          <span style={{ fontWeight: 800, color: statsAtDOT > 0 ? '#F59E0B' : 'var(--text-primary)' }}>{statsAtDOT}</span> at DOT
-          <span style={{ color: 'var(--border)', margin: '0 2px' }}>·</span>
-          <span style={{ fontWeight: 800, color: statsAtRisk > 0 ? '#D97706' : 'var(--text-primary)' }}>{statsAtRisk}</span> at risk
-          <span style={{ color: 'var(--border)', margin: '0 2px' }}>·</span>
-          <span style={{ fontWeight: 800, color: statsOverdue > 0 ? '#DC2626' : 'var(--text-primary)' }}>{statsOverdue}</span> overdue
+          {([
+            { key: 'at_dot',   count: statsAtDOT,   label: 'at DOT',   color: '#F59E0B', bg: '#FEF3C7' },
+            { key: 'at_risk',  count: statsAtRisk,  label: 'at risk',  color: '#D97706', bg: '#FEF3C7' },
+            { key: 'past_due', count: statsOverdue, label: 'overdue',  color: '#DC2626', bg: '#FEE2E2' },
+          ] as { key: FilterState['quickFilter']; count: number; label: string; color: string; bg: string }[]).map((s, i) => {
+            const active = filter.quickFilter === s.key;
+            const disabled = s.count === 0 && !active;
+            return (
+              <React.Fragment key={s.key}>
+                {i > 0 && <span style={{ color: 'var(--border)', margin: '0 2px' }}>·</span>}
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setFilter(pr => ({ ...pr, quickFilter: active ? 'all' : s.key }))}
+                  title={active ? `Click to clear ${s.label} filter` : `Show ${s.count} ${s.label} plan${s.count === 1 ? '' : 's'}`}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                    padding: '2px 8px', borderRadius: 999,
+                    border: active ? `1.5px solid ${s.color}80` : '1.5px solid transparent',
+                    background: active ? s.bg : 'transparent',
+                    color: 'inherit',
+                    fontSize: 11, fontFamily: font,
+                    cursor: disabled ? 'default' : 'pointer',
+                    opacity: disabled ? 0.5 : 1,
+                    transition: 'all .12s',
+                  }}
+                  onMouseEnter={e => { if (!disabled && !active) (e.currentTarget.style.background = 'var(--bg-hover, #F8FAFC)'); }}
+                  onMouseLeave={e => { if (!disabled && !active) (e.currentTarget.style.background = 'transparent'); }}
+                >
+                  <span style={{ fontWeight: 800, color: s.count > 0 ? s.color : 'var(--text-primary)' }}>{s.count}</span>
+                  {s.label}
+                </button>
+              </React.Fragment>
+            );
+          })}
         </div>
       </div>
 
