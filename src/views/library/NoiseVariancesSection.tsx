@@ -10,10 +10,11 @@ import {
   approveVariance, approveAsRevision, updateVariance, unlinkVarianceFromPlan,
 } from '../../services/varianceService';
 import { NoiseVariance, VarianceExpiryStatus, User, UserRole, AppConfig, Plan } from '../../types';
-import { SEGMENT_STREETS, ALL_STAGES, COMPLETED_STAGES } from '../../constants';
+import { SEGMENT_STREETS, ALL_STAGES } from '../../constants';
 import { VarianceLetterModal } from '../../components/VarianceLetterModal';
 import { fmtDate as fmt, formatPlanLoc } from '../../utils/plans';
 import { sortStreetsByCorridorOrder, findGapsInCoverage, findExtrasOutsideCorridors } from '../../utils/corridor';
+import { buildFamilies, hasActiveLinkedPlans, TERMINAL_STAGES } from './NoiseVariancesSection/families';
 
 const HOURS_LABEL: Record<string, string> = {
   nighttime: 'Nighttime',
@@ -234,20 +235,6 @@ function ReviewQueueItem({ variance: v, allVariances, onApproveNew, onApproveRev
 }
 
 // ── Linked plans badge + popover ──────────────────────────────────────────────
-
-const TERMINAL_STAGES = new Set(COMPLETED_STAGES);
-
-/** True if any active (non-completed) plan is linked to this variance root */
-function hasActiveLinkedPlans(rootId: string, plans: Plan[]): boolean {
-  return plans.some(p => {
-    const track = p.compliance?.noiseVariance;
-    if (!track) return false;
-    const ids = track.linkedVarianceIds?.length
-      ? track.linkedVarianceIds
-      : track.linkedVarianceId ? [track.linkedVarianceId] : [];
-    return ids.includes(rootId) && !TERMINAL_STAGES.has(p.stage);
-  });
-}
 
 type PlanFilter = 'all' | 'active' | 'closed';
 
@@ -846,40 +833,6 @@ function VarianceCard({
       )}
     </div>
   );
-}
-
-// ── Grouping logic ────────────────────────────────────────────────────────────
-
-interface VarianceFamily {
-  rootId: string;
-  active: NoiseVariance;
-  history: NoiseVariance[];
-}
-
-function buildFamilies(variances: NoiseVariance[]): VarianceFamily[] {
-  const roots = variances.filter(v => !v.parentVarianceId);
-  const byRoot: Record<string, NoiseVariance[]> = {};
-  for (const v of variances) {
-    const rootId = v.parentVarianceId ?? v.id;
-    if (!byRoot[rootId]) byRoot[rootId] = [];
-    byRoot[rootId].push(v);
-  }
-  const families: VarianceFamily[] = roots.map(root => {
-    const members = byRoot[root.id] ?? [root];
-    const sorted = [...members].sort((a, b) => b.revisionNumber - a.revisionNumber);
-    const active = sorted.find(v => !v.isArchived) ?? sorted[0];
-    const history = sorted.filter(v => v.isArchived);
-    return { rootId: root.id, active, history };
-  });
-  families.sort((a, b) => {
-    if (a.active.scanStatus === 'scanning' && b.active.scanStatus !== 'scanning') return -1;
-    if (b.active.scanStatus === 'scanning' && a.active.scanStatus !== 'scanning') return 1;
-    if (!a.active.validThrough && !b.active.validThrough) return 0;
-    if (!a.active.validThrough) return 1;
-    if (!b.active.validThrough) return -1;
-    return a.active.validThrough.localeCompare(b.active.validThrough);
-  });
-  return families;
 }
 
 // ── Main section ──────────────────────────────────────────────────────────────
