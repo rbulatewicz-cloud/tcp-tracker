@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CheckCircle, Link2, SkipForward, Zap, AlertTriangle, Clock, Tag, MapPin, Calendar, RefreshCw, Eye, X, LayoutList, Layers, Wrench, Pin } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -15,6 +15,7 @@ import {
   confidenceLabel,
   getLinkedVarianceIds,
 } from './NVSmartLinker/scoring';
+import { SignalBadge } from './NVSmartLinker/SignalBadge';
 
 // ── Multi-variance link helpers ────────────────────────────────────────────────
 
@@ -50,21 +51,6 @@ async function applyLink(plan: Plan, variance: NoiseVariance) {
 
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
-
-function SignalBadge({ active, label, icon }: { active: boolean; label: string; icon: React.ReactNode }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
-        active
-          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-          : 'bg-slate-50 text-slate-400 border-slate-200 opacity-50'
-      }`}
-    >
-      {active ? <CheckCircle size={9} /> : icon}
-      {label}
-    </span>
-  );
-}
 
 function VarianceCard({
   result,
