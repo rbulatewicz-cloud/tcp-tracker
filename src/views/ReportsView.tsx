@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
-import type { Plan, User } from '../types';
+import type { Plan, User, AppConfig } from '../types';
 import { fmtDate } from '../utils/plans';
 import { getStagePill } from '../utils/corridor';
 import { ALL_STAGES } from '../constants';
+import {
+  getPlansOverdueWithDot,
+  DOT_LEVEL_COLORS,
+  computeDotTurnaroundByMonth,
+} from '../utils/dotOverdue';
 
 interface ReportsViewProps {
   plans: Plan[];
@@ -11,6 +16,7 @@ interface ReportsViewProps {
   monoFont: string;
   setSelectedPlan: (plan: Plan) => void;
   setView: (view: string) => void;
+  appConfig?: AppConfig;
 }
 
 // Stages considered active (not complete/terminal)
@@ -23,7 +29,7 @@ const STAGE_LABELS: Record<string, string> = Object.fromEntries(
   ALL_STAGES.map(s => [s.key, s.label])
 );
 
-type ReportId = 'status' | 'cd_concurrence' | 'compliance_summary';
+type ReportId = 'status' | 'cd_concurrence' | 'compliance_summary' | 'dot_turnaround';
 
 interface ReportTemplate {
   id: ReportId;
@@ -50,6 +56,12 @@ const REPORT_TEMPLATES: ReportTemplate[] = [
     icon: '🏛',
     name: 'Compliance Summary',
     description: 'PHE, NV, CD, Driveway status',
+  },
+  {
+    id: 'dot_turnaround',
+    icon: '🕐',
+    name: 'DOT Turnaround Trend',
+    description: 'Avg DOT review days by month, last 6 months',
   },
 ];
 
@@ -82,9 +94,18 @@ function CDStatusBadge({ status }: { status: string }) {
 }
 
 // ── Report: Status ────────────────────────────────────────────────────────────
-function StatusReport({ plans, monoFont, setSelectedPlan }: { plans: Plan[]; monoFont: string; setSelectedPlan: (p: Plan) => void }) {
+function StatusReport({ plans, monoFont, setSelectedPlan, appConfig }: {
+  plans: Plan[];
+  monoFont: string;
+  setSelectedPlan: (p: Plan) => void;
+  appConfig?: AppConfig;
+}) {
   const now = Date.now();
   const activePlans = plans.filter(p => !COMPLETED_STAGE_SET.has(p.stage));
+
+  // Overdue-with-DOT rollup — shares the util with the dashboard tile
+  // so the two surfaces never disagree on what counts as "overdue."
+  const dotOverdueRows = getPlansOverdueWithDot(activePlans, appConfig, { includeWarnings: true, now });
 
   // Stage counts
   const stageCounts = new Map<string, number>();
@@ -176,6 +197,65 @@ function StatusReport({ plans, monoFont, setSelectedPlan }: { plans: Plan[]; mon
           })}
         </div>
       </div>
+
+      {/* Overdue with DOT — shown before "At-Risk" because this list goes
+          to DOT leadership, while At-Risk goes to SFTC leads. Different
+          audience, different fix path. */}
+      {dotOverdueRows.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#991B1B', marginBottom: 8 }}>
+            🕐 Overdue with DOT ({dotOverdueRows.length})
+          </div>
+          <div style={{ border: '1px solid #FECACA', borderRadius: 8, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>LOC</th>
+                  <th style={thStyle}>Location</th>
+                  <th style={thStyle}>Type</th>
+                  <th style={thStyle}>Submitted</th>
+                  <th style={thStyle}>Days with DOT</th>
+                  <th style={thStyle}>SLA</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dotOverdueRows.map(({ plan, status }) => {
+                  const colors = DOT_LEVEL_COLORS[status.level];
+                  return (
+                    <tr
+                      key={plan.id}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setSelectedPlan(plan)}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#FEF2F2')}
+                      onMouseLeave={e => (e.currentTarget.style.background = '')}
+                    >
+                      <td style={{ ...tdStyle, fontFamily: monoFont, color: '#B91C1C', fontWeight: 700 }}>
+                        {plan.loc || plan.id}
+                      </td>
+                      <td style={tdStyle}>{plan.street1}{plan.street2 ? ` / ${plan.street2}` : ''}</td>
+                      <td style={{ ...tdStyle, color: '#64748B' }}>{plan.type}</td>
+                      <td style={{ ...tdStyle, color: '#64748B' }}>
+                        {new Date(status.submittedDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </td>
+                      <td style={tdStyle}>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                          color: colors.fg, background: colors.bg, border: `1px solid ${colors.border}`,
+                        }}>
+                          {status.daysOpen}d {status.level === 'overdue' ? '⚠' : ''}
+                        </span>
+                      </td>
+                      <td style={{ ...tdStyle, color: '#94A3B8', fontSize: 11 }}>
+                        {status.warningThreshold}/{status.overdueThreshold}d
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* At-risk plans table */}
       {atRisk.length > 0 && (
@@ -541,6 +621,183 @@ function ComplianceSummaryReport({ plans, monoFont, setSelectedPlan }: { plans: 
   );
 }
 
+// ── Report: DOT Turnaround Trend ─────────────────────────────────────────────
+// Uses completed review cycles (submitted + commentsReceived) bucketed by the
+// month DOT returned comments. Shows overall trend plus a per-plan-type breakdown
+// so leads can see whether WATCH, Standard, or Engineered cycles are driving
+// turnaround — data source is shared with the dashboard and status report.
+function DotTurnaroundReport({ plans, monoFont }: {
+  plans: Plan[];
+  monoFont: string;
+}) {
+  const buckets = React.useMemo(() => computeDotTurnaroundByMonth(plans, 6), [plans]);
+
+  // All plan types that appeared across any bucket, sorted alphabetically
+  const allTypes = React.useMemo(() => {
+    const s = new Set<string>();
+    buckets.forEach(b => Object.keys(b.byType).forEach(t => s.add(t)));
+    return Array.from(s).sort();
+  }, [buckets]);
+
+  const totalCount = buckets.reduce((sum, b) => sum + b.count, 0);
+  const overallAvg = totalCount
+    ? Math.round(
+        buckets.reduce((sum, b) => sum + (b.avgDays ?? 0) * b.count, 0) / totalCount,
+      )
+    : null;
+
+  // Simple bar color scale — green/amber/red by average days
+  const barColor = (avg: number | null): string => {
+    if (avg == null) return '#E2E8F0';
+    if (avg <= 14) return '#10B981';  // on-track
+    if (avg <= 30) return '#F59E0B';  // warning
+    return '#DC2626';                  // overdue
+  };
+
+  // Max avg across all buckets drives the bar scale (floor of 40 for readability)
+  const maxAvg = Math.max(40, ...buckets.map(b => b.avgDays ?? 0));
+
+  const thStyle: React.CSSProperties = {
+    fontSize: 10,
+    fontWeight: 700,
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    padding: '6px 10px',
+    textAlign: 'left',
+    background: '#F8FAFC',
+    borderBottom: '1px solid #E2E8F0',
+  };
+  const tdStyle: React.CSSProperties = {
+    fontSize: 12,
+    color: '#1E293B',
+    padding: '8px 10px',
+    borderBottom: '1px solid #F1F5F9',
+    verticalAlign: 'middle',
+  };
+
+  if (totalCount === 0) {
+    return (
+      <div style={{ fontSize: 13, color: '#94A3B8', fontStyle: 'italic', padding: 24, textAlign: 'center' }}>
+        No completed DOT review cycles in the last 6 months.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Summary header */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 160, padding: 14, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+            Rolling 6-month avg
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: barColor(overallAvg), fontFamily: monoFont }}>
+            {overallAvg ?? '—'}
+            <span style={{ fontSize: 13, color: '#94A3B8', fontWeight: 600, marginLeft: 4 }}>days</span>
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 160, padding: 14, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+            Completed cycles
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: '#1E293B', fontFamily: monoFont }}>
+            {totalCount}
+          </div>
+        </div>
+      </div>
+
+      {/* Monthly bar chart */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#1E293B', marginBottom: 12 }}>
+          Average Turnaround by Month
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 180, padding: '0 4px', borderBottom: '1px solid #E2E8F0' }}>
+          {buckets.map(b => {
+            const heightPct = b.avgDays != null ? (b.avgDays / maxAvg) * 100 : 0;
+            return (
+              <div key={b.monthKey} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#1E293B', fontFamily: monoFont }}>
+                  {b.avgDays != null ? `${b.avgDays}d` : '—'}
+                </div>
+                <div style={{
+                  width: '100%',
+                  height: `${heightPct}%`,
+                  minHeight: b.avgDays != null ? 2 : 0,
+                  background: barColor(b.avgDays),
+                  borderRadius: '4px 4px 0 0',
+                  transition: 'height 0.2s',
+                }} title={`${b.monthLabel}: ${b.count} cycle${b.count === 1 ? '' : 's'}, avg ${b.avgDays ?? '—'}d`} />
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 12, padding: '8px 4px 0' }}>
+          {buckets.map(b => (
+            <div key={b.monthKey} style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>{b.monthLabel}</div>
+              <div style={{ fontSize: 9, color: '#94A3B8' }}>n={b.count}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 20, fontSize: 10, color: '#64748B' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 10, height: 10, background: '#10B981', borderRadius: 2 }} /> ≤14d on-track
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 10, height: 10, background: '#F59E0B', borderRadius: 2 }} /> 15–30d warning
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 10, height: 10, background: '#DC2626', borderRadius: 2 }} /> &gt;30d overdue
+        </span>
+      </div>
+
+      {/* Per-plan-type breakdown */}
+      {allTypes.length > 0 && (
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#1E293B', marginBottom: 8 }}>
+            Breakdown by Plan Type
+          </div>
+          <div style={{ border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Plan Type</th>
+                  {buckets.map(b => (
+                    <th key={b.monthKey} style={{ ...thStyle, textAlign: 'center' }}>{b.monthLabel}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {allTypes.map(type => (
+                  <tr key={type}>
+                    <td style={{ ...tdStyle, fontWeight: 700 }}>{type}</td>
+                    {buckets.map(b => {
+                      const cell = b.byType[type];
+                      if (!cell || cell.count === 0) {
+                        return <td key={b.monthKey} style={{ ...tdStyle, textAlign: 'center', color: '#CBD5E1' }}>—</td>;
+                      }
+                      return (
+                        <td key={b.monthKey} style={{ ...tdStyle, textAlign: 'center', fontFamily: monoFont }}>
+                          <span style={{ fontWeight: 700, color: barColor(cell.avgDays) }}>{cell.avgDays}d</span>
+                          <span style={{ fontSize: 9, color: '#94A3B8', marginLeft: 4 }}>(n={cell.count})</span>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Print helper: open report in a new tab ────────────────────────────────────
 function buildPrintHTML(reportName: string, bodyHtml: string): string {
   return `<!DOCTYPE html>
@@ -571,7 +828,7 @@ ${bodyHtml}
 }
 
 // ── Main ReportsView ──────────────────────────────────────────────────────────
-export function ReportsView({ plans, filtered, currentUser, monoFont, setSelectedPlan, setView }: ReportsViewProps) {
+export function ReportsView({ plans, filtered, currentUser, monoFont, setSelectedPlan, setView, appConfig }: ReportsViewProps) {
   const [selected, setSelected] = useState<ReportId>('status');
 
   const selectedTemplate = REPORT_TEMPLATES.find(t => t.id === selected)!;
@@ -677,13 +934,16 @@ export function ReportsView({ plans, filtered, currentUser, monoFont, setSelecte
           }}
         >
           {selected === 'status' && (
-            <StatusReport plans={filtered} monoFont={monoFont} setSelectedPlan={setSelectedPlan} />
+            <StatusReport plans={filtered} monoFont={monoFont} setSelectedPlan={setSelectedPlan} appConfig={appConfig} />
           )}
           {selected === 'cd_concurrence' && (
             <CDConcurrenceReport plans={filtered} monoFont={monoFont} setSelectedPlan={setSelectedPlan} />
           )}
           {selected === 'compliance_summary' && (
             <ComplianceSummaryReport plans={filtered} monoFont={monoFont} setSelectedPlan={setSelectedPlan} />
+          )}
+          {selected === 'dot_turnaround' && (
+            <DotTurnaroundReport plans={filtered} monoFont={monoFont} />
           )}
         </div>
       </div>

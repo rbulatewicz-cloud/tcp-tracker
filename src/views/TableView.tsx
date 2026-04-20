@@ -2,9 +2,10 @@ import React from 'react';
 import { Spinner } from '../components/Spinner';
 import { daysFromToday, daysBetween } from '../utils/plans';
 import { COMPLETED_STAGES, APPROVED_STAGES, ALL_STAGES, STAGE_FILTER_OPTIONS } from '../constants';
-import { UserRole, Plan, Stage, FilterState, SortConfig, ColumnDef, LoadingState, User, NoiseVariance } from '../types';
+import { UserRole, Plan, Stage, FilterState, SortConfig, ColumnDef, LoadingState, User, NoiseVariance, AppConfig } from '../types';
 import { detectComplianceTriggers } from '../utils/compliance';
 import { getVarianceExpiryStatus } from '../services/varianceService';
+import { getDotOverdueStatus, DOT_LEVEL_COLORS } from '../utils/dotOverdue';
 
 
 interface TableViewProps {
@@ -39,6 +40,7 @@ interface TableViewProps {
   setSelectedPlan: (plan: Plan | null) => void;
   isDark?: boolean;
   libraryVariances?: NoiseVariance[];
+  appConfig?: AppConfig | null;
 }
 
 // ── LOC grouping helpers ───────────────────────────────────────────────────────
@@ -85,6 +87,7 @@ function TableView({
   setSelectedPlan,
   isDark,
   libraryVariances = [],
+  appConfig,
 }: TableViewProps) {
   const [statusDateModal, setStatusDateModal] = React.useState<{ status: string; date: string } | null>(null);
   const [showLegend, setShowLegend] = React.useState(false);
@@ -560,6 +563,8 @@ function TableView({
                 : plan.submitDate && plan.approvedDate
                   ? daysBetween(plan.submitDate, plan.approvedDate)
                   : null;
+              // DOT overdue status — single source of truth (see src/utils/dotOverdue.ts)
+              const dotStatus = getDotOverdueStatus(plan, appConfig);
               const isSelected = selectedPlanIds.includes(plan.id);
               const isExpanded = groupKey ? expandedGroups.has(groupKey) : false;
               const rowBg = isSelected ? (isDark ? '#1C3B5A' : '#F0F9FF')
@@ -744,9 +749,37 @@ function TableView({
                       case 'status':
                         return (
                           <td key={col.id} onClick={() => setSelectedPlan(plan)} style={{ padding: '10px 8px' }}>
-                            <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: 9, fontWeight: 700, background: `${stage.color}18`, color: stage.color, letterSpacing: 0.3 }}>
-                              {stage.label.toUpperCase()}
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                              <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: 9, fontWeight: 700, background: `${stage.color}18`, color: stage.color, letterSpacing: 0.3 }}>
+                                {stage.label.toUpperCase()}
+                              </span>
+                              {dotStatus && dotStatus.level !== 'ok' && (() => {
+                                const colors = DOT_LEVEL_COLORS[dotStatus.level];
+                                const icon = dotStatus.level === 'overdue' ? '🔴' : '🟡';
+                                const title = `DOT ${dotStatus.level === 'overdue' ? 'overdue' : 'at risk'} — ${dotStatus.daysOpen} days with DOT (warn ${dotStatus.warningThreshold} / target ${dotStatus.overdueThreshold}). Submitted ${dotStatus.submittedDate}.`;
+                                return (
+                                  <span
+                                    title={title}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 3,
+                                      padding: '3px 6px',
+                                      borderRadius: 4,
+                                      fontSize: 9,
+                                      fontWeight: 700,
+                                      background: colors.bg,
+                                      color: colors.fg,
+                                      border: `1px solid ${colors.border}`,
+                                      letterSpacing: 0.3,
+                                    }}
+                                  >
+                                    <span style={{ fontSize: 8 }}>{icon}</span>
+                                    DOT {dotStatus.daysOpen}D
+                                  </span>
+                                );
+                              })()}
+                            </div>
                           </td>
                         );
                       case 'submittedToDOT':

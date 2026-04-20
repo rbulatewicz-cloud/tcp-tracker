@@ -1,6 +1,7 @@
 import React from 'react';
 import { daysBetween } from '../utils/plans';
-import { Plan, ReportTemplate, FilterState } from '../types';
+import { getPlansOverdueWithDot, DOT_LEVEL_COLORS } from '../utils/dotOverdue';
+import { Plan, ReportTemplate, FilterState, AppConfig } from '../types';
 import { CLOCK_TARGETS } from '../constants';
 import type { GlobalLogEntry } from '../services/logService';
 
@@ -15,6 +16,7 @@ interface MetricsViewProps {
   setView: (view: string) => void;
   setFilter: React.Dispatch<React.SetStateAction<FilterState>>;
   reportTemplate: ReportTemplate;
+  appConfig?: AppConfig;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -373,6 +375,78 @@ function ComplianceHealthCards({ filtered, setView }: { filtered: any[]; setView
   );
 }
 
+// ── Overdue-with-DOT Table ────────────────────────────────────────────────────
+// Dedicated table for "DOT is sitting on us" — separate from the compliance
+// NeedsAttentionTable because the audience (Garrett / MOT) and the fix path
+// (nudge DOT, not us) are different.
+
+function DotOverdueTable({ rows, monoFont, setSelectedPlan }: {
+  rows: ReturnType<typeof getPlansOverdueWithDot>;
+  monoFont: string;
+  setSelectedPlan: (p: Plan | null) => void;
+}) {
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #FECACA', padding: 20, marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: '#991B1B', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+          🕐 Overdue with DOT · {rows.length}
+        </div>
+        <div style={{ fontSize: 10, color: '#94A3B8' }}>
+          SLA thresholds tunable in Settings → Workflow
+        </div>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid #F1F5F9' }}>
+            {['LOC', 'Location', 'Type', 'Cycle', 'Submitted', 'Days with DOT', 'SLA'].map(h => (
+              <th key={h} style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.4px', padding: '4px 8px', textAlign: 'left' }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ plan, status }, i) => {
+            const colors = DOT_LEVEL_COLORS[status.level];
+            const cycleLabel =
+              status.cycleType === 'dot_review'      ? `Cycle ${status.cycleNumber}`
+              : status.cycleType === 'loc_review'    ? `LOC review ${status.cycleNumber}`
+              : /* resubmit_review */                  `Resubmit ${status.cycleNumber}`;
+            return (
+              <tr
+                key={plan.id}
+                onClick={() => setSelectedPlan(plan)}
+                style={{ borderBottom: '1px solid #F8FAFC', cursor: 'pointer', background: i % 2 === 0 ? '#fff' : '#FAFBFC' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#FEF2F2')}
+                onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? '#fff' : '#FAFBFC')}
+              >
+                <td style={{ padding: '8px 8px', fontFamily: monoFont, fontSize: 11, fontWeight: 700, color: '#B91C1C' }}>{plan.loc || plan.id}</td>
+                <td style={{ padding: '8px 8px', fontSize: 12, color: '#475569' }}>
+                  {plan.street1}{plan.street2 ? ` / ${plan.street2}` : ''}
+                </td>
+                <td style={{ padding: '8px 8px', fontSize: 11, color: '#64748B' }}>{plan.type}</td>
+                <td style={{ padding: '8px 8px', fontSize: 11, color: '#64748B' }}>{cycleLabel}</td>
+                <td style={{ padding: '8px 8px', fontSize: 11, color: '#64748B' }}>
+                  {new Date(status.submittedDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </td>
+                <td style={{ padding: '8px 8px' }}>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                    color: colors.fg, background: colors.bg, border: `1px solid ${colors.border}`,
+                  }}>
+                    {status.daysOpen}d {status.level === 'overdue' ? '⚠' : ''}
+                  </span>
+                </td>
+                <td style={{ padding: '8px 8px', fontSize: 10, color: '#94A3B8' }}>
+                  {status.warningThreshold}/{status.overdueThreshold}d
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ── Overdue / Needs Attention Table ───────────────────────────────────────────
 
 function NeedsAttentionTable({ filtered, monoFont, setSelectedPlan, setView }: {
@@ -608,12 +682,17 @@ function AvgCycleTimes({ filtered, monoFont }: { filtered: any[]; monoFont: stri
 // ── MetricsView ───────────────────────────────────────────────────────────────
 
 function MetricsView({
-  filtered, allPlans, globalLogs, metrics, monoFont, TODAY, setSelectedPlan, setView, setFilter,
+  filtered, allPlans, globalLogs, metrics, monoFont, TODAY, setSelectedPlan, setView, setFilter, appConfig,
 }: MetricsViewProps) {
 
   const INACTIVE = new Set(['approved','plan_approved','implemented','tcp_approved_final','closed','cancelled','expired']);
   const activePlans = filtered.filter(p => !INACTIVE.has(p.stage) && !p.isHistorical);
   const atRiskCount = activePlans.filter(p => p.needByDate && Math.ceil((new Date(p.needByDate + 'T00:00:00').getTime() - TODAY.getTime()) / 86_400_000) <= 14).length;
+
+  // DOT overdue rollup — uses SLA thresholds from Settings > Workflow.
+  const dotOverdueRows = getPlansOverdueWithDot(activePlans, appConfig, { includeWarnings: true });
+  const dotOverdueCount = dotOverdueRows.filter(r => r.status.level === 'overdue').length;
+  const dotWarningCount = dotOverdueRows.filter(r => r.status.level === 'warning').length;
 
   const pendingCompliance = filtered.filter(p => {
     const phe = p.compliance?.phe;
@@ -665,7 +744,7 @@ function MetricsView({
       </div>
 
       {/* ── KPI row ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12, marginBottom: 16 }}>
         <KPICard
           label="Active Plans" value={activePlans.length}
           delta={atRiskCount > 0 ? `↑ ${atRiskCount} at risk (≤14d)` : 'None at risk'}
@@ -673,6 +752,26 @@ function MetricsView({
           barPct={metrics.total > 0 ? (activePlans.length / metrics.total) * 100 : 0}
           accent="#1D4ED8"
           onClick={() => { setFilter(f => ({ ...f, quickFilter: 'all' })); setView('table'); }}
+        />
+        {/* Overdue-with-DOT — the single loudest "DOT is sitting on us" signal.
+            Positioned second because the whole dashboard row reads left-to-right
+            as "what's in motion → what's stuck → what's done". */}
+        <KPICard
+          label="Overdue with DOT" value={dotOverdueCount}
+          delta={
+            dotOverdueCount === 0 && dotWarningCount === 0 ? 'DOT responding on time'
+            : dotOverdueCount > 0 && dotWarningCount > 0   ? `+ ${dotWarningCount} at risk`
+            : dotWarningCount > 0                          ? `${dotWarningCount} approaching SLA`
+            : 'Action needed'
+          }
+          deltaType={dotOverdueCount > 0 ? 'up' : dotWarningCount > 0 ? 'neutral' : 'down'}
+          barPct={
+            dotOverdueRows.length > 0
+              ? Math.min((dotOverdueCount / Math.max(dotOverdueRows.length, 1)) * 100, 100)
+              : 0
+          }
+          accent="#DC2626"
+          onClick={() => { setFilter(f => ({ ...f, quickFilter: 'overdue_dot' })); setView('table'); }}
         />
         <KPICard
           label="Pending PHE / NV" value={pendingCompliance.length}
@@ -687,7 +786,7 @@ function MetricsView({
           delta={cdOverdueCount === 0 ? 'All CDs current' : cdWaitingCount > 0 ? `+${cdWaitingCount} waiting` : 'Action needed'}
           deltaType={cdOverdueCount > 0 ? 'up' : 'neutral'}
           barPct={cdOverdueCount > 0 ? Math.min((cdOverdueCount / Math.max(cdOverdueCount + cdWaitingCount, 1)) * 100, 100) : 0}
-          accent="#DC2626"
+          accent="#B45309"
           onClick={() => { setFilter(f => ({ ...f, quickFilter: 'needs_compliance' })); setView('table'); }}
         />
         <KPICard
@@ -702,6 +801,16 @@ function MetricsView({
 
       {/* ── Plan Type Breakdown ── */}
       <PlanTypeSummary filtered={filtered} setView={setView} setFilter={setFilter} />
+
+      {/* ── Overdue with DOT ── prime real estate: this is the one metric
+          Garrett can actually bring to a DOT check-in and get unstuck on. */}
+      {dotOverdueRows.length > 0 && (
+        <DotOverdueTable
+          rows={dotOverdueRows}
+          monoFont={monoFont}
+          setSelectedPlan={setSelectedPlan}
+        />
+      )}
 
       {/* ── Main 2-col layout ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
