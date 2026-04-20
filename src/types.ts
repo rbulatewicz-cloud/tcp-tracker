@@ -732,8 +732,12 @@ export interface PlanForm {
   impact_krail: boolean;
   impact_driveway: boolean;
   impact_fullClosure: boolean;
+  impact_sidewalkClosure?: boolean;
+  impact_crosswalkClosure?: boolean;
   impact_busStop: boolean;
   impact_transit: boolean;
+  impact_i5Freeway?: boolean;       // Caltrans encroachment — triggers future MOT workflow
+  impact_uprrBridge?: boolean;      // UPRR encroachment — triggers future MOT workflow
   work_hours?: WorkHours;
   phe_justification?: string;   // "Why is peak hour work required?" — captured at request time
   revisionSuffix?: string;      // ".1", ".2" — set when submitting a renewal
@@ -810,8 +814,13 @@ export interface Plan {
   impact_krail: boolean;
   impact_driveway: boolean;
   impact_fullClosure: boolean;
+  impact_sidewalkClosure?: boolean;
+  impact_crosswalkClosure?: boolean;
   impact_busStop: boolean;
   impact_transit: boolean;
+  // Encroachments — future MOT workflows will key off these (see project_deferred_features.md).
+  impact_i5Freeway?: boolean;
+  impact_uprrBridge?: boolean;
 
   // Documents
   attachments: { name: string; data: string }[];   // draft attachments from initial request
