@@ -1,4 +1,4 @@
-import { doc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, deleteDoc, writeBatch, deleteField } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase';
@@ -766,3 +766,40 @@ export const handleClearPlans = async (
     setClearPlansConfirm(false);
   }
 };
+
+// ── Sibling plan groups ──────────────────────────────────────────────────────
+// Sibling LOCs cover the same work at the same time (e.g. phased permits).
+// Members share a single `planGroupId`, which lets downstream flows (driveway
+// outreach, queue grouping, etc.) treat them as one unit of outreach.
+
+/** Generate a short, stable group id. */
+function newPlanGroupId(): string {
+  return 'grp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+/**
+ * Link the given plans as siblings in a single planGroup.
+ * - If any plan is already in a group, all passed plans (plus any existing
+ *   group members) are merged into that group id.
+ * - If none are grouped yet, a fresh group id is created.
+ */
+export async function linkPlansAsSiblings(
+  planIds: string[],
+  currentGroupIds: (string | undefined)[],
+): Promise<string> {
+  if (planIds.length < 2) throw new Error('Need at least two plans to form a group');
+  const existing = currentGroupIds.filter(Boolean) as string[];
+  // If multiple pre-existing groups collide, pick the first and caller is
+  // responsible for merging the rest (we don't automatically pull in every
+  // member of a colliding group — keep behaviour conservative).
+  const groupId = existing[0] ?? newPlanGroupId();
+  const batch = writeBatch(db);
+  for (const id of planIds) batch.update(doc(db, 'plans', id), { planGroupId: groupId });
+  await batch.commit();
+  return groupId;
+}
+
+/** Remove a single plan from its sibling group. */
+export async function unlinkPlanFromGroup(planId: string): Promise<void> {
+  await updateDoc(doc(db, 'plans', planId), { planGroupId: deleteField() });
+}

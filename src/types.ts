@@ -779,6 +779,12 @@ export interface Plan {
   revisionSuffix?: string;   // ".1", ".2" for renewals after expiry
   parentLocId?: string;      // for renewals, points to original LOC record
 
+  // Sibling grouping — a set of LOCs that cover the same work at the same
+  // time (e.g. phased permits). Plans in the same group share driveway
+  // outreach: a single notice covers all members. All members carry the
+  // same `planGroupId`. Distinct from parentLocId (renewals).
+  planGroupId?: string;
+
   // Who requested this plan
   requestedBy: string;
 
