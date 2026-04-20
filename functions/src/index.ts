@@ -14,8 +14,11 @@
  */
 
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { onDocumentWritten } from 'firebase-functions/v2/firestore';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp, FieldValue } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 
@@ -325,5 +328,137 @@ export const dailyComplianceAlerts = onSchedule(
     // 3. Flush all writes
     await Promise.all(writes);
     console.log(`Compliance alert run complete. ${writes.length} operations queued.`);
+  }
+);
+
+// ── Custom claims sync ────────────────────────────────────────────────────────
+//
+// Whenever a `users_private/{email}` doc is written, mirror the `role` field
+// into the Firebase Auth user's custom claims. Firestore rules can then gate
+// writes on `request.auth.token.role` — which the client cannot spoof, unlike
+// a role read from a doc the client also writes.
+//
+// Bootstrap admin: `r.bulatewicz@gmail.com` is always granted ADMIN, even if
+// its `users_private` doc hasn't been created yet or says otherwise. This
+// mirrors the client-side override in `src/hooks/useAuth.ts` so the two agree.
+
+const BOOTSTRAP_ADMIN_EMAIL = 'r.bulatewicz@gmail.com';
+const VALID_ROLES = ['GUEST', 'SFTC', 'MOT', 'CR', 'DOT', 'METRO', 'ADMIN'] as const;
+type Role = typeof VALID_ROLES[number];
+
+function normalizeRole(raw: unknown, email: string): Role {
+  if (email.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL) return 'ADMIN';
+  const s = typeof raw === 'string' ? raw.toUpperCase() : '';
+  return (VALID_ROLES as readonly string[]).includes(s) ? (s as Role) : 'GUEST';
+}
+
+/** Apply claims for one user. Looks up the Auth user by email, sets { role }, bumps claimsUpdatedAt. */
+async function applyClaimsForEmail(email: string, role: Role): Promise<void> {
+  const auth = getAuth();
+  let uid: string;
+  try {
+    const rec = await auth.getUserByEmail(email);
+    uid = rec.uid;
+  } catch (e) {
+    // User hasn't signed in yet — no Auth record to attach claims to.
+    // Claims will be set next time their users_private doc is written after login.
+    console.log(`[claims] no Auth user for ${email} yet; skipping`);
+    return;
+  }
+  await auth.setCustomUserClaims(uid, { role });
+  // Bump a server timestamp so the client can detect "claims changed" and force token refresh.
+  await db.collection('users_private').doc(email).set(
+    { claimsUpdatedAt: FieldValue.serverTimestamp(), claimsRole: role },
+    { merge: true }
+  );
+  console.log(`[claims] ${email} → ${role}`);
+}
+
+/**
+ * Trigger: syncs role claim when a `users_private/{email}` doc is written.
+ * Deletes clear claims; creates/updates set them.
+ */
+export const syncUserClaims = onDocumentWritten(
+  {
+    document: 'users_private/{email}',
+    database: DATABASE_ID,
+    region: 'us-central1',
+  },
+  async (event) => {
+    const email = event.params.email;
+    const after = event.data?.after?.data();
+    const before = event.data?.before?.data();
+
+    // Delete case — clear claims on the Auth user (if any).
+    if (!after) {
+      try {
+        const rec = await getAuth().getUserByEmail(email);
+        await getAuth().setCustomUserClaims(rec.uid, null);
+        console.log(`[claims] cleared for ${email} (doc deleted)`);
+      } catch {
+        // No auth user — nothing to do.
+      }
+      return;
+    }
+
+    const nextRole = normalizeRole(after.role, email);
+    const prevRole = before ? normalizeRole(before.role, email) : null;
+
+    // Skip if role unchanged AND we aren't creating initial claims.
+    // (Detect "initial claims" via missing claimsUpdatedAt — this also guards against
+    // infinite loops, since this trigger writes claimsUpdatedAt itself on the same doc.)
+    if (prevRole === nextRole && after.claimsUpdatedAt) return;
+
+    await applyClaimsForEmail(email, nextRole);
+  }
+);
+
+/**
+ * Callable: admin-only one-shot backfill. Iterates every users_private doc
+ * and re-applies custom claims. Run this once before deploying the new rules
+ * so every existing user has a valid `role` claim on their next token refresh.
+ *
+ * Also ensures the bootstrap admin email is claimed even if no doc exists yet.
+ *
+ * Invoke from the app (dev console) or a quick Node script:
+ *   const fn = httpsCallable(functions, 'backfillAllClaims');
+ *   await fn();
+ */
+export const backfillAllClaims = onCall(
+  { region: 'us-central1' },
+  async (request) => {
+    const caller = request.auth;
+    if (!caller) throw new HttpsError('unauthenticated', 'Sign-in required.');
+
+    // Allow the caller if they're already ADMIN via claim, OR if they're the
+    // bootstrap admin (needed for the very first run, before any claims exist).
+    const callerEmail = (caller.token.email || '').toLowerCase();
+    const isCallerAdmin =
+      caller.token.role === 'ADMIN' || callerEmail === BOOTSTRAP_ADMIN_EMAIL;
+    if (!isCallerAdmin) {
+      throw new HttpsError('permission-denied', 'Admin only.');
+    }
+
+    const snap = await db.collection('users_private').get();
+    let count = 0;
+    for (const d of snap.docs) {
+      const role = normalizeRole(d.data().role, d.id);
+      await applyClaimsForEmail(d.id, role);
+      count++;
+    }
+
+    // Guarantee bootstrap admin has a doc + claim even if missing.
+    const bootstrapSnap = await db.collection('users_private').doc(BOOTSTRAP_ADMIN_EMAIL).get();
+    if (!bootstrapSnap.exists) {
+      await db.collection('users_private').doc(BOOTSTRAP_ADMIN_EMAIL).set(
+        { role: 'ADMIN', uid: '', createdBy: 'backfillAllClaims' },
+        { merge: true }
+      );
+      await applyClaimsForEmail(BOOTSTRAP_ADMIN_EMAIL, 'ADMIN');
+      count++;
+    }
+
+    console.log(`[backfill] processed ${count} users`);
+    return { processed: count };
   }
 );

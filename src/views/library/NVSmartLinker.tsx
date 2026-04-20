@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { CheckCircle, Link2, SkipForward, Zap, AlertTriangle, Clock, Tag, MapPin, Calendar, RefreshCw, Eye, X, LayoutList, Layers, Wrench, Pin } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { CheckCircle, Link2, SkipForward, Zap, AlertTriangle, Clock, Tag, MapPin, Calendar, RefreshCw, Eye, X, LayoutList, Layers, Pin } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { Plan, NoiseVariance, PlanCompliance, NoiseVarianceTrack } from '../../types';
@@ -9,106 +9,18 @@ import { fmtDate as fmt } from '../../utils/plans';
 import { showToast } from '../../lib/toast';
 import { writeGlobalLog } from '../../services/logService';
 import { sortStreetsByCorridorOrder, findGapsInCoverage, findExtrasOutsideCorridors, getStreetsBetween } from '../../utils/corridor';
-
-// ── Scoring ────────────────────────────────────────────────────────────────────
-
-interface MatchSignals {
-  segment: boolean;
-  scope: boolean;
-  date: boolean;
-  hours: boolean;
-  streets: boolean;   // structured street match from coveredStreets
-  location: boolean;  // soft text match from scopeLanguage (fallback)
-}
-
-interface MatchResult {
-  variance: NoiseVariance;
-  score: number;
-  signals: MatchSignals;
-}
-
-function normalizeStreet(s: string): string {
-  return s.toLowerCase()
-    .replace(/\b(street|st|boulevard|blvd|avenue|ave|road|rd|drive|dr|lane|ln|way|wy)\b\.?/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function streetMatch(planStreet: string | undefined, varianceStreets: string[]): boolean {
-  if (!planStreet || varianceStreets.length === 0) return false;
-  const planNorm = normalizeStreet(planStreet);
-  return varianceStreets.some(vs => {
-    const vsNorm = normalizeStreet(vs);
-    return vsNorm === planNorm || vsNorm.includes(planNorm) || planNorm.includes(vsNorm);
-  });
-}
-
-function scoreMatch(plan: Plan, variance: NoiseVariance): MatchResult {
-  let score = 0;
-  const signals: MatchSignals = { segment: false, scope: false, date: false, hours: false, streets: false, location: false };
-
-  // 1. Segment match (+5) — primary location anchor
-  if (plan.segment && variance.coveredSegments.includes(plan.segment)) {
-    score += 5; signals.segment = true;
-  }
-
-  // 2. Scope match (+2) — generic variances cover everything; correctness check
-  if (variance.isGeneric || (plan.scope && variance.coveredScopes.includes(plan.scope))) {
-    score += 2; signals.scope = true;
-  }
-
-  // 3. Date validity (+1) — soft freshness hint; variances get renewed so weight is low
-  if (plan.needByDate && variance.validFrom && variance.validThrough) {
-    const needBy = new Date(plan.needByDate);
-    const from   = new Date(variance.validFrom);
-    const thru   = new Date(variance.validThrough);
-    if (needBy >= from && needBy <= thru) { score += 1; signals.date = true; }
-  }
-
-  // 4. Hours compatibility (+2) — plan does night work, variance covers nights
-  const shift = plan.work_hours?.shift;
-  const planHasNight = shift === 'nighttime' || shift === 'both' || shift === 'continuous';
-  const varCoversNight = variance.applicableHours === 'nighttime' || variance.applicableHours === '24_7' || variance.applicableHours === 'both';
-  if (planHasNight && varCoversNight) { score += 2; signals.hours = true; }
-
-  // 5a. Structured street match (+4) — AI-extracted + human-verified streets
-  // plan.expandedStreets lists all corridor cross streets between street1→street2, improving range match accuracy
-  // variance.verifiedStreets are human-confirmed from PDF — treated with same confidence as coveredStreets
-  const varStreets = [
-    ...(variance.coveredStreets ?? []),
-    ...(variance.verifiedStreets ?? []),
-  ].filter((s, i, arr) => arr.indexOf(s) === i); // dedupe
-  const planStreets = [plan.street1, plan.street2, ...(plan.expandedStreets ?? [])].filter((s): s is string => !!s);
-  if (varStreets.length > 0) {
-    if (planStreets.some(ps => streetMatch(ps, varStreets))) {
-      score += 4; signals.streets = true;
-    }
-  } else {
-    // 5b. Soft text match fallback (+1) — scopeLanguage text search (pre-rescan data)
-    const scopeLang = (variance.scopeLanguage || '').toLowerCase();
-    if (planStreets.some(s => scopeLang.includes(s.toLowerCase()))) {
-      score += 1; signals.location = true;
-    }
-  }
-
-  return { variance, score, signals };
-}
-
-function confidenceLabel(score: number): { label: string; color: string; bg: string } {
-  if (score >= 10) return { label: 'Strong match',    color: '#166534', bg: '#DCFCE7' };
-  if (score >= 6)  return { label: 'Possible match',  color: '#92400E', bg: '#FEF3C7' };
-  if (score >= 3)  return { label: 'Weak match',      color: '#991B1B', bg: '#FEE2E2' };
-  return              { label: 'No match signals', color: '#64748B', bg: '#F1F5F9' };
-}
+import {
+  MatchResult,
+  scoreMatch,
+  confidenceLabel,
+  getLinkedVarianceIds,
+} from './NVSmartLinker/scoring';
+import { SignalBadge } from './NVSmartLinker/SignalBadge';
+import { VarianceCard } from './NVSmartLinker/VarianceCard';
+import { RescanTab } from './NVSmartLinker/RescanTab';
+import { ReviewTab } from './NVSmartLinker/ReviewTab';
 
 // ── Multi-variance link helpers ────────────────────────────────────────────────
-
-/** Reads both legacy single-link and new multi-link fields transparently */
-function getLinkedVarianceIds(track: { linkedVarianceIds?: string[]; linkedVarianceId?: string }): string[] {
-  if (track.linkedVarianceIds && track.linkedVarianceIds.length > 0) return track.linkedVarianceIds;
-  if (track.linkedVarianceId) return [track.linkedVarianceId];
-  return [];
-}
 
 async function applyLink(plan: Plan, variance: NoiseVariance) {
   const rootId = variance.parentVarianceId ?? variance.id;
@@ -140,193 +52,6 @@ async function applyLink(plan: Plan, variance: NoiseVariance) {
   );
 }
 
-
-// ── Sub-components ─────────────────────────────────────────────────────────────
-
-function SignalBadge({ active, label, icon }: { active: boolean; label: string; icon: React.ReactNode }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
-        active
-          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-          : 'bg-slate-50 text-slate-400 border-slate-200 opacity-50'
-      }`}
-    >
-      {active ? <CheckCircle size={9} /> : icon}
-      {label}
-    </span>
-  );
-}
-
-function VarianceCard({
-  result,
-  onLink,
-  linking,
-}: {
-  result: MatchResult;
-  onLink: () => void;
-  linking: boolean;
-}) {
-  const { variance, score, signals } = result;
-  const conf = confidenceLabel(score);
-  const expiryStatus = getVarianceExpiryStatus(variance);
-  const expiryDays = daysUntilExpiry(variance);
-  const isExpired = expiryStatus === 'expired';
-
-  return (
-    <div className={`border rounded-lg p-3 transition-all ${
-      score >= 10 ? 'border-emerald-200 bg-emerald-50/30' :
-      score >= 6  ? 'border-amber-200 bg-amber-50/20' :
-                    'border-slate-200 bg-white'
-    }`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          {/* Top row: score + permit + expiry */}
-          <div className="flex items-center gap-2 flex-wrap mb-1.5">
-            <span
-              className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-              style={{ background: conf.bg, color: conf.color }}
-            >
-              {score}pt — {conf.label}
-            </span>
-            <span className="text-[11px] font-semibold text-slate-700">{variance.permitNumber || variance.title || 'Untitled'}</span>
-            {isExpired ? (
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">Expired</span>
-            ) : (
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
-                {expiryDays !== null ? `${expiryDays}d left` : fmt(variance.validThrough)}
-              </span>
-            )}
-          </div>
-
-          {/* Segments + date range */}
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 mb-1.5">
-            <span className="flex items-center gap-1">
-              <MapPin size={10} />
-              {variance.isGeneric ? 'All segments' : (variance.coveredSegments.join(', ') || '—')}
-            </span>
-            <span>·</span>
-            <span className="flex items-center gap-1">
-              <Calendar size={10} />
-              {fmt(variance.validFrom)} – {fmt(variance.validThrough)}
-            </span>
-            {variance.isGeneric && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200">Generic</span>
-            )}
-          </div>
-
-          {/* Street limits — four-way: verified (green) / in-range (blue) / extra (violet) / gap (amber) */}
-          {((variance.corridors ?? []).length > 0 || (variance.coveredStreets ?? []).length > 0 || (variance.verifiedStreets ?? []).length > 0) && (() => {
-            const rawStreets = variance.coveredStreets ?? [];
-            const corridors  = variance.corridors ?? [];
-            const hasCorridors = corridors.length > 0;
-            const verifiedSet = new Set((variance.verifiedStreets ?? []).map(s => s.toLowerCase()));
-            const verifiedList = sortStreetsByCorridorOrder(variance.verifiedStreets ?? []);
-
-            const allGaps   = findGapsInCoverage(corridors, rawStreets);
-            const allExtras = findExtrasOutsideCorridors(corridors, rawStreets);
-            const extraSet  = new Set(allExtras.map(s => s.toLowerCase()));
-
-            // Exclude verified streets from unresolved gaps/extras
-            const gaps        = allGaps.filter(s => !verifiedSet.has(s.toLowerCase()));
-            const extrasSorted = sortStreetsByCorridorOrder(allExtras.filter(s => !verifiedSet.has(s.toLowerCase())));
-            const inRange     = sortStreetsByCorridorOrder(rawStreets.filter(s => !extraSet.has(s.toLowerCase()) && !verifiedSet.has(s.toLowerCase())));
-
-            return (
-              <div className="mb-1.5">
-                {/* Corridor range label */}
-                {hasCorridors && (
-                  <div className="flex flex-col gap-0.5 mb-1">
-                    {corridors.map((c, i) => (
-                      <div key={i} className="flex items-center gap-1 text-[10px]">
-                        <MapPin size={8} className="text-sky-500 flex-shrink-0" />
-                        <span className="font-bold text-sky-700">{c.mainStreet}</span>
-                        <span className="text-slate-400">from</span>
-                        <span className="font-semibold text-sky-600">{c.from}</span>
-                        <span className="text-slate-400">to</span>
-                        <span className="font-semibold text-sky-600">{c.to}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {/* Street chips */}
-                {(verifiedList.length > 0 || inRange.length > 0 || extrasSorted.length > 0 || gaps.length > 0) && (
-                  <div className="flex flex-wrap gap-1 items-center">
-                    {/* Green: manually verified from PDF */}
-                    {verifiedList.map((st, i) => (
-                      <span key={`v-${i}`}
-                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-300"
-                        title="Verified from PDF">
-                        <CheckCircle size={8} className="flex-shrink-0 text-emerald-500" />
-                        {st}
-                      </span>
-                    ))}
-                    {/* Blue: within stated corridor range */}
-                    {inRange.map((st, i) => (
-                      <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
-                        {st}
-                      </span>
-                    ))}
-                    {/* Violet dashed: outside stated range — possible AI over-extraction */}
-                    {hasCorridors && extrasSorted.map((st, i) => (
-                      <span key={`extra-${i}`}
-                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-50 text-violet-600 border border-dashed border-violet-300"
-                        title="Outside stated corridor range — verify in PDF">
-                        <AlertTriangle size={8} className="opacity-60 flex-shrink-0" />
-                        {st}
-                      </span>
-                    ))}
-                    {/* Amber dashed: missing from range — possible AI under-extraction */}
-                    {gaps.map((st, i) => (
-                      <span key={`gap-${i}`}
-                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-600 border border-dashed border-amber-300"
-                        title="Within stated range but not extracted — verify in PDF">
-                        <AlertTriangle size={8} className="flex-shrink-0" />
-                        {st}
-                      </span>
-                    ))}
-                    {(extrasSorted.length > 0 || gaps.length > 0) && (
-                      <span className="text-[9px] font-semibold text-slate-400 flex items-center gap-0.5 ml-0.5">
-                        {extrasSorted.length > 0 && <span className="text-violet-500">{extrasSorted.length} outside range</span>}
-                        {extrasSorted.length > 0 && gaps.length > 0 && <span className="mx-0.5">·</span>}
-                        {gaps.length > 0 && <span className="text-amber-500">{gaps.length} possible gap{gaps.length !== 1 ? 's' : ''}</span>}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Signal badges */}
-          <div className="flex flex-wrap gap-1">
-            <SignalBadge active={signals.segment}  label="Segment"  icon={<MapPin size={9} />} />
-            <SignalBadge active={signals.scope}    label="Scope"    icon={<Tag size={9} />} />
-            <SignalBadge active={signals.date}     label="Date"     icon={<Calendar size={9} />} />
-            <SignalBadge active={signals.hours}    label="Hours"    icon={<Clock size={9} />} />
-            <SignalBadge active={signals.streets}  label="Streets"  icon={<MapPin size={9} />} />
-            {!signals.streets && (
-              <SignalBadge active={signals.location} label="Text match" icon={<MapPin size={9} />} />
-            )}
-          </div>
-        </div>
-
-        <button
-          onClick={onLink}
-          disabled={linking}
-          className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-            linking
-              ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              : 'bg-slate-900 text-white hover:bg-slate-700 cursor-pointer'
-          }`}
-        >
-          <Link2 size={11} />
-          {linking ? 'Linking…' : 'Link'}
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
@@ -594,201 +319,28 @@ export function NVSmartLinker({ plans, setSelectedPlan }: { plans: Plan[]; setSe
 
       {/* ── RESCAN TAB ── */}
       {activeTab === 'rescan' && (
-        <div className="max-w-xl">
-          <div className="mb-4">
-            <h3 className="text-sm font-bold text-slate-800 mb-1">Re-scan all variance documents</h3>
-            <p className="text-[12px] text-slate-500 leading-relaxed">
-              Re-runs the AI extraction on every variance PDF to populate the new <strong>coveredStreets</strong> field.
-              This improves match scores in the Link Plans tab. Submission tracking data (permit dates, check numbers) is never overwritten.
-            </p>
-          </div>
-
-          {/* Variance list */}
-          <div className="border border-slate-200 rounded-xl overflow-hidden mb-4">
-            <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-600">{activeVariances.length} active variances</span>
-              <span className="text-[11px] text-slate-400">
-                {activeVariances.filter(v => (v.coveredStreets ?? []).length > 0).length} already have street data
-              </span>
-            </div>
-            <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
-              {activeVariances.map(v => {
-                const hasStreets = (v.coveredStreets ?? []).length > 0;
-                return (
-                  <div key={v.id} className="flex items-center gap-3 px-4 py-2.5">
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${hasStreets ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[11px] font-semibold text-slate-700 truncate">{v.permitNumber || v.title}</div>
-                      {hasStreets ? (
-                        <div className="flex flex-wrap gap-0.5 mt-0.5">{(v.coveredStreets ?? []).map((s,i) => <span key={i} className="px-1 py-0.5 rounded text-[9px] font-semibold bg-sky-50 text-sky-700 border border-sky-100">{s}</span>)}</div>
-                      ) : (
-                        <div className="text-[10px] text-amber-600">No street data — will be populated on rescan</div>
-                      )}
-                    </div>
-                    {v.scanStatus === 'scanning' && (
-                      <RefreshCw size={12} className="text-blue-500 animate-spin flex-shrink-0" />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Progress bar */}
-          {rescanProgress && (
-            <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="flex items-center justify-between mb-1.5 text-[11px] font-semibold text-blue-700">
-                <span>{rescanProgress.done < rescanProgress.total ? `Scanning: ${rescanProgress.current}` : 'Rescan complete'}</span>
-                <span>{rescanProgress.done} / {rescanProgress.total}</span>
-              </div>
-              <div className="h-1.5 bg-blue-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-blue-500 rounded-full transition-all duration-300"
-                  style={{ width: `${(rescanProgress.done / rescanProgress.total) * 100}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Errors */}
-          {rescanErrors.length > 0 && (
-            <div className="mb-4 p-3 bg-red-50 rounded-lg border border-red-200">
-              <div className="text-[11px] font-bold text-red-700 mb-1">{rescanErrors.length} error{rescanErrors.length !== 1 ? 's' : ''}</div>
-              {rescanErrors.map(e => (
-                <div key={e.id} className="text-[10px] text-red-600">{e.title}: {e.error}</div>
-              ))}
-            </div>
-          )}
-
-          <button
-            onClick={handleRescanAll}
-            disabled={rescanning}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${
-              rescanning
-                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                : 'bg-slate-900 text-white hover:bg-slate-700 cursor-pointer'
-            }`}
-          >
-            <RefreshCw size={14} className={rescanning ? 'animate-spin' : ''} />
-            {rescanning ? 'Scanning…' : `Rescan all ${activeVariances.length} variances`}
-          </button>
-        </div>
+        <RescanTab
+          activeVariances={activeVariances}
+          rescanProgress={rescanProgress}
+          rescanErrors={rescanErrors}
+          rescanning={rescanning}
+          onRescanAll={handleRescanAll}
+        />
       )}
 
       {/* ── REVIEW LINKS TAB ── */}
       {activeTab === 'review' && (
-        <div>
-          <div className="mb-4">
-            <h3 className="text-sm font-bold text-slate-800 mb-1">Review existing links</h3>
-            <p className="text-[12px] text-slate-500">
-              Rescores all already-linked plans against their linked variance. Weak scores may indicate a wrong or outdated link.
-            </p>
-          </div>
-
-          {weakLinks.length > 0 && (
-            <div className="mb-3 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-[11px] font-semibold text-amber-700">
-              <AlertTriangle size={13} />
-              {weakLinks.length} link{weakLinks.length !== 1 ? 's' : ''} scored below 6 — worth reviewing
-            </div>
-          )}
-
-          <div className="flex flex-col gap-3">
-            {linkedWithScores.map(({ plan, linkedVars, results, minScore }) => {
-              const hasWeak = results.some(r => r.score < 6);
-              return (
-                <div
-                  key={plan.id}
-                  className={`border rounded-xl p-4 ${hasWeak ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200 bg-white'}`}
-                >
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-slate-800 text-[13px]">{plan.loc || plan.id}</span>
-                        <span className="text-[10px] font-semibold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
-                          {results.length} variance{results.length !== 1 ? 's' : ''} linked
-                        </span>
-                        {hasWeak && (
-                          <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600">
-                            <AlertTriangle size={11} /> Weak link
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">
-                        {[plan.street1, plan.street2].filter(Boolean).join(' / ')}
-                        {plan.segment && <span className="ml-2 font-bold text-slate-400">Seg {plan.segment}</span>}
-                      </div>
-                      {(plan.expandedStreets ?? []).length > 0 && (
-                        <div className="flex flex-wrap gap-0.5 mt-1">
-                          {plan.expandedStreets!.map((st, si) => (
-                            <span key={si} className="px-1 py-0.5 rounded text-[9px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">{st}</span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {hasWeak && (
-                        <button
-                          onClick={() => {
-                            setActiveTab('link');
-                            setLinkViewMode('by_plan');
-                            setShowLinked(true);
-                            setSelectedPlanId(plan.id);
-                          }}
-                          className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600 hover:text-amber-700 border border-amber-300 bg-amber-50 rounded-lg px-2.5 py-1.5 transition-colors"
-                        >
-                          <Wrench size={11} />
-                          Fix Link
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setSelectedPlan(plan)}
-                        className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 border border-blue-200 rounded-lg px-2.5 py-1.5 transition-colors"
-                      >
-                        Open Plan
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Per-variance score rows */}
-                  <div className="flex flex-col gap-1.5">
-                    {results.map(({ variance: lv, score, signals }) => {
-                      const conf = confidenceLabel(score);
-                      const isWeak = score < 6;
-                      return (
-                        <div key={lv.id} className={`rounded-lg px-3 py-2 border ${isWeak ? 'border-amber-200 bg-amber-50/40' : 'border-slate-100 bg-slate-50/50'}`}>
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span className="text-[11px] font-semibold text-slate-700">{lv.permitNumber || lv.title}</span>
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: conf.bg, color: conf.color }}>
-                              {score}pt — {conf.label}
-                            </span>
-                          </div>
-                          {(lv.coveredStreets ?? []).length > 0 && (
-                            <div className="flex flex-wrap gap-1 mb-1">
-                              {lv.coveredStreets!.map((st, si) => (
-                                <span key={si} className="px-1 py-0.5 rounded text-[9px] font-semibold bg-sky-50 text-sky-700 border border-sky-100">{st}</span>
-                              ))}
-                            </div>
-                          )}
-                          <div className="flex flex-wrap gap-1">
-                            <SignalBadge active={signals.segment}  label="Segment"  icon={<MapPin size={9} />} />
-                            <SignalBadge active={signals.scope}    label="Scope"    icon={<Tag size={9} />} />
-                            <SignalBadge active={signals.date}     label="Date"     icon={<Calendar size={9} />} />
-                            <SignalBadge active={signals.hours}    label="Hours"    icon={<Clock size={9} />} />
-                            <SignalBadge active={signals.streets}  label="Streets"  icon={<MapPin size={9} />} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {linkedWithScores.length === 0 && (
-            <div className="text-center py-12 text-slate-400 text-sm">No linked plans yet.</div>
-          )}
-        </div>
+        <ReviewTab
+          linkedWithScores={linkedWithScores}
+          weakLinkCount={weakLinks.length}
+          onFixLink={plan => {
+            setActiveTab('link');
+            setLinkViewMode('by_plan');
+            setShowLinked(true);
+            setSelectedPlanId(plan.id);
+          }}
+          onOpenPlan={plan => setSelectedPlan(plan)}
+        />
       )}
 
       {/* ── LINK TAB ── */}

@@ -66,7 +66,6 @@ export const AdminToolbar: React.FC<AdminToolbarProps> = ({
       {isRealAdmin && (
         <RoleSwitcher currentUser={currentUser} setCurrentUser={setCurrentUser} />
       )}
-
     </div>
   );
 };
