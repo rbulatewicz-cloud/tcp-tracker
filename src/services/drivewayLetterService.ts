@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
-import { DrivewayLetter, DrivewayLetterStatus, LetterVersion, MetroComment, MetroCommentAttachment } from '../types';
+import { DrivewayAddress, DrivewayLetter, DrivewayLetterStatus, LetterVersion, MetroComment, MetroCommentAttachment, Plan } from '../types';
 import { writeGlobalLog } from './logService';
 import { DrivewayNoticeFields } from './drivewayNoticeService';
 import { SEGMENT_STREETS } from '../constants';
@@ -48,6 +48,67 @@ export async function updateDrivewayLetter(
   });
 }
 
+// ── Plan-side sync helpers ────────────────────────────────────────────────────
+
+/**
+ * When a letter is marked sent, keep the plan's DrivewayAddress in sync so the
+ * plan-side compliance view doesn't drift from the letter library. Flips
+ * `noticeSent` + `sentDate` and snapshots the plan's current implementation
+ * window (used downstream by the date-shift reissue warning).
+ *
+ * Best-effort — fails silently if the letter has no plan/address link, or if
+ * the target address no longer exists on the plan (likely deleted).
+ */
+async function syncLetterSentToPlanAddress(
+  letterId: string,
+  sentDateIso: string,
+): Promise<void> {
+  try {
+    const letterSnap = await getDoc(doc(db, COL, letterId));
+    if (!letterSnap.exists()) return;
+    const letter = letterSnap.data() as DrivewayLetter;
+    const planId = letter.planId;
+    const addressId = letter.addressId;
+    if (!planId || !addressId) return;
+
+    const planSnap = await getDoc(doc(db, 'plans', planId));
+    if (!planSnap.exists()) return;
+    const plan = planSnap.data() as Plan;
+    const addresses: DrivewayAddress[] = plan.compliance?.drivewayNotices?.addresses ?? [];
+    if (addresses.length === 0) return;
+
+    const sentDateYmd = sentDateIso.slice(0, 10);
+    const windowStart = plan.implementationWindow?.startDate
+      ?? plan.softImplementationWindow?.startDate
+      ?? undefined;
+    const windowEnd = plan.implementationWindow?.endDate
+      ?? plan.softImplementationWindow?.endDate
+      ?? undefined;
+
+    let changed = false;
+    const updated = addresses.map(a => {
+      if (a.id !== addressId) return a;
+      if (a.noticeSent && a.sentDate === sentDateYmd) return a; // already in sync
+      changed = true;
+      return {
+        ...a,
+        noticeSent: true,
+        sentDate: sentDateYmd,
+        letterStatus: 'sent' as DrivewayLetterStatus,
+        ...(windowStart ? { sentWindowStart: windowStart } : {}),
+        ...(windowEnd ? { sentWindowEnd: windowEnd } : {}),
+      };
+    });
+    if (!changed) return;
+
+    await updateDoc(doc(db, 'plans', planId), {
+      'compliance.drivewayNotices.addresses': updated,
+    });
+  } catch (err) {
+    console.error('syncLetterSentToPlanAddress failed:', err);
+  }
+}
+
 // ── Status transitions ────────────────────────────────────────────────────────
 
 export async function approveDrivewayLetter(id: string, address?: string): Promise<void> {
@@ -66,6 +127,9 @@ export async function markDrivewayLetterSent(id: string, dateStr?: string, addre
     sentAt: ts,
     updatedAt: new Date().toISOString(),
   });
+  // Keep the plan's DrivewayAddress in sync so the two sides of the workflow
+  // don't drift (CR used to have to flip noticeSent manually on the plan).
+  await syncLetterSentToPlanAddress(id, ts);
   writeGlobalLog(`Driveway notice sent: ${address || id}`, 'cr_hub', address || id, id, 'letter');
 }
 
@@ -183,6 +247,12 @@ export async function bulkUpdateDrivewayLetterStatus(
     const batch = writeBatch(db);
     for (const id of slice) batch.update(doc(db, COL, id), update);
     await batch.commit();
+  }
+
+  // Sync plan-side addresses for bulk-sent transitions. Done after the batch
+  // so letter rows update immediately; plan sync is best-effort per letter.
+  if (toStatus === 'sent') {
+    await Promise.all(letterIds.map(id => syncLetterSentToPlanAddress(id, ts)));
   }
 
   const verb = toStatus === 'submitted_to_metro' ? 'submitted to Metro'

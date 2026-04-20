@@ -480,6 +480,17 @@ function LetterCard({
                 Rev ×{letter.metroRevisionCount}
               </span>
             )}
+            {/* Version history badge — surfaces that an older PDF exists without
+                forcing the card open. Counts the current file + all archived ones. */}
+            {(letter.previousVersions?.length ?? 0) > 0 && (
+              <button
+                onClick={() => setExpanded(true)}
+                title={`${letter.previousVersions!.length} older PDF${letter.previousVersions!.length === 1 ? '' : 's'} — click to view history`}
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 transition-colors"
+              >
+                v{(letter.previousVersions?.length ?? 0) + 1}
+              </button>
+            )}
             {/* Attachment count — sum across all Metro comments */}
             {(() => {
               const attachCount = (letter.metroComments ?? []).reduce(
@@ -1082,6 +1093,10 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
   const [letters, setLetters] = useState<DrivewayLetter[]>(allLetters ?? []);
   const [statusFilter, setStatusFilter] = useState<DrivewayLetterStatus | 'all'>('all');
   const [segmentFilter, setSegmentFilter] = useState<string>('all');
+  // Shows letters with any Metro-side event (submit / approve / comment) in the
+  // last 7 days. Saves the CR PM from eyeballing timestamps on every card to
+  // find what Metro just touched.
+  const [metroRecentOnly, setMetroRecentOnly] = useState(false);
   const [downloading, setDownloading] = useState<Record<string, boolean>>({});
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -1138,9 +1153,28 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
     l => !scanningLetters.includes(l) && !errorLetters.includes(l) && !reviewLetters.includes(l)
   );
 
+  // "Metro touched this in the last 7 days" — covers submit, approve, and any
+  // metroComment (includes revision requests) so nothing Metro does slips past.
+  const METRO_RECENT_MS = 7 * 86_400_000;
+  const hasRecentMetroActivity = (l: DrivewayLetter): boolean => {
+    const cutoff = Date.now() - METRO_RECENT_MS;
+    const candidates: (string | undefined)[] = [
+      l.metroSubmittedAt,
+      l.metroApprovedAt,
+      ...(l.metroComments ?? []).map(c => c.addedAt),
+    ];
+    return candidates.some(iso => {
+      if (!iso) return false;
+      const t = new Date(iso).getTime();
+      return !isNaN(t) && t >= cutoff;
+    });
+  };
+  const metroRecentCount = confirmedLetters.filter(hasRecentMetroActivity).length;
+
   const filtered = confirmedLetters.filter(l => {
     if (statusFilter !== 'all' && l.status !== statusFilter) return false;
     if (segmentFilter !== 'all' && l.segment !== segmentFilter) return false;
+    if (metroRecentOnly && !hasRecentMetroActivity(l)) return false;
     return true;
   });
 
@@ -1532,6 +1566,18 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
               {segments.map(s => <option key={s} value={s}>Segment {s}</option>)}
             </select>
           )}
+          <button
+            onClick={() => setMetroRecentOnly(v => !v)}
+            title="Letters with Metro activity (submit / approve / comment) in the last 7 days"
+            className={`px-2.5 py-1 text-[11px] rounded-full font-medium border transition-colors ${
+              metroRecentOnly
+                ? 'bg-orange-600 text-white border-orange-600'
+                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+            }`}
+          >
+            Metro · last 7d
+            <span className="ml-1 opacity-80">({metroRecentCount})</span>
+          </button>
           {canApprove && (
             <button
               onClick={() => { if (bulkMode) clearBulk(); else setBulkMode(true); }}
