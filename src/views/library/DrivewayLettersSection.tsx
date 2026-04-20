@@ -10,6 +10,7 @@ import {
   markDrivewayLetterSent,
   deleteDrivewayLetter,
   uploadFinalLetter,
+  reuploadDrivewayLetter,
   uploadAndScanDrivewayLetter,
   updateDrivewayLetter,
   submitLetterToMetro,
@@ -349,6 +350,8 @@ interface LetterCardProps {
   selectionMode?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
+  /** Replace the current PDF with a new one; prior PDF is moved to previousVersions[]. */
+  onReupload?: (file: File) => void;
 }
 
 // Reusable confirm-on-click hook for a single card
@@ -383,7 +386,9 @@ function LetterCard({
   downloading, deleteConfirmId, onDeleteClick,
   tcpUrl, tcpName,
   selectionMode, selected, onToggleSelect,
+  onReupload,
 }: LetterCardProps) {
+  const reuploadInputRef = useRef<HTMLInputElement>(null);
   const [expanded, setExpanded] = useState(false);
   // Inline revision feedback input
   const [showRevisionInput, setShowRevisionInput] = useState(false);
@@ -645,6 +650,29 @@ function LetterCard({
               <ExternalLink size={14} />
             </a>
           )}
+          {/* Re-upload PDF — archives the current file into previousVersions[] */}
+          {onReupload && canApprove && letter.letterUrl && (
+            <>
+              <input
+                ref={reuploadInputRef}
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) onReupload(f);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                onClick={() => reuploadInputRef.current?.click()}
+                className="p-1.5 text-slate-500 hover:text-violet-600 hover:bg-violet-50 rounded transition-colors"
+                title="Replace PDF with a revised version (keeps history)"
+              >
+                <Upload size={14} />
+              </button>
+            </>
+          )}
           <button
             onClick={() => setExpanded(e => !e)}
             className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
@@ -857,6 +885,41 @@ function LetterCard({
             )}
             <div className="col-span-2 mt-1"><span className="text-slate-500">Added by: </span><span className="text-slate-800">{letter.createdBy}</span></div>
           </div>
+
+          {/* Previous versions — prior PDFs that were replaced */}
+          {(letter.previousVersions?.length ?? 0) > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-200">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Paperclip size={12} className="text-slate-500" />
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                  Previous versions · {letter.previousVersions!.length}
+                </span>
+              </div>
+              <ul className="space-y-1">
+                {[...letter.previousVersions!]
+                  .sort((a, b) => b.archivedAt.localeCompare(a.archivedAt))
+                  .map((v, i) => (
+                    <li key={i} className="flex items-center gap-2 text-[11px]">
+                      <a
+                        href={v.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium truncate max-w-[260px]"
+                        title={v.name}
+                      >
+                        📄 {v.name || 'letter.pdf'}
+                      </a>
+                      <span className="text-slate-400">· {fmt(v.archivedAt)}</span>
+                      {typeof v.revisionCount === 'number' && (
+                        <span className="text-slate-400">· rev {v.revisionCount}</span>
+                      )}
+                      {v.archivedBy && <span className="text-slate-400 truncate">· {v.archivedBy}</span>}
+                      {v.note && <span className="text-slate-500 italic truncate">— {v.note}</span>}
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
 
           {/* Metro review thread */}
           {(hasMetroComments || isMetroActive || canApprove) && (
@@ -1155,7 +1218,9 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
       await uploadFinalLetter(
         letter.id,
         blob,
-        `driveway-letter-${(letter.planLoc || letter.address).replace(/\s+/g, '_')}.docx`
+        `driveway-letter-${(letter.planLoc || letter.address).replace(/\s+/g, '_')}.docx`,
+        currentUserEmail,
+        letter.letterUrl ? 'Regenerated on direct approve' : undefined,
       );
     } catch (e) {
       showToast(`Approve failed: ${(e as Error).message}`, 'error');
@@ -1174,7 +1239,9 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
       await uploadFinalLetter(
         letter.id,
         blob,
-        `driveway-letter-${(letter.planLoc || letter.address).replace(/\s+/g, '_')}.docx`
+        `driveway-letter-${(letter.planLoc || letter.address).replace(/\s+/g, '_')}.docx`,
+        currentUserEmail,
+        letter.letterUrl ? `Regenerated on Metro approval (rev ${letter.metroRevisionCount ?? 0})` : undefined,
       );
     } catch (e) {
       showToast(`Metro approve failed: ${(e as Error).message}`, 'error');
@@ -1243,6 +1310,26 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
     } else {
       setDeleteConfirm(id);
       setTimeout(() => setDeleteConfirm(c => c === id ? null : c), 3000);
+    }
+  }
+
+  async function handleReupload(letter: DrivewayLetter, file: File) {
+    if (!file.type.includes('pdf')) {
+      showToast('Only PDF files are supported for re-upload.', 'error');
+      return;
+    }
+    try {
+      await reuploadDrivewayLetter(
+        letter.id,
+        file,
+        currentUserEmail,
+        letter.status === 'metro_revision_requested'
+          ? `Metro revision ${(letter.metroRevisionCount ?? 0) + 1}`
+          : undefined,
+      );
+      showToast('PDF replaced. Prior version moved to history.', 'success');
+    } catch (e) {
+      showToast(`Re-upload failed: ${(e as Error).message}`, 'error');
     }
   }
 
@@ -1528,6 +1615,7 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
                 selectionMode={bulkMode}
                 selected={selectedIds.has(letter.id)}
                 onToggleSelect={() => toggleSelect(letter.id)}
+                onReupload={file => handleReupload(letter, file)}
               />
             );
           })}

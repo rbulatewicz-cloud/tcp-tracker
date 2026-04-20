@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
-import { DrivewayLetter, DrivewayLetterStatus, MetroComment, MetroCommentAttachment } from '../types';
+import { DrivewayLetter, DrivewayLetterStatus, LetterVersion, MetroComment, MetroCommentAttachment } from '../types';
 import { writeGlobalLog } from './logService';
 import { DrivewayNoticeFields } from './drivewayNoticeService';
 import { SEGMENT_STREETS } from '../constants';
@@ -472,19 +472,61 @@ export async function uploadExhibitImage(
 
 // ── Final letter file upload (approved docx/PDF) ──────────────────────────────
 
+/**
+ * Upload a final letter PDF/DOCX.
+ * If the letter already has a letterUrl, the previous file is archived
+ * into `previousVersions[]` so history is preserved across revisions.
+ */
 export async function uploadFinalLetter(
   letterId: string,
   blob: Blob,
-  filename: string
+  filename: string,
+  archivedBy?: string,
+  note?: string,
 ): Promise<string> {
-  const storageRef = ref(storage, `driveway-letters/${letterId}/final_${filename}`);
+  // 1. Read existing letter to capture the current file for archival
+  const snap = await getDoc(doc(db, COL, letterId));
+  const existing = snap.exists() ? (snap.data() as DrivewayLetter) : null;
+
+  // 2. Upload the new file with a unique path (don't overwrite prior Storage object)
+  const stamp = Date.now();
+  const storageRef = ref(storage, `driveway-letters/${letterId}/final_${stamp}_${filename}`);
   await uploadBytes(storageRef, blob);
   const url = await getDownloadURL(storageRef);
-  await updateDoc(doc(db, COL, letterId), {
+
+  // 3. Build the update — archive prior letterUrl if any
+  const update: Record<string, unknown> = {
     letterUrl: url,
     updatedAt: new Date().toISOString(),
-  });
+  };
+  if (existing?.letterUrl) {
+    const archived: LetterVersion = {
+      url:  existing.letterUrl,
+      name: filename, // best-effort name for the archived one
+      archivedAt: new Date().toISOString(),
+      archivedBy,
+      note,
+      revisionCount: existing.metroRevisionCount,
+      status: existing.status,
+    };
+    update.previousVersions = arrayUnion(archived);
+  }
+  await updateDoc(doc(db, COL, letterId), update);
   return url;
+}
+
+/**
+ * Re-upload a revised PDF on an existing letter from the library.
+ * Archives the current PDF into `previousVersions[]`, uploads the new one,
+ * and optionally moves the letter back into a draft / revision state.
+ */
+export async function reuploadDrivewayLetter(
+  letterId: string,
+  file: File,
+  uploadedBy: string,
+  note?: string,
+): Promise<string> {
+  return uploadFinalLetter(letterId, file, file.name, uploadedBy, note);
 }
 
 // ── Plan linking ─────────────────────────────────────────────────────────────

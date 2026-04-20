@@ -342,12 +342,26 @@ export interface DrivewayLetter {
   // Re-notice chain — set when this letter is a renewal of a prior plan's notice
   parentLetterId?: string;     // ID of the prior sent/approved letter this is based on
 
+  // Version history — every prior PDF that was replaced on this letter
+  previousVersions?: LetterVersion[];
+
   // Audit
   createdAt: string;
   createdBy: string;
   updatedAt?: string;
   approvedAt?: string;
   sentAt?: string;
+}
+
+/** Archived prior PDF for a DrivewayLetter. Stored in DrivewayLetter.previousVersions. */
+export interface LetterVersion {
+  url: string;
+  name: string;                 // filename (or inferred if none)
+  archivedAt: string;           // ISO timestamp when it was replaced
+  archivedBy?: string;          // email of person replacing it
+  note?: string;                // optional — e.g. "Metro revision 2"
+  revisionCount?: number;       // metroRevisionCount at time of archive
+  status?: DrivewayLetterStatus;// the letter's status when this file was archived
 }
 
 export interface MetroCommentAttachment {
