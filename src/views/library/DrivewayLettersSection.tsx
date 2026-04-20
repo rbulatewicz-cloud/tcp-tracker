@@ -19,6 +19,7 @@ import {
   revertDrivewayLetterStatus,
   addMetroComment,
   rescanDrivewayLetterFromUrl,
+  bulkUpdateDrivewayLetterStatus,
 } from '../../services/drivewayLetterService';
 import { createDrivewayProperty } from '../../services/drivewayPropertyService';
 import { buildNoticeDocx, downloadNoticeDocx } from '../../services/drivewayNoticeService';
@@ -344,6 +345,10 @@ interface LetterCardProps {
   /** URL + filename of the latest approved TCP on the linked plan, if any. */
   tcpUrl?: string;
   tcpName?: string;
+  /** Bulk-select UI — when enabled, show a checkbox and hide/shrink individual action buttons. */
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
 // Reusable confirm-on-click hook for a single card
@@ -377,6 +382,7 @@ function LetterCard({
   onRescan, properties, onLinkProperty, onUnlinkProperty,
   downloading, deleteConfirmId, onDeleteClick,
   tcpUrl, tcpName,
+  selectionMode, selected, onToggleSelect,
 }: LetterCardProps) {
   const [expanded, setExpanded] = useState(false);
   // Inline revision feedback input
@@ -423,9 +429,19 @@ function LetterCard({
   }
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+    <div className={`bg-white border rounded-lg shadow-sm overflow-hidden ${selected ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200'}`}>
       {/* Header row */}
       <div className="flex items-start gap-3 p-4">
+        {selectionMode && (
+          <label className="flex items-center pt-1 cursor-pointer shrink-0" title={selected ? 'Deselect' : 'Select'}>
+            <input
+              type="checkbox"
+              checked={!!selected}
+              onChange={onToggleSelect}
+              className="w-4 h-4 accent-indigo-600 cursor-pointer"
+            />
+          </label>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <span className="font-semibold text-slate-800 text-sm truncate">
@@ -1011,6 +1027,12 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
   useEffect(() => subscribeToDrivewayProperties(setProperties), []);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Bulk-select mode (for batch status transitions)
+  const [bulkMode,        setBulkMode]        = useState(false);
+  const [selectedIds,     setSelectedIds]     = useState<Set<string>>(new Set());
+  const [bulkActionDate,  setBulkActionDate]  = useState(() => new Date().toISOString().slice(0, 10));
+  const [bulkBusy,        setBulkBusy]        = useState(false);
+
   const canApprove = currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.CR;
   const currentUserEmail = currentUser?.email ?? 'Unknown';
 
@@ -1224,6 +1246,65 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
     }
   }
 
+  // ── Bulk select helpers ──────────────────────────────────────────────────────
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function clearBulk() {
+    setSelectedIds(new Set());
+    setBulkMode(false);
+  }
+
+  /** Is it safe to move the selected letters into this status? */
+  function bulkActionWouldApply(
+    targetStatus: 'submitted_to_metro' | 'approved' | 'sent',
+    allowedFrom: DrivewayLetterStatus[]
+  ): { eligible: DrivewayLetter[]; skipped: DrivewayLetter[] } {
+    const eligible: DrivewayLetter[] = [];
+    const skipped:  DrivewayLetter[] = [];
+    for (const l of confirmedLetters) {
+      if (!selectedIds.has(l.id)) continue;
+      if (l.status === targetStatus) { skipped.push(l); continue; }
+      if (allowedFrom.includes(l.status)) eligible.push(l);
+      else skipped.push(l);
+    }
+    return { eligible, skipped };
+  }
+
+  async function runBulkStatus(
+    targetStatus: 'submitted_to_metro' | 'approved' | 'sent',
+    allowedFrom: DrivewayLetterStatus[],
+    actionLabel: string
+  ) {
+    const { eligible, skipped } = bulkActionWouldApply(targetStatus, allowedFrom);
+    if (eligible.length === 0) {
+      showToast(`No selected letters can be ${actionLabel} right now.`, 'error');
+      return;
+    }
+    setBulkBusy(true);
+    try {
+      await bulkUpdateDrivewayLetterStatus(
+        eligible.map(l => l.id),
+        targetStatus,
+        bulkActionDate
+      );
+      showToast(
+        `${actionLabel}: ${eligible.length} letter${eligible.length === 1 ? '' : 's'}${skipped.length ? ` (${skipped.length} skipped)` : ''}`,
+        'success'
+      );
+      clearBulk();
+    } catch (e) {
+      showToast(`Bulk update failed: ${(e as Error).message}`, 'error');
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   const draftCount    = confirmedLetters.filter(l => l.status === 'draft').length;
   const metroCount    = confirmedLetters.filter(l => l.status === 'submitted_to_metro' || l.status === 'metro_revision_requested').length;
   const approvedCount = confirmedLetters.filter(l => l.status === 'approved').length;
@@ -1364,6 +1445,39 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
               {segments.map(s => <option key={s} value={s}>Segment {s}</option>)}
             </select>
           )}
+          {canApprove && (
+            <button
+              onClick={() => { if (bulkMode) clearBulk(); else setBulkMode(true); }}
+              className={`ml-auto px-2.5 py-1 text-[11px] rounded-full font-medium border transition-colors ${
+                bulkMode
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+              }`}
+              title={bulkMode ? 'Exit bulk-select' : 'Select multiple letters and change status at once'}
+            >
+              {bulkMode ? 'Exit bulk select' : 'Bulk update'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Bulk-mode toolbar — select-all / clear */}
+      {bulkMode && (
+        <div className="flex items-center gap-2 mb-3 text-[11px]">
+          <button
+            onClick={() => setSelectedIds(new Set(filtered.map(l => l.id)))}
+            className="px-2 py-1 font-semibold text-indigo-700 hover:bg-indigo-50 rounded transition-colors"
+          >
+            Select all visible ({filtered.length})
+          </button>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="px-2 py-1 font-semibold text-slate-500 hover:bg-slate-100 rounded transition-colors"
+            >
+              Deselect ({selectedIds.size})
+            </button>
+          )}
         </div>
       )}
 
@@ -1411,6 +1525,9 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
                 onUnlinkProperty={() => handleUnlinkProperty(letter.id)}
                 tcpUrl={tcp?.url}
                 tcpName={tcp?.name}
+                selectionMode={bulkMode}
+                selected={selectedIds.has(letter.id)}
+                onToggleSelect={() => toggleSelect(letter.id)}
               />
             );
           })}
@@ -1421,6 +1538,58 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
       {deleteConfirm && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-600 text-white text-sm px-4 py-2.5 rounded-lg shadow-lg z-50">
           Click Delete again to confirm — this cannot be undone.
+        </div>
+      )}
+
+      {/* Bulk action bar — floats above the letter list whenever 1+ letters are selected */}
+      {bulkMode && selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white border border-slate-300 shadow-lg rounded-xl px-4 py-3 z-50 flex items-center gap-3 flex-wrap max-w-[96vw]">
+          <span className="text-[12px] font-semibold text-slate-700">
+            {selectedIds.size} selected
+          </span>
+          <div className="flex items-center gap-1.5 border-l border-slate-200 pl-3">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Date</label>
+            <input
+              type="date"
+              value={bulkActionDate}
+              onChange={e => setBulkActionDate(e.target.value)}
+              className="border border-slate-200 rounded px-1.5 py-1 text-[11px] outline-none focus:border-indigo-400"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              disabled={bulkBusy}
+              onClick={() => runBulkStatus('submitted_to_metro', ['draft', 'metro_revision_requested'], 'Submitted to Metro')}
+              className="px-2.5 py-1.5 text-[11px] font-semibold bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:bg-indigo-300 transition-colors"
+              title="Move selected drafts / revision letters to 'With Metro'"
+            >
+              Submit to Metro
+            </button>
+            <button
+              disabled={bulkBusy}
+              onClick={() => runBulkStatus('approved', ['draft', 'submitted_to_metro', 'metro_revision_requested'], 'Marked Metro-approved')}
+              className="px-2.5 py-1.5 text-[11px] font-semibold bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
+              title="Mark selected letters as Metro approved"
+            >
+              Metro Approved
+            </button>
+            <button
+              disabled={bulkBusy}
+              onClick={() => runBulkStatus('sent', ['approved', 'draft'], 'Marked sent')}
+              className="px-2.5 py-1.5 text-[11px] font-semibold bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:bg-emerald-300 transition-colors"
+              title="Mark selected approved letters as mailed/sent"
+            >
+              Mark Sent
+            </button>
+          </div>
+          <button
+            onClick={clearBulk}
+            disabled={bulkBusy}
+            className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 px-2 py-1 border-l border-slate-200 pl-3"
+          >
+            Cancel
+          </button>
+          {bulkBusy && <Loader size={14} className="animate-spin text-indigo-500" />}
         </div>
       )}
     </div>

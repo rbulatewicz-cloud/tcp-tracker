@@ -1,6 +1,7 @@
 import {
   collection, doc, addDoc, updateDoc, deleteDoc,
   onSnapshot, query, orderBy, getDoc, setDoc, arrayUnion, deleteField,
+  writeBatch,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
@@ -150,6 +151,44 @@ export async function resubmitLetterToMetro(id: string, dateStr?: string): Promi
     metroSubmittedAt: ts,
     updatedAt: new Date().toISOString(),
   });
+}
+
+/**
+ * Bulk-update the status on many letters atomically.
+ * Supports the three bulk-friendly transitions: submit_to_metro, metro_approve, mark_sent.
+ * Splits into chunks of 400 (<500 Firestore batch limit) if needed.
+ * `dateStr` (YYYY-MM-DD) sets the relevant timestamp field; omit to use now.
+ */
+export async function bulkUpdateDrivewayLetterStatus(
+  letterIds: string[],
+  toStatus: Extract<DrivewayLetterStatus, 'submitted_to_metro' | 'approved' | 'sent'>,
+  dateStr?: string,
+): Promise<void> {
+  if (letterIds.length === 0) return;
+  const now = new Date().toISOString();
+  const ts  = dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : now;
+
+  const update: Record<string, unknown> = {
+    status: toStatus,
+    updatedAt: now,
+  };
+  if (toStatus === 'submitted_to_metro') update.metroSubmittedAt = ts;
+  else if (toStatus === 'approved')      { update.metroApprovedAt = ts; update.approvedAt = ts; }
+  else if (toStatus === 'sent')          update.sentAt = ts;
+
+  // Chunk to stay under Firestore's 500-op batch limit.
+  const CHUNK = 400;
+  for (let i = 0; i < letterIds.length; i += CHUNK) {
+    const slice = letterIds.slice(i, i + CHUNK);
+    const batch = writeBatch(db);
+    for (const id of slice) batch.update(doc(db, COL, id), update);
+    await batch.commit();
+  }
+
+  const verb = toStatus === 'submitted_to_metro' ? 'submitted to Metro'
+             : toStatus === 'approved'           ? 'approved by Metro'
+                                                 : 'marked sent';
+  writeGlobalLog(`Bulk ${verb}: ${letterIds.length} driveway letters`, 'cr_hub', 'bulk', letterIds.join(','), 'letter');
 }
 
 export async function revertDrivewayLetterStatus(
