@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import {
   Mail, CheckCircle, Clock, Send, Download, ExternalLink,
   Trash2, ChevronDown, ChevronUp, Filter, Upload, Loader,
-  AlertTriangle, MessageSquare, RefreshCw, Paperclip, X,
+  AlertTriangle, MessageSquare, RefreshCw, Paperclip, X, FileText,
 } from 'lucide-react';
 import {
   subscribeToDrivewayLetters,
@@ -22,7 +22,7 @@ import {
 } from '../../services/drivewayLetterService';
 import { createDrivewayProperty } from '../../services/drivewayPropertyService';
 import { buildNoticeDocx, downloadNoticeDocx } from '../../services/drivewayNoticeService';
-import { AppConfig, DrivewayLetter, DrivewayLetterStatus, DrivewayProperty, User, UserRole } from '../../types';
+import { AppConfig, DrivewayLetter, DrivewayLetterStatus, DrivewayProperty, Plan, User, UserRole } from '../../types';
 import { subscribeToDrivewayProperties } from '../../services/drivewayPropertyService';
 import type { DrivewayNoticeFields } from '../../services/drivewayNoticeService';
 import { fmtDate as fmt } from '../../utils/plans';
@@ -32,6 +32,7 @@ interface DrivewayLettersSectionProps {
   currentUser: User | null;
   appConfig: AppConfig;
   allLetters?: DrivewayLetter[];
+  plans?: Plan[];
   planFilter?: { id: string; loc: string } | null;
   onClearPlanFilter?: () => void;
 }
@@ -340,6 +341,9 @@ interface LetterCardProps {
   downloading: boolean;
   deleteConfirmId: string | null;
   onDeleteClick: () => void;
+  /** URL + filename of the latest approved TCP on the linked plan, if any. */
+  tcpUrl?: string;
+  tcpName?: string;
 }
 
 // Reusable confirm-on-click hook for a single card
@@ -372,6 +376,7 @@ function LetterCard({
   onDirectApprove, onMarkSent, onRevert, onEditSentDate, onDelete, onDownload, onAddMetroComment,
   onRescan, properties, onLinkProperty, onUnlinkProperty,
   downloading, deleteConfirmId, onDeleteClick,
+  tcpUrl, tcpName,
 }: LetterCardProps) {
   const [expanded, setExpanded] = useState(false);
   // Inline revision feedback input
@@ -482,7 +487,32 @@ function LetterCard({
             )}
           </div>
           <div className="flex items-center gap-3 text-[11px] text-slate-500 flex-wrap">
-            {letter.planLoc && <span>Plan: <span className="font-medium text-slate-700">{letter.planLoc}</span></span>}
+            {letter.planLoc && (
+              <span className="inline-flex items-center gap-1">
+                Plan: <span className="font-medium text-slate-700">{letter.planLoc}</span>
+                {tcpUrl ? (
+                  <a
+                    href={tcpUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    className="inline-flex items-center gap-0.5 ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                    title={tcpName ? `View TCP: ${tcpName}` : 'View approved TCP'}
+                  >
+                    <FileText size={10} />
+                    TCP
+                  </a>
+                ) : letter.planId ? (
+                  <span
+                    className="inline-flex items-center gap-0.5 ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-50 border border-slate-200 text-slate-400"
+                    title="No approved TCP on this plan yet"
+                  >
+                    <FileText size={10} />
+                    TCP
+                  </span>
+                ) : null}
+              </span>
+            )}
             <span>Added {fmt(letter.createdAt)}</span>
             {letter.metroSubmittedAt && <span>Metro: {fmt(letter.metroSubmittedAt)}</span>}
             {letter.approvedAt && <span>Approved {fmt(letter.approvedAt)}</span>}
@@ -969,7 +999,7 @@ const STATUS_FILTERS: { value: DrivewayLetterStatus | 'all'; label: string }[] =
   { value: 'sent',                   label: 'Sent' },
 ];
 
-export function DrivewayLettersSection({ currentUser, appConfig, allLetters, planFilter, onClearPlanFilter }: DrivewayLettersSectionProps) {
+export function DrivewayLettersSection({ currentUser, appConfig, allLetters, plans, planFilter, onClearPlanFilter }: DrivewayLettersSectionProps) {
   const [letters, setLetters] = useState<DrivewayLetter[]>(allLetters ?? []);
   const [statusFilter, setStatusFilter] = useState<DrivewayLetterStatus | 'all'>('all');
   const [segmentFilter, setSegmentFilter] = useState<string>('all');
@@ -986,6 +1016,17 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
 
   const metroSLADays  = appConfig.driveway_metroSLADays  ?? 5;
   const metroWarnDays = appConfig.driveway_metroWarnDays ?? 3;
+
+  // planId → latest approved TCP (used to render a quick "View TCP" link on each letter row).
+  // We take the last entry in approvedTCPs; planDocumentService appends, so the last is the newest.
+  const tcpByPlanId = new Map<string, { url: string; name: string }>();
+  (plans ?? []).forEach(p => {
+    const tcps = p.approvedTCPs ?? [];
+    if (tcps.length > 0) {
+      const latest = tcps[tcps.length - 1];
+      if (latest?.url) tcpByPlanId.set(p.id, { url: latest.url, name: latest.name });
+    }
+  });
 
   useEffect(() => {
     if (allLetters !== undefined) return;
@@ -1339,35 +1380,40 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
         <p className="text-center text-slate-400 text-sm py-8">No letters match the current filters.</p>
       ) : (
         <div className="flex flex-col gap-3">
-          {filtered.map(letter => (
-            <LetterCard
-              key={letter.id}
-              letter={letter}
-              parentLetter={letter.parentLetterId ? letters.find(l => l.id === letter.parentLetterId) : undefined}
-              canApprove={canApprove}
-              currentUserEmail={currentUserEmail}
-              metroSLADays={metroSLADays}
-              metroWarnDays={metroWarnDays}
-              downloading={!!downloading[letter.id]}
-              deleteConfirmId={deleteConfirm}
-              onSubmitToMetro={date => handleSubmitToMetro(letter.id, date, letter.address)}
-              onMetroApprove={date => handleMetroApprove(letter, date)}
-              onMetroRevision={(comment, files) => handleMetroRevision(letter.id, comment, files)}
-              onResubmit={date => handleResubmit(letter.id, date)}
-              onDirectApprove={() => handleDirectApprove(letter)}
-              onMarkSent={date => handleMarkSent(letter, date)}
-              onRevert={toStatus => handleRevert(letter.id, toStatus)}
-              onEditSentDate={dateStr => handleEditSentDate(letter.id, dateStr)}
-              onRescan={letter.letterUrl ? () => handleRescan(letter) : undefined}
-              onDeleteClick={() => handleDeleteClick(letter.id)}
-              onDelete={() => handleDelete(letter.id)}
-              onDownload={() => handleDownload(letter)}
-              onAddMetroComment={(text, files) => handleAddMetroComment(letter.id, text, files)}
-              properties={properties}
-              onLinkProperty={propId => handleLinkProperty(letter.id, propId)}
-              onUnlinkProperty={() => handleUnlinkProperty(letter.id)}
-            />
-          ))}
+          {filtered.map(letter => {
+            const tcp = letter.planId ? tcpByPlanId.get(letter.planId) : undefined;
+            return (
+              <LetterCard
+                key={letter.id}
+                letter={letter}
+                parentLetter={letter.parentLetterId ? letters.find(l => l.id === letter.parentLetterId) : undefined}
+                canApprove={canApprove}
+                currentUserEmail={currentUserEmail}
+                metroSLADays={metroSLADays}
+                metroWarnDays={metroWarnDays}
+                downloading={!!downloading[letter.id]}
+                deleteConfirmId={deleteConfirm}
+                onSubmitToMetro={date => handleSubmitToMetro(letter.id, date, letter.address)}
+                onMetroApprove={date => handleMetroApprove(letter, date)}
+                onMetroRevision={(comment, files) => handleMetroRevision(letter.id, comment, files)}
+                onResubmit={date => handleResubmit(letter.id, date)}
+                onDirectApprove={() => handleDirectApprove(letter)}
+                onMarkSent={date => handleMarkSent(letter, date)}
+                onRevert={toStatus => handleRevert(letter.id, toStatus)}
+                onEditSentDate={dateStr => handleEditSentDate(letter.id, dateStr)}
+                onRescan={letter.letterUrl ? () => handleRescan(letter) : undefined}
+                onDeleteClick={() => handleDeleteClick(letter.id)}
+                onDelete={() => handleDelete(letter.id)}
+                onDownload={() => handleDownload(letter)}
+                onAddMetroComment={(text, files) => handleAddMetroComment(letter.id, text, files)}
+                properties={properties}
+                onLinkProperty={propId => handleLinkProperty(letter.id, propId)}
+                onUnlinkProperty={() => handleUnlinkProperty(letter.id)}
+                tcpUrl={tcp?.url}
+                tcpName={tcp?.name}
+              />
+            );
+          })}
         </div>
       )}
 

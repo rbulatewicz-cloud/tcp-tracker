@@ -361,6 +361,7 @@ export function CRHubView({ currentUser, appConfig, plans, setSelectedPlan }: CR
               currentUser={currentUser}
               appConfig={appConfig}
               allLetters={letters}
+              plans={plans}
               planFilter={planFilter}
               onClearPlanFilter={() => setPlanFilter(null)}
             />
