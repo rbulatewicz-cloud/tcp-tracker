@@ -360,11 +360,15 @@ export const exportPlanToPDF = async (
 
     // Impacts
     const impacts = [
-      plan.impact_krail        && 'K-Rail',
-      plan.impact_driveway     && 'Driveway Impact',
-      plan.impact_fullClosure  && 'Full Closure',
-      plan.impact_busStop      && 'Bus Stop Affected',
-      plan.impact_transit      && 'Transit Impact',
+      plan.impact_krail             && 'K-Rail',
+      plan.impact_driveway          && 'Driveway Impact',
+      plan.impact_fullClosure       && 'Full Closure',
+      plan.impact_sidewalkClosure   && 'Sidewalk Closure',
+      plan.impact_crosswalkClosure  && 'Crosswalk Closure',
+      plan.impact_busStop           && 'Bus Stop Affected',
+      plan.impact_transit           && 'Transit Impact',
+      plan.impact_i5Freeway         && 'I-5 Freeway Encroachment',
+      plan.impact_uprrBridge        && 'UPRR Bridge Encroachment',
     ].filter(Boolean) as string[];
     if ((!options || options.includeImpacts) && impacts.length > 0) {
       checkPage(16);

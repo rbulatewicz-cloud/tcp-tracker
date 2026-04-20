@@ -141,8 +141,12 @@ export const renewLoc = async (
     impact_krail: plan.impact_krail ?? false,
     impact_driveway: plan.impact_driveway ?? false,
     impact_fullClosure: plan.impact_fullClosure ?? false,
+    impact_sidewalkClosure: plan.impact_sidewalkClosure ?? false,
+    impact_crosswalkClosure: plan.impact_crosswalkClosure ?? false,
     impact_busStop: plan.impact_busStop ?? false,
     impact_transit: plan.impact_transit ?? false,
+    impact_i5Freeway: plan.impact_i5Freeway ?? false,
+    impact_uprrBridge: plan.impact_uprrBridge ?? false,
     // Carry over hours of work
     work_hours: plan.work_hours,
     // Reset workflow fields

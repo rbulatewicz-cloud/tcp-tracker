@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { IMPACT_FIELDS, FIELD_REGISTRY } from '../constants';
+import { IMPACT_CLOSURE_FIELDS, IMPACT_ENCROACHMENT_FIELDS, FIELD_REGISTRY } from '../constants';
 import { useAppLists } from '../context/AppListsContext';
 import { CollapsibleSection } from './CollapsibleSection';
 import { Spinner } from './Spinner';
@@ -292,19 +292,51 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
               </label>
             </div>
 
-            {/* Closure / impact checkboxes */}
-            <div className="grid grid-cols-2 gap-2">
-              {IMPACT_FIELDS.map(field => (
-                <label key={field.key} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={!!form[field.key]}
-                    onChange={e => update(field.key, e.target.checked)}
-                    className="rounded border-slate-300"
-                  />
-                  {field.label}
-                </label>
-              ))}
+            {/* Closures — public ROW work */}
+            <div className="mb-3">
+              <div className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400 mb-1.5">
+                Closures
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {IMPACT_CLOSURE_FIELDS.map(field => (
+                  <label key={field.key} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!form[field.key]}
+                      onChange={e => update(field.key, e.target.checked)}
+                      className="rounded border-slate-300"
+                    />
+                    {field.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Encroachments — third-party-agency coordination.
+                These flag a need for future MOT-team workflows (Caltrans / UPRR
+                encroachment permits) — see project_deferred_features.md. */}
+            <div className="pt-3 mt-3 border-t border-slate-100">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">
+                  Encroachments
+                </span>
+                <span className="text-[9px] text-amber-600 italic">
+                  MOT workflow coming soon
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {IMPACT_ENCROACHMENT_FIELDS.map(field => (
+                  <label key={field.key} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!form[field.key]}
+                      onChange={e => update(field.key, e.target.checked)}
+                      className="rounded border-slate-300"
+                    />
+                    {field.label}
+                  </label>
+                ))}
+              </div>
             </div>
           </CollapsibleSection>
 

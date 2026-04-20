@@ -165,7 +165,9 @@ export function PlanPopoutView({ locId }: Props) {
   const impactFlags = [
     plan.dir_nb && 'NB', plan.dir_sb && 'SB', plan.dir_directional && 'DIR', plan.side_street && 'Side St',
     plan.impact_krail && 'Krail', plan.impact_fullClosure && 'Full Closure', plan.impact_driveway && 'Driveway',
+    plan.impact_sidewalkClosure && 'Sidewalk', plan.impact_crosswalkClosure && 'Crosswalk',
     plan.impact_busStop && 'Bus Stop', plan.impact_transit && 'TANSAT',
+    plan.impact_i5Freeway && 'I-5 Encroachment', plan.impact_uprrBridge && 'UPRR Encroachment',
   ].filter(Boolean) as string[];
 
   // ── Render ───────────────────────────────────────────────────────────────────

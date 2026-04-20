@@ -257,16 +257,32 @@ export const DEFAULT_LOG_COLUMNS = [
 
 export const MOT_FIELDS: { key: string; label: string; desc: string }[] = [];
 
-export const IMPACT_FIELDS = [
+// Closures — public right-of-way work requiring SFTC/DOT coordination.
+export const IMPACT_CLOSURE_FIELDS = [
   { key: "impact_driveway", label: "Driveway Closures" },
   { key: "impact_fullClosure", label: "Full Street Closure" },
+  { key: "impact_sidewalkClosure", label: "Sidewalk Closure" },
+  { key: "impact_crosswalkClosure", label: "Crosswalk Closure" },
   { key: "impact_busStop", label: "Bus Stop Impacts" },
   { key: "impact_transit", label: "TANSAT Needed" },
 ];
 
+// Encroachments — third-party-agency coordination (Caltrans, UPRR).
+// These will trigger future MOT-team workflows — see project_deferred_features.md.
+export const IMPACT_ENCROACHMENT_FIELDS = [
+  { key: "impact_i5Freeway", label: "I-5 Freeway Encroachment" },
+  { key: "impact_uprrBridge", label: "UPRR Bridge Encroachment" },
+];
+
+// Union used by PlanCard's ImpactRequirementsDisplay to render every impact checkbox.
+export const IMPACT_FIELDS = [
+  ...IMPACT_CLOSURE_FIELDS,
+  ...IMPACT_ENCROACHMENT_FIELDS,
+];
+
 export const IMPACT_SECTION_KEYS = [
   "dir_nb", "dir_sb", "dir_directional",
-  "impact_driveway", "impact_fullClosure", "impact_busStop", "impact_transit"
+  ...IMPACT_FIELDS.map(f => f.key),
 ];
 
 export const FIELD_REGISTRY: Record<string, { 
@@ -298,7 +314,11 @@ export const FIELD_REGISTRY: Record<string, {
   impact_krail: { label: "Krail Required", type: "checkbox", inForm: false, inGrid: false },
   impact_driveway: { label: "Driveway Closures", type: "checkbox", inForm: false, inGrid: false },
   impact_fullClosure: { label: "Full Street Closure", type: "checkbox", inForm: false, inGrid: false },
+  impact_sidewalkClosure: { label: "Sidewalk Closure", type: "checkbox", inForm: false, inGrid: false },
+  impact_crosswalkClosure: { label: "Crosswalk Closure", type: "checkbox", inForm: false, inGrid: false },
   impact_busStop: { label: "Bus Stop Impacts", type: "checkbox", inForm: false, inGrid: false },
   impact_transit: { label: "TANSAT Needed", type: "checkbox", inForm: false, inGrid: false },
+  impact_i5Freeway: { label: "I-5 Freeway Encroachment", type: "checkbox", inForm: false, inGrid: false },
+  impact_uprrBridge: { label: "UPRR Bridge Encroachment", type: "checkbox", inForm: false, inGrid: false },
   work_hours: { label: "Hours of Work", type: "text", inForm: false, inGrid: false },
 };

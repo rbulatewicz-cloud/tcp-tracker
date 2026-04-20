@@ -182,11 +182,15 @@ function TableView({
     if (plan.dir_sb)              pills.push({ label: '↓SB',  bg: '#EFF6FF', color: '#2563EB', title: 'Southbound' });
     if (plan.dir_directional)     pills.push({ label: '↔DIR', bg: '#F0FDF4', color: '#16A34A', title: 'Directional' });
     if (plan.side_street)         pills.push({ label: '⊥SS',  bg: '#F8FAFC', color: '#64748B', title: 'Side Street' });
-    if (plan.impact_krail)        pills.push({ label: 'K',    bg: '#F5F3FF', color: '#7C3AED', title: 'Krail Required' });
-    if (plan.impact_fullClosure)  pills.push({ label: 'FC',   bg: '#FEF2F2', color: '#DC2626', title: 'Full Street Closure' });
-    if (plan.impact_driveway)     pills.push({ label: 'DW',   bg: '#FFFBEB', color: '#D97706', title: 'Driveway Closures' });
-    if (plan.impact_busStop)      pills.push({ label: 'BS',   bg: '#EFF6FF', color: '#0284C7', title: 'Bus Stop Impacts' });
-    if (plan.impact_transit)      pills.push({ label: 'TN',   bg: '#F0FDFA', color: '#0F766E', title: 'TANSAT Needed' });
+    if (plan.impact_krail)            pills.push({ label: 'K',    bg: '#F5F3FF', color: '#7C3AED', title: 'Krail Required' });
+    if (plan.impact_fullClosure)      pills.push({ label: 'FC',   bg: '#FEF2F2', color: '#DC2626', title: 'Full Street Closure' });
+    if (plan.impact_driveway)         pills.push({ label: 'DW',   bg: '#FFFBEB', color: '#D97706', title: 'Driveway Closures' });
+    if (plan.impact_sidewalkClosure)  pills.push({ label: 'SW',   bg: '#FEF3C7', color: '#B45309', title: 'Sidewalk Closure' });
+    if (plan.impact_crosswalkClosure) pills.push({ label: 'XW',   bg: '#FEF3C7', color: '#B45309', title: 'Crosswalk Closure' });
+    if (plan.impact_busStop)          pills.push({ label: 'BS',   bg: '#EFF6FF', color: '#0284C7', title: 'Bus Stop Impacts' });
+    if (plan.impact_transit)          pills.push({ label: 'TN',   bg: '#F0FDFA', color: '#0F766E', title: 'TANSAT Needed' });
+    if (plan.impact_i5Freeway)        pills.push({ label: 'I-5',  bg: '#FDF2F8', color: '#BE185D', title: 'I-5 Freeway Encroachment (Caltrans)' });
+    if (plan.impact_uprrBridge)       pills.push({ label: 'UPRR', bg: '#FDF2F8', color: '#BE185D', title: 'UPRR Bridge Encroachment' });
     if (pills.length === 0) return <span style={{ color: '#CBD5E1', fontSize: 10 }}>—</span>;
     return (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>

@@ -42,7 +42,7 @@ export const PDFExportModal: React.FC<Props> = ({ plan, libraryVariances, onGene
   const hasCompliance = !!(comp && (comp.phe || comp.noiseVariance || comp.cdConcurrence || comp.drivewayNotices));
   const hasScopeNotes = !!(plan.scope || plan.notes);
   const hasWorkHours  = !!plan.work_hours;
-  const hasImpacts    = !!(plan.impact_krail || plan.impact_driveway || plan.impact_fullClosure || plan.impact_busStop || plan.impact_transit);
+  const hasImpacts    = !!(plan.impact_krail || plan.impact_driveway || plan.impact_fullClosure || plan.impact_sidewalkClosure || plan.impact_crosswalkClosure || plan.impact_busStop || plan.impact_transit || plan.impact_i5Freeway || plan.impact_uprrBridge);
   const hasLog        = !!(plan.log && plan.log.length > 0);
 
   const tcps  = plan.approvedTCPs  || [];

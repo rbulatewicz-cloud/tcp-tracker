@@ -204,8 +204,12 @@ function AppContent() {
       impact_krail: !!plan.impact_krail,
       impact_driveway: !!plan.impact_driveway,
       impact_fullClosure: !!plan.impact_fullClosure,
+      impact_sidewalkClosure: !!plan.impact_sidewalkClosure,
+      impact_crosswalkClosure: !!plan.impact_crosswalkClosure,
       impact_busStop: !!plan.impact_busStop,
       impact_transit: !!plan.impact_transit,
+      impact_i5Freeway: !!plan.impact_i5Freeway,
+      impact_uprrBridge: !!plan.impact_uprrBridge,
       work_hours: plan.work_hours,
       requestedBy: currentUser?.name || f.requestedBy,
       needByDate: '',            // fresh — new implementation window
