@@ -41,6 +41,7 @@ import { GanttView } from './views/GanttView';
 import { ReportsView } from './views/ReportsView';
 import { MyRequestsModal } from './views/MyRequestsModal';
 import { daysBetween, daysFromToday, formatFileSize, calcMetrics, getLocalDateString } from './utils/plans';
+import { getDotOverdueStatus } from './utils/dotOverdue';
 import { TodoSidebar } from './components/TodoSidebar';
 import { Tooltip } from './components/Tooltip';
 import { AppRequestSidebar } from './features/appRequests/AppRequestSidebar';
@@ -54,7 +55,6 @@ import {
   COMPLETED_STAGES,
   APPROVED_STAGES,
   STAGE_GROUP_MEMBERS,
-  STAGES_IN_DOT_REVIEW,
 } from './constants';
 
 import { useMasterFileImport } from './hooks/useMasterFileImport';
@@ -320,11 +320,10 @@ function AppContent() {
       if (!phePending && !nvPending && !cdPending) return false;
     }
     if (filter.quickFilter === 'overdue_dot') {
-      // "Stuck at DOT" = actively in DOT review for > 20 days. Uses the canonical
-      // in-review set from constants.ts so this stays aligned with calcMetrics.
-      if (!STAGES_IN_DOT_REVIEW.includes(p.stage)) return false;
-      if (!p.submitDate) return false;
-      if (daysBetween(p.submitDate, td) <= 20) return false;
+      // Uses the same SLA math (Settings > Workflow thresholds per plan type)
+      // as the dashboard KPI and the Status Report — single source of truth.
+      const status = getDotOverdueStatus(p, appConfig);
+      if (!status || status.level === 'ok') return false;
     }
 
     if (searchQuery) {
@@ -969,6 +968,7 @@ function AppContent() {
             setView={setView}
             setFilter={setFilter}
             reportTemplate={reportTemplate}
+            appConfig={appConfig}
           />
         )}
 
@@ -1044,6 +1044,7 @@ function AppContent() {
             monoFont={monoFont}
             setSelectedPlan={setSelectedPlan}
             setView={setView}
+            appConfig={appConfig}
           />
         )}
 
@@ -1117,6 +1118,7 @@ function AppContent() {
             setSelectedPlan={setSelectedPlan}
             isDark={isDark}
             libraryVariances={libraryVariances}
+            appConfig={appConfig}
           />
         )}
 

@@ -7,6 +7,8 @@ import { Tooltip } from './Tooltip';
 import { addPlanSubscriber, removePlanSubscriber } from '../services/notificationService';
 import { PDFExportModal } from './PDFExportModal';
 import { usePlanRequest } from '../context/PlanRequestContext';
+import { useApp } from '../hooks/useApp';
+import { getDotOverdueStatus, DOT_LEVEL_COLORS } from '../utils/dotOverdue';
 
 export const PlanHeader: React.FC = () => {
   const {
@@ -64,6 +66,12 @@ export const PlanHeader: React.FC = () => {
   };
 
   const daysOpen = calculateDaysOpen(selectedPlan);
+
+  // DOT overdue status — drives the inline badge next to "days open."
+  // Null when no open DOT cycle (clock isn't running).
+  const { firestoreData } = useApp();
+  const dotStatus = getDotOverdueStatus(selectedPlan, firestoreData?.appConfig);
+
   const canDelete = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.MOT;
   const isFinalStage = ['plan_approved', 'approved', 'expired'].includes(selectedPlan.stage || '');
   // MOT/ADMIN: direct renewal (creates .N plan immediately)
@@ -186,14 +194,37 @@ export const PlanHeader: React.FC = () => {
         </div>
       )}
 
-      {/* Row 1: LOC # (primary) + Days Open badge */}
+      {/* Row 1: LOC # (primary) + DOT overdue badge (when active) + Days Open badge */}
       <div className="flex justify-between items-start mb-1">
         <div className="text-[22px] font-bold text-slate-900 font-mono">
           {selectedPlan.loc || selectedPlan.id}
         </div>
-        <div className="flex items-center gap-1.5 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
-          <span className="text-sm font-bold text-amber-700">{daysOpen}</span>
-          <span className="text-[9px] text-amber-700 font-bold uppercase tracking-wider">days open</span>
+        <div className="flex items-center gap-2">
+          {/* DOT overdue / at-risk badge — only renders when there's an
+              open DOT cycle AND the clock has crossed the warning threshold. */}
+          {dotStatus && dotStatus.level !== 'ok' && (() => {
+            const colors = DOT_LEVEL_COLORS[dotStatus.level];
+            const dotIcon = dotStatus.level === 'overdue' ? '🔴' : '🟡';
+            const tooltip = `DOT has been sitting on this plan for ${dotStatus.daysOpen} calendar days (SLA: ${dotStatus.warningThreshold} warn / ${dotStatus.overdueThreshold} overdue). Submitted ${dotStatus.submittedDate}.`;
+            return (
+              <Tooltip text={tooltip} position="bottom">
+                <div
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-md border"
+                  style={{ background: colors.bg, borderColor: colors.border, color: colors.fg }}
+                >
+                  <span className="text-[11px]">{dotIcon}</span>
+                  <span className="text-sm font-bold" style={{ color: colors.fg }}>DOT +{dotStatus.daysOpen - dotStatus.warningThreshold}d</span>
+                  <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: colors.fg }}>
+                    {dotStatus.level === 'overdue' ? 'overdue' : 'at risk'}
+                  </span>
+                </div>
+              </Tooltip>
+            );
+          })()}
+          <div className="flex items-center gap-1.5 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
+            <span className="text-sm font-bold text-amber-700">{daysOpen}</span>
+            <span className="text-[9px] text-amber-700 font-bold uppercase tracking-wider">days open</span>
+          </div>
         </div>
       </div>
 
