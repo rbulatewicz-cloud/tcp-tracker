@@ -1,10 +1,11 @@
 import {
   collection, doc, addDoc, updateDoc, deleteDoc,
   onSnapshot, query, orderBy, getDoc, setDoc, arrayUnion, deleteField,
+  writeBatch,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
-import { DrivewayLetter, DrivewayLetterStatus, MetroComment, MetroCommentAttachment } from '../types';
+import { DrivewayAddress, DrivewayLetter, DrivewayLetterStatus, LetterVersion, MetroComment, MetroCommentAttachment, Plan } from '../types';
 import { writeGlobalLog } from './logService';
 import { DrivewayNoticeFields } from './drivewayNoticeService';
 import { SEGMENT_STREETS } from '../constants';
@@ -47,6 +48,67 @@ export async function updateDrivewayLetter(
   });
 }
 
+// ── Plan-side sync helpers ────────────────────────────────────────────────────
+
+/**
+ * When a letter is marked sent, keep the plan's DrivewayAddress in sync so the
+ * plan-side compliance view doesn't drift from the letter library. Flips
+ * `noticeSent` + `sentDate` and snapshots the plan's current implementation
+ * window (used downstream by the date-shift reissue warning).
+ *
+ * Best-effort — fails silently if the letter has no plan/address link, or if
+ * the target address no longer exists on the plan (likely deleted).
+ */
+async function syncLetterSentToPlanAddress(
+  letterId: string,
+  sentDateIso: string,
+): Promise<void> {
+  try {
+    const letterSnap = await getDoc(doc(db, COL, letterId));
+    if (!letterSnap.exists()) return;
+    const letter = letterSnap.data() as DrivewayLetter;
+    const planId = letter.planId;
+    const addressId = letter.addressId;
+    if (!planId || !addressId) return;
+
+    const planSnap = await getDoc(doc(db, 'plans', planId));
+    if (!planSnap.exists()) return;
+    const plan = planSnap.data() as Plan;
+    const addresses: DrivewayAddress[] = plan.compliance?.drivewayNotices?.addresses ?? [];
+    if (addresses.length === 0) return;
+
+    const sentDateYmd = sentDateIso.slice(0, 10);
+    const windowStart = plan.implementationWindow?.startDate
+      ?? plan.softImplementationWindow?.startDate
+      ?? undefined;
+    const windowEnd = plan.implementationWindow?.endDate
+      ?? plan.softImplementationWindow?.endDate
+      ?? undefined;
+
+    let changed = false;
+    const updated = addresses.map(a => {
+      if (a.id !== addressId) return a;
+      if (a.noticeSent && a.sentDate === sentDateYmd) return a; // already in sync
+      changed = true;
+      return {
+        ...a,
+        noticeSent: true,
+        sentDate: sentDateYmd,
+        letterStatus: 'sent' as DrivewayLetterStatus,
+        ...(windowStart ? { sentWindowStart: windowStart } : {}),
+        ...(windowEnd ? { sentWindowEnd: windowEnd } : {}),
+      };
+    });
+    if (!changed) return;
+
+    await updateDoc(doc(db, 'plans', planId), {
+      'compliance.drivewayNotices.addresses': updated,
+    });
+  } catch (err) {
+    console.error('syncLetterSentToPlanAddress failed:', err);
+  }
+}
+
 // ── Status transitions ────────────────────────────────────────────────────────
 
 export async function approveDrivewayLetter(id: string, address?: string): Promise<void> {
@@ -65,6 +127,9 @@ export async function markDrivewayLetterSent(id: string, dateStr?: string, addre
     sentAt: ts,
     updatedAt: new Date().toISOString(),
   });
+  // Keep the plan's DrivewayAddress in sync so the two sides of the workflow
+  // don't drift (CR used to have to flip noticeSent manually on the plan).
+  await syncLetterSentToPlanAddress(id, ts);
   writeGlobalLog(`Driveway notice sent: ${address || id}`, 'cr_hub', address || id, id, 'letter');
 }
 
@@ -150,6 +215,50 @@ export async function resubmitLetterToMetro(id: string, dateStr?: string): Promi
     metroSubmittedAt: ts,
     updatedAt: new Date().toISOString(),
   });
+}
+
+/**
+ * Bulk-update the status on many letters atomically.
+ * Supports the three bulk-friendly transitions: submit_to_metro, metro_approve, mark_sent.
+ * Splits into chunks of 400 (<500 Firestore batch limit) if needed.
+ * `dateStr` (YYYY-MM-DD) sets the relevant timestamp field; omit to use now.
+ */
+export async function bulkUpdateDrivewayLetterStatus(
+  letterIds: string[],
+  toStatus: Extract<DrivewayLetterStatus, 'submitted_to_metro' | 'approved' | 'sent'>,
+  dateStr?: string,
+): Promise<void> {
+  if (letterIds.length === 0) return;
+  const now = new Date().toISOString();
+  const ts  = dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : now;
+
+  const update: Record<string, unknown> = {
+    status: toStatus,
+    updatedAt: now,
+  };
+  if (toStatus === 'submitted_to_metro') update.metroSubmittedAt = ts;
+  else if (toStatus === 'approved')      { update.metroApprovedAt = ts; update.approvedAt = ts; }
+  else if (toStatus === 'sent')          update.sentAt = ts;
+
+  // Chunk to stay under Firestore's 500-op batch limit.
+  const CHUNK = 400;
+  for (let i = 0; i < letterIds.length; i += CHUNK) {
+    const slice = letterIds.slice(i, i + CHUNK);
+    const batch = writeBatch(db);
+    for (const id of slice) batch.update(doc(db, COL, id), update);
+    await batch.commit();
+  }
+
+  // Sync plan-side addresses for bulk-sent transitions. Done after the batch
+  // so letter rows update immediately; plan sync is best-effort per letter.
+  if (toStatus === 'sent') {
+    await Promise.all(letterIds.map(id => syncLetterSentToPlanAddress(id, ts)));
+  }
+
+  const verb = toStatus === 'submitted_to_metro' ? 'submitted to Metro'
+             : toStatus === 'approved'           ? 'approved by Metro'
+                                                 : 'marked sent';
+  writeGlobalLog(`Bulk ${verb}: ${letterIds.length} driveway letters`, 'cr_hub', 'bulk', letterIds.join(','), 'letter');
 }
 
 export async function revertDrivewayLetterStatus(
@@ -433,19 +542,61 @@ export async function uploadExhibitImage(
 
 // ── Final letter file upload (approved docx/PDF) ──────────────────────────────
 
+/**
+ * Upload a final letter PDF/DOCX.
+ * If the letter already has a letterUrl, the previous file is archived
+ * into `previousVersions[]` so history is preserved across revisions.
+ */
 export async function uploadFinalLetter(
   letterId: string,
   blob: Blob,
-  filename: string
+  filename: string,
+  archivedBy?: string,
+  note?: string,
 ): Promise<string> {
-  const storageRef = ref(storage, `driveway-letters/${letterId}/final_${filename}`);
+  // 1. Read existing letter to capture the current file for archival
+  const snap = await getDoc(doc(db, COL, letterId));
+  const existing = snap.exists() ? (snap.data() as DrivewayLetter) : null;
+
+  // 2. Upload the new file with a unique path (don't overwrite prior Storage object)
+  const stamp = Date.now();
+  const storageRef = ref(storage, `driveway-letters/${letterId}/final_${stamp}_${filename}`);
   await uploadBytes(storageRef, blob);
   const url = await getDownloadURL(storageRef);
-  await updateDoc(doc(db, COL, letterId), {
+
+  // 3. Build the update — archive prior letterUrl if any
+  const update: Record<string, unknown> = {
     letterUrl: url,
     updatedAt: new Date().toISOString(),
-  });
+  };
+  if (existing?.letterUrl) {
+    const archived: LetterVersion = {
+      url:  existing.letterUrl,
+      name: filename, // best-effort name for the archived one
+      archivedAt: new Date().toISOString(),
+      archivedBy,
+      note,
+      revisionCount: existing.metroRevisionCount,
+      status: existing.status,
+    };
+    update.previousVersions = arrayUnion(archived);
+  }
+  await updateDoc(doc(db, COL, letterId), update);
   return url;
+}
+
+/**
+ * Re-upload a revised PDF on an existing letter from the library.
+ * Archives the current PDF into `previousVersions[]`, uploads the new one,
+ * and optionally moves the letter back into a draft / revision state.
+ */
+export async function reuploadDrivewayLetter(
+  letterId: string,
+  file: File,
+  uploadedBy: string,
+  note?: string,
+): Promise<string> {
+  return uploadFinalLetter(letterId, file, file.name, uploadedBy, note);
 }
 
 // ── Plan linking ─────────────────────────────────────────────────────────────

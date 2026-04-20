@@ -47,9 +47,24 @@ export function CRHubView({ currentUser, appConfig, plans, setSelectedPlan }: CR
   const openIssueCount = openIssues.length;
 
   // ── Stats bar numbers ──────────────────────────────────────────────────────
-  const noticedAddresses = letters.filter(l => l.status === 'sent' || l.status === 'approved').length;
-  const totalAddresses   = letters.length;
-  const noticedPct       = totalAddresses > 0 ? Math.round((noticedAddresses / totalAddresses) * 100) : 0;
+  // Noticed % denominator = letters on ACTIVE plans with a non-waived / non-NA
+  // driveway track. Previously counted every letter ever created, which made
+  // the number drop artificially once plans closed or got waived.
+  const PLAN_TERMINAL_STAGES = new Set(['closed', 'cancelled', 'expired']);
+  const planById = new Map(plans.map(p => [p.id, p]));
+  const letterCountsTowardDenominator = (l: DrivewayLetter): boolean => {
+    if (!l.planId) return true; // orphan letters still count (no plan to filter by)
+    const plan = planById.get(l.planId);
+    if (!plan) return false;    // letter's plan was deleted
+    if (PLAN_TERMINAL_STAGES.has(plan.stage)) return false;
+    const trackStatus = plan.compliance?.drivewayNotices?.status;
+    if (trackStatus === 'waived' || trackStatus === 'na') return false;
+    return true;
+  };
+  const activeDenomLetters = letters.filter(letterCountsTowardDenominator);
+  const noticedAddresses   = activeDenomLetters.filter(l => l.status === 'sent' || l.status === 'approved').length;
+  const totalAddresses     = activeDenomLetters.length;
+  const noticedPct         = totalAddresses > 0 ? Math.round((noticedAddresses / totalAddresses) * 100) : 0;
 
   /** Called from CR Queue "Open" — jump directly to this plan's letters */
   function openPlanInLetters(plan: Plan) {
@@ -361,6 +376,7 @@ export function CRHubView({ currentUser, appConfig, plans, setSelectedPlan }: CR
               currentUser={currentUser}
               appConfig={appConfig}
               allLetters={letters}
+              plans={plans}
               planFilter={planFilter}
               onClearPlanFilter={() => setPlanFilter(null)}
             />

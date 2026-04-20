@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Upload, CheckCircle, XCircle, ChevronDown, X, AlertTriangle } from 'lucide-react';
-import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { doc, updateDoc, onSnapshot, arrayUnion, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { Plan, DrivewayLetter, DrivewayLetterStatus, DrivewayAddress } from '../../types';
 import {
@@ -282,11 +282,24 @@ export function BulkNoticeUploadWizard({ onClose, plans, currentUser }: Props) {
         if (selectedPlan) {
           await linkDrivewayLetterToPlan(letter, selectedPlan);
 
-          // 3. Add/update DrivewayAddress on the plan
-          const existingAddresses = selectedPlan.compliance?.drivewayNotices?.addresses ?? [];
+          // 3. Add/update DrivewayAddress on the plan.
+          //    CRITICAL: we must NOT rely on the `selectedPlan` prop snapshot for
+          //    `existingAddresses` — this handler processes N entries in sequence, each
+          //    `updateDoc` is async, and the parent's `plans` prop doesn't refresh
+          //    inside the running loop. A previous bug used a full-array replacement
+          //    built from the stale snapshot, so sequential iterations overwrote each
+          //    other and all-but-the-last bulk-linked address was lost. We use
+          //    Firestore `arrayUnion` for atomic appends, and re-read the plan doc
+          //    fresh when we need to inspect the current address list (to dedupe or
+          //    update an existing entry).
+          const planRef = doc(db, 'plans', selectedPlan.id);
+          const freshSnap = await getDoc(planRef);
+          const freshPlan = freshSnap.data() as Plan | undefined;
+          const freshAddresses = freshPlan?.compliance?.drivewayNotices?.addresses ?? [];
+
           const addrText = letter.address || '';
           const existingMatch = addrText
-            ? existingAddresses.find(a =>
+            ? freshAddresses.find(a =>
                 a.address.toLowerCase() === addrText.toLowerCase() ||
                 (a.letterId && a.letterId === letter.id)
               )
@@ -305,8 +318,8 @@ export function BulkNoticeUploadWizard({ onClose, plans, currentUser }: Props) {
               letterStatus: entry.commitStatus,
             };
 
-            const planRef = doc(db, 'plans', selectedPlan.id);
-            if (!selectedPlan.compliance?.drivewayNotices) {
+            if (!freshPlan?.compliance?.drivewayNotices) {
+              // Track doesn't exist yet — create it with this one address.
               await updateDoc(planRef, {
                 'compliance.drivewayNotices': {
                   status: 'in_progress',
@@ -316,19 +329,20 @@ export function BulkNoticeUploadWizard({ onClose, plans, currentUser }: Props) {
                 },
               });
             } else {
-              const updatedAddresses = [...existingAddresses, newAddr];
+              // Track exists — atomic append so concurrent loop iterations can't clobber each other.
               await updateDoc(planRef, {
-                'compliance.drivewayNotices.addresses': updatedAddresses,
+                'compliance.drivewayNotices.addresses': arrayUnion(newAddr),
               });
             }
           } else {
-            // Update existing address entry
-            const updatedAddresses = existingAddresses.map(a =>
-              a === existingMatch
+            // Update existing address entry. A full array replacement is still safe
+            // here because we just re-read `freshAddresses` from the server above.
+            const updatedAddresses = freshAddresses.map(a =>
+              a.id === existingMatch.id
                 ? { ...a, noticeSent: true, sentDate, letterId: letter.id, letterStatus: entry.commitStatus }
                 : a
             );
-            await updateDoc(doc(db, 'plans', selectedPlan.id), {
+            await updateDoc(planRef, {
               'compliance.drivewayNotices.addresses': updatedAddresses,
             });
           }

@@ -342,12 +342,26 @@ export interface DrivewayLetter {
   // Re-notice chain — set when this letter is a renewal of a prior plan's notice
   parentLetterId?: string;     // ID of the prior sent/approved letter this is based on
 
+  // Version history — every prior PDF that was replaced on this letter
+  previousVersions?: LetterVersion[];
+
   // Audit
   createdAt: string;
   createdBy: string;
   updatedAt?: string;
   approvedAt?: string;
   sentAt?: string;
+}
+
+/** Archived prior PDF for a DrivewayLetter. Stored in DrivewayLetter.previousVersions. */
+export interface LetterVersion {
+  url: string;
+  name: string;                 // filename (or inferred if none)
+  archivedAt: string;           // ISO timestamp when it was replaced
+  archivedBy?: string;          // email of person replacing it
+  note?: string;                // optional — e.g. "Metro revision 2"
+  revisionCount?: number;       // metroRevisionCount at time of archive
+  status?: DrivewayLetterStatus;// the letter's status when this file was archived
 }
 
 export interface MetroCommentAttachment {
@@ -368,13 +382,25 @@ export interface MetroComment {
   attachments?: MetroCommentAttachment[];  // Metro response docs, markups, etc.
 }
 
-export type DrivewayNoticeStatus = 'not_started' | 'in_progress' | 'sent' | 'completed' | 'na';
+export type DrivewayNoticeStatus = 'not_started' | 'in_progress' | 'sent' | 'completed' | 'na' | 'waived';
+
+/** Reason code for an actively-waived driveway notice track.
+ *  `scope_changed` — plan scope changed so driveways are no longer impacted
+ *  `metro_waived`  — Metro explicitly said notification wasn't required
+ *  `work_done`     — work was completed without needing to notify
+ *  `other`         — free-form (requires waivedNote) */
+export type DrivewayWaiveReason = 'scope_changed' | 'metro_waived' | 'work_done' | 'other';
 
 export interface DrivewayNoticeTrack {
   status: DrivewayNoticeStatus;
   triggeredBy: string[];
   addresses: DrivewayAddress[];
   notes?: string;
+  // Waive metadata — populated when status === 'waived'
+  waivedReason?: DrivewayWaiveReason;
+  waivedNote?: string;
+  waivedAt?: string;     // ISO timestamp
+  waivedBy?: string;     // email
 }
 
 export interface PlanCompliance {
@@ -752,6 +778,12 @@ export interface Plan {
   loc: string;          // same as id — kept for display/import compatibility
   revisionSuffix?: string;   // ".1", ".2" for renewals after expiry
   parentLocId?: string;      // for renewals, points to original LOC record
+
+  // Sibling grouping — a set of LOCs that cover the same work at the same
+  // time (e.g. phased permits). Plans in the same group share driveway
+  // outreach: a single notice covers all members. All members carry the
+  // same `planGroupId`. Distinct from parentLocId (renewals).
+  planGroupId?: string;
 
   // Who requested this plan
   requestedBy: string;

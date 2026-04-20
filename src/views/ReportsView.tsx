@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import type { Plan, User } from '../types';
+import React, { useEffect, useState } from 'react';
+import type { DrivewayLetter, Plan, User } from '../types';
 import { fmtDate } from '../utils/plans';
 import { getStagePill } from '../utils/corridor';
 import { ALL_STAGES } from '../constants';
+import { subscribeToDrivewayLetters } from '../services/drivewayLetterService';
 
 interface ReportsViewProps {
   plans: Plan[];
@@ -23,7 +24,7 @@ const STAGE_LABELS: Record<string, string> = Object.fromEntries(
   ALL_STAGES.map(s => [s.key, s.label])
 );
 
-type ReportId = 'status' | 'cd_concurrence' | 'compliance_summary';
+type ReportId = 'status' | 'cd_concurrence' | 'compliance_summary' | 'monthly_rollup';
 
 interface ReportTemplate {
   id: ReportId;
@@ -50,6 +51,12 @@ const REPORT_TEMPLATES: ReportTemplate[] = [
     icon: '🏛',
     name: 'Compliance Summary',
     description: 'PHE, NV, CD, Driveway status',
+  },
+  {
+    id: 'monthly_rollup',
+    icon: '📈',
+    name: 'Monthly Rollup',
+    description: 'DIL activity + CD turnaround by month',
   },
 ];
 
@@ -541,6 +548,223 @@ function ComplianceSummaryReport({ plans, monoFont, setSelectedPlan }: { plans: 
   );
 }
 
+// ── Report: Monthly Rollup ────────────────────────────────────────────────────
+// DIL activity + CD concurrence turnaround, bucketed by month. Useful for the
+// CR PM's monthly check-ins ("how many letters went out in March?").
+function MonthlyRollupReport({ plans, monoFont }: { plans: Plan[]; monoFont: string }) {
+  const [letters, setLetters] = useState<DrivewayLetter[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = subscribeToDrivewayLetters(ls => { setLetters(ls); setLoading(false); });
+    return () => unsub();
+  }, []);
+
+  // Build last N months (newest first), label "Apr 2026"
+  const MONTHS_BACK = 6;
+  const monthKeys: string[] = [];
+  const monthLabels: Record<string, string> = {};
+  {
+    const today = new Date();
+    for (let i = 0; i < MONTHS_BACK; i++) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthKeys.push(key);
+      monthLabels[key] = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    }
+  }
+  const monthKeyOf = (iso?: string): string | null => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  // DIL counts — bucket each letter by the month its event happened
+  type DilRow = { drafted: number; submitted: number; approved: number; sent: number };
+  const dilByMonth = new Map<string, DilRow>();
+  for (const k of monthKeys) dilByMonth.set(k, { drafted: 0, submitted: 0, approved: 0, sent: 0 });
+
+  for (const l of letters) {
+    const ckey = monthKeyOf(l.createdAt);
+    if (ckey && dilByMonth.has(ckey)) dilByMonth.get(ckey)!.drafted++;
+    const skey = monthKeyOf(l.metroSubmittedAt);
+    if (skey && dilByMonth.has(skey)) dilByMonth.get(skey)!.submitted++;
+    const akey = monthKeyOf(l.metroApprovedAt);
+    if (akey && dilByMonth.has(akey)) dilByMonth.get(akey)!.approved++;
+    const sentKey = monthKeyOf(l.sentAt);
+    if (sentKey && dilByMonth.has(sentKey)) dilByMonth.get(sentKey)!.sent++;
+  }
+
+  // CD concurrence turnaround — sentDate → concurrenceLetter.uploadedAt.
+  // Bucket by month of concurrence.
+  type CdRow = { count: number; totalDays: number; avgDays: number | null };
+  const cdByMonth = new Map<string, CdRow>();
+  for (const k of monthKeys) cdByMonth.set(k, { count: 0, totalDays: 0, avgDays: null });
+
+  for (const p of plans) {
+    const cds = p.compliance?.cdConcurrence?.cds ?? [];
+    for (const cd of cds) {
+      if (cd.status !== 'concurred') continue;
+      const sent = cd.sentDate;
+      const concurredAt = cd.concurrenceLetter?.uploadedAt;
+      if (!sent || !concurredAt) continue;
+      const key = monthKeyOf(concurredAt);
+      if (!key || !cdByMonth.has(key)) continue;
+      const sentMs = new Date(sent + 'T00:00:00').getTime();
+      const concurredMs = new Date(concurredAt).getTime();
+      if (isNaN(sentMs) || isNaN(concurredMs) || concurredMs < sentMs) continue;
+      const days = (concurredMs - sentMs) / 86_400_000;
+      const row = cdByMonth.get(key)!;
+      row.count++;
+      row.totalDays += days;
+    }
+  }
+  for (const row of cdByMonth.values()) {
+    if (row.count > 0) row.avgDays = row.totalDays / row.count;
+  }
+
+  // Totals across the window
+  const totals: DilRow = { drafted: 0, submitted: 0, approved: 0, sent: 0 };
+  for (const row of dilByMonth.values()) {
+    totals.drafted += row.drafted;
+    totals.submitted += row.submitted;
+    totals.approved += row.approved;
+    totals.sent += row.sent;
+  }
+  let cdTotalCount = 0, cdTotalDays = 0;
+  for (const row of cdByMonth.values()) { cdTotalCount += row.count; cdTotalDays += row.totalDays; }
+  const cdAvgOverall = cdTotalCount > 0 ? cdTotalDays / cdTotalCount : null;
+
+  const thStyle: React.CSSProperties = {
+    fontSize: 10,
+    fontWeight: 700,
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    padding: '6px 10px',
+    textAlign: 'left',
+    background: '#F8FAFC',
+    borderBottom: '1px solid #E2E8F0',
+  };
+  const tdStyle: React.CSSProperties = {
+    fontSize: 12,
+    color: '#1E293B',
+    padding: '8px 10px',
+    borderBottom: '1px solid #F1F5F9',
+    verticalAlign: 'middle',
+  };
+  const numTd: React.CSSProperties = { ...tdStyle, textAlign: 'right', fontFamily: monoFont };
+
+  if (loading) {
+    return <div style={{ fontSize: 13, color: '#94A3B8', fontStyle: 'italic' }}>Loading letter data…</div>;
+  }
+
+  return (
+    <div>
+      {/* Summary cards */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ padding: '10px 16px', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, textAlign: 'center', minWidth: 110 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#1D4ED8' }}>{totals.drafted}</div>
+          <div style={{ fontSize: 10, color: '#1E40AF', fontWeight: 600 }}>Drafted · {MONTHS_BACK}mo</div>
+        </div>
+        <div style={{ padding: '10px 16px', background: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 8, textAlign: 'center', minWidth: 110 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#B45309' }}>{totals.submitted}</div>
+          <div style={{ fontSize: 10, color: '#92400E', fontWeight: 600 }}>Submitted</div>
+        </div>
+        <div style={{ padding: '10px 16px', background: '#DCFCE7', border: '1px solid #86EFAC', borderRadius: 8, textAlign: 'center', minWidth: 110 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#15803D' }}>{totals.approved}</div>
+          <div style={{ fontSize: 10, color: '#166534', fontWeight: 600 }}>Metro Approved</div>
+        </div>
+        <div style={{ padding: '10px 16px', background: '#EDE9FE', border: '1px solid #C4B5FD', borderRadius: 8, textAlign: 'center', minWidth: 110 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#6D28D9' }}>{totals.sent}</div>
+          <div style={{ fontSize: 10, color: '#5B21B6', fontWeight: 600 }}>Sent</div>
+        </div>
+        <div style={{ padding: '10px 16px', background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: 8, textAlign: 'center', minWidth: 150 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#1E293B' }}>
+            {cdAvgOverall !== null ? `${cdAvgOverall.toFixed(1)}d` : '—'}
+          </div>
+          <div style={{ fontSize: 10, color: '#475569', fontWeight: 600 }}>
+            CD turnaround avg {cdTotalCount > 0 ? `(n=${cdTotalCount})` : ''}
+          </div>
+        </div>
+      </div>
+
+      {/* DIL activity by month */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#1E293B', marginBottom: 8 }}>
+          Driveway Impact Letters — by month
+        </div>
+        <div style={{ border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Month</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>Drafted</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>Submitted to Metro</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>Metro Approved</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>Sent</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthKeys.map(k => {
+                const row = dilByMonth.get(k)!;
+                return (
+                  <tr key={k}>
+                    <td style={{ ...tdStyle, fontWeight: 700 }}>{monthLabels[k]}</td>
+                    <td style={numTd}>{row.drafted || '—'}</td>
+                    <td style={numTd}>{row.submitted || '—'}</td>
+                    <td style={numTd}>{row.approved || '—'}</td>
+                    <td style={numTd}>{row.sent || '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 6, fontStyle: 'italic' }}>
+          Each column counts letters whose respective event occurred in that month.
+        </div>
+      </div>
+
+      {/* CD concurrence turnaround by month */}
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#1E293B', marginBottom: 8 }}>
+          CD Concurrence — turnaround by month
+        </div>
+        <div style={{ border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Month Concurred</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>Concurrences</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>Avg Days (sent → concurred)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthKeys.map(k => {
+                const row = cdByMonth.get(k)!;
+                return (
+                  <tr key={k}>
+                    <td style={{ ...tdStyle, fontWeight: 700 }}>{monthLabels[k]}</td>
+                    <td style={numTd}>{row.count || '—'}</td>
+                    <td style={{ ...numTd, fontWeight: 700, color: row.avgDays !== null && row.avgDays > 21 ? '#B91C1C' : '#1E293B' }}>
+                      {row.avgDays !== null ? `${row.avgDays.toFixed(1)}d` : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 6, fontStyle: 'italic' }}>
+          Based on CD entries with both a sent date and a signed concurrence letter upload date.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Print helper: open report in a new tab ────────────────────────────────────
 function buildPrintHTML(reportName: string, bodyHtml: string): string {
   return `<!DOCTYPE html>
@@ -684,6 +908,9 @@ export function ReportsView({ plans, filtered, currentUser, monoFont, setSelecte
           )}
           {selected === 'compliance_summary' && (
             <ComplianceSummaryReport plans={filtered} monoFont={monoFont} setSelectedPlan={setSelectedPlan} />
+          )}
+          {selected === 'monthly_rollup' && (
+            <MonthlyRollupReport plans={filtered} monoFont={monoFont} />
           )}
         </div>
       </div>
