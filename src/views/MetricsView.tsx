@@ -269,7 +269,8 @@ function ComplianceHealthCards({ filtered, setView }: { filtered: any[]; setView
 
   const dwAll = filtered.filter(p => p.compliance?.drivewayNotices);
   const dwNA       = dwAll.filter(p => p.compliance.drivewayNotices.status === 'na').length;
-  const dwActive   = dwAll.length - dwNA;
+  const dwWaived   = dwAll.filter(p => p.compliance.drivewayNotices.status === 'waived').length;
+  const dwActive   = dwAll.length - dwNA - dwWaived;
   const dwAllSent  = dwAll.filter(p => { const a = p.compliance.drivewayNotices.addresses ?? []; return a.length > 0 && a.every((x: any) => x.letterStatus === 'sent'); }).length;
   const dwWithMetro= dwAll.filter(p => (p.compliance.drivewayNotices.addresses ?? []).some((x: any) => ['submitted_to_metro','approved'].includes(x.letterStatus))).length;
   const dwInProg   = Math.max(0, dwActive - dwAllSent - dwWithMetro);
@@ -279,7 +280,7 @@ function ComplianceHealthCards({ filtered, setView }: { filtered: any[]; setView
   const phePct = pheAll.length ? Math.round((ph.approved / pheAll.length) * 100) : 0;
   const nvPct  = nvAll.length  ? Math.round(((nv.approved + nv.linked) / nvAll.length) * 100) : 0;
   const cdPct  = cdTotal       ? Math.round((cdConcurred / cdTotal) * 100) : 0;
-  const dwPct  = dwAll.length  ? Math.round(((dwAllSent + dwNA) / dwAll.length) * 100) : 0;
+  const dwPct  = dwAll.length  ? Math.round(((dwAllSent + dwNA + dwWaived) / dwAll.length) * 100) : 0;
 
   return (
     <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', padding: 20 }}>

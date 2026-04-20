@@ -770,7 +770,7 @@ export function CRQueueSection({ plans, appConfig, onOpenPlanLetters, currentUse
 
   // Build queue items from all plans with driveway impact that aren't complete
   const DONE_STAGES  = new Set(['closed', 'cancelled']);
-  const DONE_STATUSES = new Set(['completed', 'na']);
+  const DONE_STATUSES = new Set(['completed', 'na', 'waived']);
 
   const items: QueueItem[] = plans
     .filter(p => {
@@ -989,7 +989,7 @@ export function crQueueCount(
   reissueDays = 5
 ): number {
   const DONE_STAGES  = new Set(['closed', 'cancelled']);
-  const DONE_STATUSES = new Set(['completed', 'na']);
+  const DONE_STATUSES = new Set(['completed', 'na', 'waived']);
   return plans.filter(p => {
     if (!p.impact_driveway || p.isHistorical) return false;
     if (DONE_STAGES.has(p.stage)) return false;

@@ -38,6 +38,7 @@ const COMPLIANCE_STATUS_CLS: Record<string, string> = {
   approved:    'bg-emerald-100 text-emerald-700',
   na:          'bg-slate-100 text-slate-400',
   pending:     'bg-yellow-100 text-yellow-700',
+  waived:      'bg-slate-100 text-slate-500 border border-slate-300',
 };
 
 function ComplianceBadge({ status }: { status?: string }) {

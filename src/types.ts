@@ -368,13 +368,25 @@ export interface MetroComment {
   attachments?: MetroCommentAttachment[];  // Metro response docs, markups, etc.
 }
 
-export type DrivewayNoticeStatus = 'not_started' | 'in_progress' | 'sent' | 'completed' | 'na';
+export type DrivewayNoticeStatus = 'not_started' | 'in_progress' | 'sent' | 'completed' | 'na' | 'waived';
+
+/** Reason code for an actively-waived driveway notice track.
+ *  `scope_changed` — plan scope changed so driveways are no longer impacted
+ *  `metro_waived`  — Metro explicitly said notification wasn't required
+ *  `work_done`     — work was completed without needing to notify
+ *  `other`         — free-form (requires waivedNote) */
+export type DrivewayWaiveReason = 'scope_changed' | 'metro_waived' | 'work_done' | 'other';
 
 export interface DrivewayNoticeTrack {
   status: DrivewayNoticeStatus;
   triggeredBy: string[];
   addresses: DrivewayAddress[];
   notes?: string;
+  // Waive metadata — populated when status === 'waived'
+  waivedReason?: DrivewayWaiveReason;
+  waivedNote?: string;
+  waivedAt?: string;     // ISO timestamp
+  waivedBy?: string;     // email
 }
 
 export interface PlanCompliance {

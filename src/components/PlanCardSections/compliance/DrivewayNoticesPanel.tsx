@@ -1,5 +1,13 @@
-import { DrivewayNoticeTrack, DrivewayAddress, DrivewayLetterStatus, Plan, AppConfig, DrivewayProperty } from '../../../types';
+import { useState } from 'react';
+import { DrivewayNoticeTrack, DrivewayAddress, DrivewayLetterStatus, DrivewayWaiveReason, Plan, AppConfig, DrivewayProperty } from '../../../types';
 import { fmtDate as fmt, daysUntil } from '../../../utils/plans';
+
+const WAIVE_REASON_LABEL: Record<DrivewayWaiveReason, string> = {
+  scope_changed: 'Scope change — no longer impacts driveways',
+  metro_waived:  'Metro waived notification',
+  work_done:     'Work completed without needing notification',
+  other:         'Other (see note)',
+};
 
 /** Returns the number of days the plan window has shifted since the notice was sent, or null if no shift / already dismissed. */
 function detectDateShift(addr: DrivewayAddress, plan: Plan, reissueDays: number): number | null {
@@ -22,7 +30,7 @@ const LETTER_STATUS_BADGE: Record<DrivewayLetterStatus, { label: string; cls: st
 };
 
 export function DrivewayNoticesPanel({
-  dn, canEdit, onChange, plan, appConfig, drivewayProperties,
+  dn, canEdit, onChange, plan, appConfig, drivewayProperties, currentUserEmail,
 }: {
   dn: DrivewayNoticeTrack;
   canEdit: boolean;
@@ -32,6 +40,42 @@ export function DrivewayNoticesPanel({
   drivewayProperties: DrivewayProperty[];
   currentUserEmail?: string;
 }) {
+  const [showWaiveForm, setShowWaiveForm] = useState(false);
+  const [waiveReason, setWaiveReason] = useState<DrivewayWaiveReason>('scope_changed');
+  const [waiveNote, setWaiveNote] = useState('');
+
+  const isWaived = dn.status === 'waived';
+
+  function applyWaive() {
+    // Note is required when reason is 'other'
+    if (waiveReason === 'other' && !waiveNote.trim()) return;
+    onChange({
+      ...dn,
+      status: 'waived',
+      waivedReason: waiveReason,
+      waivedNote:   waiveNote.trim() || undefined,
+      waivedAt:     new Date().toISOString(),
+      waivedBy:     currentUserEmail || 'Unknown',
+    });
+    setShowWaiveForm(false);
+    setWaiveNote('');
+    setWaiveReason('scope_changed');
+  }
+
+  function unwaive() {
+    // Reverting: drop waive metadata, reset status based on what addresses exist.
+    const nextStatus = dn.addresses.some(a => a.letterStatus === 'sent' || a.noticeSent)
+      ? 'in_progress'
+      : 'not_started';
+    onChange({
+      ...dn,
+      status: nextStatus,
+      waivedReason: undefined,
+      waivedNote:   undefined,
+      waivedAt:     undefined,
+      waivedBy:     undefined,
+    });
+  }
   const addAddress = () => {
     const newAddr: DrivewayAddress = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2),
@@ -77,8 +121,43 @@ export function DrivewayNoticesPanel({
         ))}
       </div>
 
+      {/* Waived banner — shows reason + who/when, with option to un-waive */}
+      {isWaived && (
+        <div className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-bold text-slate-700 mb-0.5">
+                🚫 Notices waived
+                {dn.waivedReason && (
+                  <span className="ml-1.5 font-semibold text-slate-600">· {WAIVE_REASON_LABEL[dn.waivedReason]}</span>
+                )}
+              </p>
+              {dn.waivedNote && (
+                <p className="text-[11px] text-slate-600 mt-1 whitespace-pre-wrap">{dn.waivedNote}</p>
+              )}
+              {(dn.waivedBy || dn.waivedAt) && (
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {dn.waivedBy && <>By {dn.waivedBy}</>}
+                  {dn.waivedBy && dn.waivedAt && ' · '}
+                  {dn.waivedAt && <>{fmt(dn.waivedAt)}</>}
+                </p>
+              )}
+            </div>
+            {canEdit && (
+              <button
+                onClick={unwaive}
+                className="text-[10px] font-bold text-slate-500 hover:text-slate-800 px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100 transition-colors shrink-0"
+                title="Reopen — return this plan to the CR queue"
+              >
+                Un-waive
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Lead time alert */}
-      {showLeadTimeAlert && (
+      {!isWaived && showLeadTimeAlert && (
         <div className={`rounded-lg border px-3 py-2.5 ${leadTimeOverdue ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}>
           <p className={`text-[11px] font-semibold ${leadTimeOverdue ? 'text-red-700' : 'text-amber-800'}`}>
             {leadTimeOverdue
@@ -249,6 +328,65 @@ export function DrivewayNoticesPanel({
       )}
       {!canEdit && dn.notes && (
         <div className="text-[11px] text-slate-600">{dn.notes}</div>
+      )}
+
+      {/* Waive action — hidden if already waived */}
+      {canEdit && !isWaived && !showWaiveForm && (
+        <div className="pt-1">
+          <button
+            onClick={() => setShowWaiveForm(true)}
+            className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 transition-colors"
+            title="Remove this plan from the CR queue without sending notices"
+          >
+            Waive notices for this plan…
+          </button>
+        </div>
+      )}
+
+      {/* Waive inline form */}
+      {canEdit && !isWaived && showWaiveForm && (
+        <div className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 space-y-2">
+          <p className="text-[11px] font-bold text-slate-700">Waive driveway notices</p>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1">Reason</label>
+            <select
+              value={waiveReason}
+              onChange={e => setWaiveReason(e.target.value as DrivewayWaiveReason)}
+              className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[12px] outline-none focus:border-slate-400 focus:bg-white"
+            >
+              {(Object.keys(WAIVE_REASON_LABEL) as DrivewayWaiveReason[]).map(r => (
+                <option key={r} value={r}>{WAIVE_REASON_LABEL[r]}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block mb-1">
+              Note {waiveReason === 'other' && <span className="text-red-500">*</span>}
+            </label>
+            <textarea
+              value={waiveNote}
+              onChange={e => setWaiveNote(e.target.value)}
+              placeholder={waiveReason === 'other' ? 'Describe why notices are being waived (required)' : 'Optional details'}
+              rows={2}
+              className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[12px] outline-none focus:border-slate-400 focus:bg-white resize-none"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              onClick={() => { setShowWaiveForm(false); setWaiveNote(''); setWaiveReason('scope_changed'); }}
+              className="px-2.5 py-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800 rounded"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={applyWaive}
+              disabled={waiveReason === 'other' && !waiveNote.trim()}
+              className="px-2.5 py-1 text-[11px] font-semibold bg-slate-700 text-white rounded hover:bg-slate-800 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
+            >
+              Waive notices
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
