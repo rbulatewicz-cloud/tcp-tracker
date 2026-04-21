@@ -132,7 +132,7 @@ export function ReviewQueueItem({ variance: v, allVariances, onApproveNew, onApp
             <option value="">Mark as revision of…</option>
             {liveVariances.map(x => (
               <option key={x.id} value={x.parentVarianceId ?? x.id}>
-                {x.title || x.fileName}
+                {x.permitNumber ? `${x.permitNumber} — ${x.title}` : (x.title || x.fileName)}
               </option>
             ))}
           </select>
