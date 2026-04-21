@@ -91,6 +91,11 @@ export function VarianceCard({
           <span className="text-[10px] text-slate-400">
             {history.length} previous revision{history.length !== 1 ? 's' : ''}
           </span>
+          {(active.verifiedStreets?.length ?? 0) > 0 && history.length > 0 && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 ml-auto">
+              <CheckCircle size={8} /> {active.verifiedStreets?.length} verified streets inherited
+            </span>
+          )}
         </div>
       )}
       <div className="p-4">
