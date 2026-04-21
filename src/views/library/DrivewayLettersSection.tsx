@@ -21,6 +21,7 @@ import {
   addMetroComment,
   rescanDrivewayLetterFromUrl,
   bulkUpdateDrivewayLetterStatus,
+  validateLetterForMetro,
 } from '../../services/drivewayLetterService';
 import { createDrivewayProperty } from '../../services/drivewayPropertyService';
 import { buildNoticeDocx, downloadNoticeDocx } from '../../services/drivewayNoticeService';
@@ -352,6 +353,9 @@ interface LetterCardProps {
   onToggleSelect?: () => void;
   /** Replace the current PDF with a new one; prior PDF is moved to previousVersions[]. */
   onReupload?: (file: File) => void;
+  /** If set, this letter was just skipped in a bulk submit — show a dismissable flag. */
+  bulkSkipReason?: string[];
+  onDismissBulkSkip?: () => void;
 }
 
 // Reusable confirm-on-click hook for a single card
@@ -387,6 +391,7 @@ function LetterCard({
   tcpUrl, tcpName,
   selectionMode, selected, onToggleSelect,
   onReupload,
+  bulkSkipReason, onDismissBulkSkip,
 }: LetterCardProps) {
   const reuploadInputRef = useRef<HTMLInputElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -415,6 +420,12 @@ function LetterCard({
   const isMetroActive = letter.status === 'submitted_to_metro' || letter.status === 'metro_revision_requested';
   const hasMetroComments = (letter.metroComments?.length ?? 0) > 0;
 
+  // Pre-flight validation for Submit to Metro. Drafts and revision-request
+  // letters are the only states where we care; other states already passed.
+  const metroValidation = validateLetterForMetro(letter);
+  const showMetroChecklist = !metroValidation.ok
+    && (letter.status === 'draft' || letter.status === 'metro_revision_requested');
+
   // Confirm-aware button helper
   function ConfirmBtn({
     actionKey, label, confirmLabel, onClick, className,
@@ -434,7 +445,13 @@ function LetterCard({
   }
 
   return (
-    <div className={`bg-white border rounded-lg shadow-sm overflow-hidden ${selected ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200'}`}>
+    <div className={`bg-white border rounded-lg shadow-sm overflow-hidden ${
+      bulkSkipReason?.length
+        ? 'border-red-400 ring-2 ring-red-100'
+        : selected
+          ? 'border-indigo-400 ring-2 ring-indigo-100'
+          : 'border-slate-200'
+    }`}>
       {/* Header row */}
       <div className="flex items-start gap-3 p-4">
         {selectionMode && (
@@ -607,7 +624,17 @@ function LetterCard({
           {/* Draft actions */}
           {letter.status === 'draft' && canApprove && !showRevisionInput && (
             <>
-              <ConfirmBtn actionKey="submit_metro" label="Submit to Metro" onClick={() => onSubmitToMetro(actionDate)} className="bg-indigo-600 text-white hover:bg-indigo-700" />
+              {metroValidation.ok ? (
+                <ConfirmBtn actionKey="submit_metro" label="Submit to Metro" onClick={() => onSubmitToMetro(actionDate)} className="bg-indigo-600 text-white hover:bg-indigo-700" />
+              ) : (
+                <button
+                  disabled
+                  title={`Missing: ${metroValidation.missing.join(', ')}`}
+                  className="px-2.5 py-1.5 text-[11px] font-semibold rounded bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                >
+                  Submit to Metro
+                </button>
+              )}
               <ConfirmBtn actionKey="direct_approve" label="Approve" onClick={onDirectApprove} className="bg-white border border-slate-300 text-slate-600 hover:bg-slate-50" />
             </>
           )}
@@ -625,7 +652,17 @@ function LetterCard({
           )}
           {/* Revision requested — resubmit */}
           {letter.status === 'metro_revision_requested' && canApprove && !showRevisionInput && (
-            <ConfirmBtn actionKey="resubmit" label="Resubmit to Metro" onClick={() => onResubmit(actionDate)} className="bg-indigo-600 text-white hover:bg-indigo-700" />
+            metroValidation.ok ? (
+              <ConfirmBtn actionKey="resubmit" label="Resubmit to Metro" onClick={() => onResubmit(actionDate)} className="bg-indigo-600 text-white hover:bg-indigo-700" />
+            ) : (
+              <button
+                disabled
+                title={`Missing: ${metroValidation.missing.join(', ')}`}
+                className="px-2.5 py-1.5 text-[11px] font-semibold rounded bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+              >
+                Resubmit to Metro
+              </button>
+            )
           )}
           {/* Approved — mark sent */}
           {letter.status === 'approved' && (
@@ -703,6 +740,50 @@ function LetterCard({
           </button>
         </div>
       </div>
+
+      {/* Bulk-submit skip flag — set when the last bulk submit skipped this letter */}
+      {bulkSkipReason && bulkSkipReason.length > 0 && (
+        <div className="mx-4 mb-3 rounded-md border border-red-300 bg-red-50 px-3 py-2 flex items-start gap-2">
+          <AlertTriangle size={14} className="text-red-600 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] font-semibold text-red-700">
+              Skipped in bulk submit — missing required fields
+            </div>
+            <ul className="mt-1 text-[11px] text-red-700 list-disc pl-4">
+              {bulkSkipReason.map(m => (
+                <li key={m}>{m}</li>
+              ))}
+            </ul>
+          </div>
+          {onDismissBulkSkip && (
+            <button
+              onClick={onDismissBulkSkip}
+              className="text-[10px] text-red-500 hover:text-red-800"
+              title="Dismiss"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Pre-flight checklist — draft / revision letters that fail Metro validation */}
+      {showMetroChecklist && !metroValidation.ok && canApprove && (
+        <div className="mx-4 mb-3 rounded-md border border-red-300 bg-red-50 px-3 py-2">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-red-700 mb-1">
+            <AlertTriangle size={12} />
+            Submit to Metro blocked — missing:
+          </div>
+          <ul className="text-[11px] text-red-700 space-y-0.5">
+            {metroValidation.missing.map(m => (
+              <li key={m} className="flex items-center gap-1.5">
+                <span className="inline-block w-3 h-3 rounded border border-red-400 bg-white shrink-0" />
+                <span>{m}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Date confirmation bar — shown when a date-requiring action is armed */}
       {anyDateActionArmed && (
@@ -1110,6 +1191,9 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
   const [selectedIds,     setSelectedIds]     = useState<Set<string>>(new Set());
   const [bulkActionDate,  setBulkActionDate]  = useState(() => new Date().toISOString().slice(0, 10));
   const [bulkBusy,        setBulkBusy]        = useState(false);
+  // Letters skipped by the last bulk submit-to-Metro, keyed by id → missing fields.
+  // Used to visually flag cards until the user fixes them or dismisses.
+  const [bulkSkipped,     setBulkSkipped]     = useState<Record<string, string[]>>({});
 
   const canApprove = currentUser?.role === UserRole.MOT || currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.CR;
   const currentUserEmail = currentUser?.email ?? 'Unknown';
@@ -1403,21 +1487,52 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
     actionLabel: string
   ) {
     const { eligible, skipped } = bulkActionWouldApply(targetStatus, allowedFrom);
-    if (eligible.length === 0) {
-      showToast(`No selected letters can be ${actionLabel} right now.`, 'error');
+
+    // Pre-flight validator — only runs for submit-to-Metro. Letters that fail
+    // are pulled out of `eligible` and surfaced via per-card red flags so CR
+    // can fix the missing fields instead of getting a Metro revision request.
+    const validationSkips: Record<string, string[]> = {};
+    const finalEligible = targetStatus === 'submitted_to_metro'
+      ? eligible.filter(l => {
+          const v = validateLetterForMetro(l);
+          if (v.ok) return true;
+          validationSkips[l.id] = v.missing;
+          return false;
+        })
+      : eligible;
+    const validationSkipCount = Object.keys(validationSkips).length;
+
+    if (finalEligible.length === 0) {
+      if (validationSkipCount > 0) {
+        setBulkSkipped(prev => ({ ...prev, ...validationSkips }));
+        showToast(
+          `No letters submitted — ${validationSkipCount} skipped for missing fields. See cards.`,
+          'error'
+        );
+      } else {
+        showToast(`No selected letters can be ${actionLabel} right now.`, 'error');
+      }
       return;
     }
     setBulkBusy(true);
     try {
       await bulkUpdateDrivewayLetterStatus(
-        eligible.map(l => l.id),
+        finalEligible.map(l => l.id),
         targetStatus,
         bulkActionDate
       );
-      showToast(
-        `${actionLabel}: ${eligible.length} letter${eligible.length === 1 ? '' : 's'}${skipped.length ? ` (${skipped.length} skipped)` : ''}`,
-        'success'
-      );
+      if (validationSkipCount > 0) {
+        setBulkSkipped(prev => ({ ...prev, ...validationSkips }));
+        showToast(
+          `Submitted ${finalEligible.length}, skipped ${validationSkipCount} — see cards for missing items.`,
+          'success'
+        );
+      } else {
+        showToast(
+          `${actionLabel}: ${finalEligible.length} letter${finalEligible.length === 1 ? '' : 's'}${skipped.length ? ` (${skipped.length} skipped)` : ''}`,
+          'success'
+        );
+      }
       clearBulk();
     } catch (e) {
       showToast(`Bulk update failed: ${(e as Error).message}`, 'error');
@@ -1662,6 +1777,12 @@ export function DrivewayLettersSection({ currentUser, appConfig, allLetters, pla
                 selected={selectedIds.has(letter.id)}
                 onToggleSelect={() => toggleSelect(letter.id)}
                 onReupload={file => handleReupload(letter, file)}
+                bulkSkipReason={bulkSkipped[letter.id]}
+                onDismissBulkSkip={bulkSkipped[letter.id] ? () => setBulkSkipped(prev => {
+                  const next = { ...prev };
+                  delete next[letter.id];
+                  return next;
+                }) : undefined}
               />
             );
           })}

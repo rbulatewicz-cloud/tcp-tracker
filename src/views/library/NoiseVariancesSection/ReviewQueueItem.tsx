@@ -26,7 +26,7 @@ export function ReviewQueueItem({ variance: v, allVariances, onApproveNew, onApp
   const [acting, setActing] = useState(false);
 
   const flags = v.reviewFlags ?? {};
-  const liveVariances = allVariances.filter(x => x.scanStatus === 'complete' && !x.isArchived && x.id !== v.id);
+  const liveVariances = allVariances.filter(x => x.scanStatus === 'complete' && x.id !== v.id);
 
   const handleApproveNew = async () => {
     setActing(true);

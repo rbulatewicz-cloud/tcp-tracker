@@ -135,6 +135,37 @@ export async function markDrivewayLetterSent(id: string, dateStr?: string, addre
 
 // ── Metro review workflow ─────────────────────────────────────────────────────
 
+/**
+ * Pre-flight check that a letter has everything Metro needs before we hit
+ * submit. Pure — no side effects, no async. Missing items come back as
+ * human-readable strings suitable for a checklist UI.
+ */
+export function validateLetterForMetro(
+  letter: DrivewayLetter
+): { ok: true } | { ok: false; missing: string[] } {
+  const missing: string[] = [];
+  const f = letter.fields;
+
+  if (!letter.exhibitImageUrl) missing.push('Exhibit 1 image');
+
+  const hasPrimaryLink = !!(letter.planId && letter.addressId);
+  const hasMultiLink = (letter.linkedPlanLocs?.length ?? 0) > 0;
+  if (!hasPrimaryLink && !hasMultiLink) missing.push('Linked plan / address');
+
+  if (!(letter.ownerName?.trim() || f.recipientName?.trim())) {
+    missing.push('Owner / recipient name');
+  }
+
+  if (!f.workDates?.trim()) missing.push('Work dates');
+
+  if (!f.contactName?.trim()) missing.push('Contact name');
+  if (!f.contactPhone?.trim()) missing.push('Contact phone');
+
+  if (!f.street1?.trim()) missing.push('Impacted street');
+
+  return missing.length === 0 ? { ok: true } : { ok: false, missing };
+}
+
 export async function submitLetterToMetro(id: string, dateStr?: string, address?: string): Promise<void> {
   const ts = dateStr ? new Date(dateStr + 'T12:00:00').toISOString() : new Date().toISOString();
   await updateDoc(doc(db, COL, id), {
