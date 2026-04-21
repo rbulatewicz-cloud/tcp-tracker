@@ -124,7 +124,9 @@
       "Bash(find /c/Users/rbula/Desktop/TCP Tracker/.claude/worktrees/agent-af861d1b/src -name *.tsx -newer /c/Users/rbula/Desktop/TCP Tracker/.claude/worktrees/agent-af861d1b/.claude/settings.local.json)",
       "Bash(sed -n '132,200p' src/types.ts)",
       "Bash(sed -n '383,400p' src/types.ts)",
-      "Bash(sed -n '629,680p' src/types.ts)"
+      "Bash(sed -n '629,680p' src/types.ts)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

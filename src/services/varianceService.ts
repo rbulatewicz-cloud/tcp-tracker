@@ -125,6 +125,7 @@ export async function uploadRevision(
     scopeLanguage: active?.scopeLanguage ?? '',
     coveredStreets: active?.coveredStreets ?? [],
     corridors: active?.corridors ?? [],
+    verifiedStreets: active?.verifiedStreets ?? [],
     fileUrl,
     fileName: file.name,
     uploadedAt: new Date().toISOString(),
@@ -139,20 +140,33 @@ export async function uploadRevision(
   await batch.commit();
 
   // AI scan to update validity dates + any changed metadata
-  scanWithGemini(newId, file).catch(err => console.error('Revision scan error:', err));
+  // Pass previous revision's verified context to preserve user-validated streets
+  scanWithGemini(newId, file, active?.verifiedStreets, active?.corridors).catch(err => console.error('Revision scan error:', err));
 
   return newId;
 }
 
 // ── Gemini AI scan ────────────────────────────────────────────────────────────
 
-function buildVariancePrompt(segRef: string, scopeList: string): string {
+function buildVariancePrompt(segRef: string, scopeList: string, previousVerifiedStreets?: string[], previousCorridors?: { mainStreet: string; from: string; to: string }[]): string {
+  let contextNote = '';
+  if (previousVerifiedStreets && previousVerifiedStreets.length > 0) {
+    contextNote = `\n\nPrevious revision verified streets (user-confirmed from PDF):
+These streets were manually verified by a team member in the previous revision. If they still appear in this document, keep them verified:
+${previousVerifiedStreets.map(s => `- ${s}`).join('\n')}`;
+  }
+  if (previousCorridors && previousCorridors.length > 0) {
+    contextNote += `\n\nPrevious revision corridors (user-verified):
+The previous revision identified these corridor ranges. If the document still describes the same corridors, use these verified boundaries:
+${previousCorridors.map(c => `- ${c.mainStreet} from ${c.from} to ${c.to}`).join('\n')}`;
+  }
+
   return `You are analyzing a noise variance permit document for the ESFV Light Rail Transit construction project in Los Angeles.
 
 Extract the information below and return ONLY valid JSON — no markdown fences, no extra text.
 
 Segment reference (map streets/locations in the document to these codes):
-${segRef}
+${segRef}${contextNote}
 
 Return this exact JSON structure:
 {
@@ -259,7 +273,12 @@ export async function rescanVarianceFromUrl(variance: NoiseVariance): Promise<vo
   }
 }
 
-async function scanWithGemini(id: string, file: File): Promise<void> {
+async function scanWithGemini(
+  id: string,
+  file: File,
+  previousVerifiedStreets?: string[],
+  previousCorridors?: { mainStreet: string; from: string; to: string }[],
+): Promise<void> {
   try {
     // Fetch API key from Firestore admin settings
     const aiSnap = await getDoc(doc(db, 'settings', 'aiConfig'));
@@ -291,7 +310,7 @@ async function scanWithGemini(id: string, file: File): Promise<void> {
 
     const scopeList = SCOPES.join(', ');
 
-    const prompt = buildVariancePrompt(segRef, scopeList);
+    const prompt = buildVariancePrompt(segRef, scopeList, previousVerifiedStreets, previousCorridors);
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
@@ -589,5 +608,51 @@ export function recommendVariances(
     })
     .filter(m => m.score > 0)
     .sort((a, b) => b.score - a.score);
+}
+
+// ── Link validation ───────────────────────────────────────────────────────────
+
+export interface LinkValidationResult {
+  varianceRootId: string;
+  linkedPlanIds: string[];
+  isValid: boolean;
+  issues: string[];
+}
+
+/** Validate that all plan links to a variance root are correct.
+ *  Returns details about which plans claim to link to this variance.
+ *  Used to ensure plan updates don't break variance relationships.
+ */
+export function validateVarianceLinks(
+  varianceRootId: string,
+  plans: Plan[],
+): LinkValidationResult {
+  const linkedPlanIds: string[] = [];
+  const issues: string[] = [];
+
+  for (const plan of plans) {
+    const track = plan.compliance?.noiseVariance;
+    if (!track) continue;
+
+    const ids = track.linkedVarianceIds?.length
+      ? track.linkedVarianceIds
+      : track.linkedVarianceId ? [track.linkedVarianceId] : [];
+
+    if (ids.includes(varianceRootId)) {
+      linkedPlanIds.push(plan.id);
+
+      // Check if this plan has the variance in its multi-link field
+      if (!track.linkedVarianceIds?.includes(varianceRootId)) {
+        issues.push(`Plan ${plan.id} links via legacy single-link field — should migrate to linkedVarianceIds`);
+      }
+    }
+  }
+
+  return {
+    varianceRootId,
+    linkedPlanIds,
+    isValid: issues.length === 0,
+    issues,
+  };
 }
 
