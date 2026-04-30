@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { updateDoc, doc } from 'firebase/firestore';
-import { db } from '../../firebase';
 import type { PlanTansatPhase, TansatRequest } from '../../types';
-import { usePlanData, usePlanPermissions } from '../PlanCardContext';
+import { usePlanData, usePlanPermissions, usePlanActions } from '../PlanCardContext';
 import { subscribeToTansatRequestsForPlan } from '../../services/tansatService';
 import { getTotalPaid } from '../../utils/tansatSpend';
 import { fmtDate } from '../../utils/plans';
@@ -33,6 +31,7 @@ import { showToast } from '../../lib/toast';
 export const TansatSection: React.FC = React.memo(() => {
   const { selectedPlan } = usePlanData();
   const { canEditFields, currentUser } = usePlanPermissions();
+  const { updatePlanField } = usePlanActions();
   const { firestoreData } = useApp();
 
   const [requests, setRequests] = useState<TansatRequest[]>([]);
@@ -113,14 +112,15 @@ export const TansatSection: React.FC = React.memo(() => {
         </div>
       )}
 
-      {/* Inline phase editor */}
+      {/* Inline phase editor — uses updatePlanField so the local plan card
+          state refreshes immediately. Writing to Firestore directly bypasses
+          the React state update, which is why edits felt "stuck" until the
+          card was reopened. */}
       {phaseEditorOpen && canEditFields && (
         <TansatPhasePlanner
           phases={phases}
-          onChange={async next => {
-            await updateDoc(doc(db, 'plans', selectedPlan.id), {
-              tansatPhases: next,
-            });
+          onChange={next => {
+            updatePlanField(selectedPlan.id, 'tansatPhases', next, false);
           }}
         />
       )}
