@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>TANSAT Feature — Workflow Walkthrough</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #1E293B;
+    background: #F1F5F9;
+    margin: 0;
+    line-height: 1.4;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: 100vh;
+  }
+  /* ── Sidebar ───────────────────────────────────────── */
+  .sidebar {
+    background: #0F172A;
+    color: #F1F5F9;
+    padding: 24px 16px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+  .sidebar h1 {
+    font-size: 16px;
+    margin: 0 0 4px;
+    font-weight: 800;
+  }
+  .sidebar .sub {
+    font-size: 11px;
+    color: #94A3B8;
+    margin-bottom: 24px;
+  }
+  .sidebar nav { display: flex; flex-direction: column; gap: 4px; }
+  .sidebar a {
+    color: #CBD5E1;
+    text-decoration: none;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    border-left: 3px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .sidebar a:hover { background: #1E293B; color: #F8FAFC; border-left-color: #3B82F6; }
+  .sidebar .role-tag {
+    display: inline-block;
+    font-size: 8px;
+    font-weight: 700;
+    color: #94A3B8;
+    background: #1E293B;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 4px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  /* ── Main canvas ──────────────────────────────────── */
+  main {
+    padding: 24px 32px 48px;
+    max-width: 1100px;
+  }
+  .intro {
+    background: #fff;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 32px;
+  }
+  .intro h2 { margin: 0 0 8px; font-size: 22px; }
+  .intro p { margin: 6px 0; font-size: 13px; color: #475569; }
+
+  section.screen {
+    background: transparent;
+    margin-bottom: 40px;
+  }
+  section.screen > h3 {
+    font-size: 18px;
+    margin: 0 0 4px;
+    color: #0F172A;
+  }
+  section.screen > .role-line {
+    font-size: 11px;
+    color: #64748B;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+  }
+  section.screen > .role-line .pill {
+    background: #DBEAFE;
+    color: #1D4ED8;
+    padding: 2px 7px;
+    border-radius: 4px;
+    margin-right: 6px;
+    font-size: 10px;
+  }
+  section.screen > .description {
+    font-size: 13px;
+    color: #475569;
+    margin-bottom: 14px;
+    max-width: 720px;
+  }
+  /* Mock frames — emulate the real app surface */
+  .mock {
+    background: #fff;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+  }
+  .mock-titlebar {
+    background: #F8FAFC;
+    border-bottom: 1px solid #E2E8F0;
+    padding: 10px 16px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mock-titlebar .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: #CBD5E1;
+  }
+  .mock-body { padding: 20px 24px; }
+
+  /* ── Reusable bits ────────────────────────────────── */
+  .lbl {
+    font-size: 10px;
+    font-weight: 700;
+    color: #64748B;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    display: block;
+  }
+  .input {
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 13px;
+    width: 100%;
+  }
+  .input.checked { background: #EFF6FF; border-color: #3B82F6; }
+
+  .btn {
+    background: #0F172A;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn.secondary { background: #fff; color: #1E293B; border: 1px solid #CBD5E1; }
+  .btn.danger    { background: #DC2626; }
+  .btn.success   { background: #10B981; }
+  .btn.ai        { background: #7C3AED; color: #fff; }
+
+  .pill {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+  .pill.gray   { background: #F1F5F9; color: #64748B; }
+  .pill.blue   { background: #DBEAFE; color: #1D4ED8; }
+  .pill.amber  { background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; }
+  .pill.red    { background: #FEE2E2; color: #991B1B; border: 1px solid #FECACA; }
+  .pill.green  { background: #D1FAE5; color: #065F46; border: 1px solid #A7F3D0; }
+  .pill.purple { background: #EDE9FE; color: #6D28D9; }
+  .pill.pink   { background: #FCE7F3; color: #9D174D; }
+  .pill.outline { background: transparent; border: 1px solid #CBD5E1; color: #475569; }
+
+  .badge-ai {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #F5F3FF;
+    border: 1px solid #DDD6FE;
+    color: #6D28D9;
+    border-radius: 6px;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+  /* tables */
+  table.real { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.real th {
+    font-size: 10px;
+    color: #64748B;
+    background: #F8FAFC;
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid #E2E8F0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  table.real td {
+    padding: 10px;
+    border-bottom: 1px solid #F1F5F9;
+  }
+  .mono { font-family: 'Courier New', monospace; }
+
+  /* phase rows */
+  .phase-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    background: #F8FAFC;
+  }
+  .phase-row.alert { border-color: #FCA5A5; background: #FEF2F2; }
+  .phase-row .phase-num {
+    background: #1E293B;
+    color: #fff;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  /* email preview */
+  .email-preview {
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    background: #FFFBEB;
+    padding: 14px;
+    font-size: 12px;
+    color: #1E293B;
+    margin-top: 8px;
+    font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  .email-preview .header-row {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    gap: 4px;
+    padding: 3px 0;
+    border-bottom: 1px solid #FDE68A;
+  }
+  .email-preview .header-row b { font-size: 11px; color: #92400E; }
+  .email-preview .body-text { white-space: pre-line; padding: 8px 0; font-size: 12px; line-height: 1.6; }
+
+  /* KPI tiles for dashboard */
+  .kpi-tile {
+    background: #fff;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 16px;
+    text-align: left;
+  }
+  .kpi-tile .num { font-size: 28px; font-weight: 800; }
+  .kpi-tile .lbl { margin-top: 8px; font-weight: 600; }
+  .kpi-tile.alert { border-color: #FECACA; background: #FEF2F2; }
+
+  /* state machine diagram */
+  .state-diagram {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 8px;
+    align-items: center;
+    margin-top: 16px;
+  }
+  .state-box {
+    background: #fff;
+    border: 2px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 8px 6px;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #475569;
+  }
+  .state-arrow { text-align: center; color: #94A3B8; font-size: 16px; }
+
+  hr { border: none; border-top: 1px solid #E2E8F0; margin: 24px 0; }
+
+  .callout {
+    background: #FEF3C7;
+    border-left: 4px solid #F59E0B;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #78350F;
+    margin: 12px 0;
+  }
+  .callout.info { background: #DBEAFE; border-left-color: #3B82F6; color: #1E3A8A; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <h1>🅿️ TANSAT</h1>
+    <div class="sub">Workflow Walkthrough · v1</div>
+    <nav>
+      <a href="#intro">Overview</a>
+      <a href="#lifecycle">Lifecycle Diagram</a>
+      <a href="#new-request">1. New Request <span class="role-tag">SFTC</span></a>
+      <a href="#plan-card">2. Plan Card Track <span class="role-tag">All</span></a>
+      <a href="#build-packet">3. Build Packet <span class="role-tag">MOT</span></a>
+      <a href="#email-compose">4. Email Reggie <span class="role-tag">MOT</span></a>
+      <a href="#invoice-intake">5. Invoice + AI <span class="role-tag">MOT</span></a>
+      <a href="#mark-paid">6. Mark Paid <span class="role-tag">MOT</span></a>
+      <a href="#library">7. Library Log <span class="role-tag">All</span></a>
+      <a href="#dashboard">8. Dashboard <span class="role-tag">All</span></a>
+      <a href="#mot-hub">9. MOT Hub <span class="role-tag">MOT</span></a>
+      <a href="#extension">10. Extension <span class="role-tag">MOT</span></a>
+      <a href="#settings">11. Settings <span class="role-tag">Admin</span></a>
+    </nav>
+  </aside>
+
+  <main>
+    <div id="intro" class="intro">
+      <h2>TANSAT — End-to-End Walkthrough</h2>
+      <p>This walkthrough shows the complete TANSAT (Temporary Authorization for No Standing / Tow-Away) workflow from SFTC engineer flagging the need, through MOT building the request packet, emailing Reggie at LADOT, paying the invoice, and tracking spend.</p>
+      <p><b>Phase 1 (ships now):</b> email is composed in the app and handed off to the user's mail client (Outlook). <b>Phase 2 (post-IT):</b> automated send via the existing email pipeline.</p>
+      <p><b>AI integration:</b> uses existing Gemini 2.5 Flash setup (same as driveway letter scanning). MOT uploads the LADOT invoice PDF and Gemini auto-fills Log #, amount, due date, and customer name.</p>
+      <p><b>Roles:</b>
+        <span class="pill blue">SFTC</span> = SFTC engineer ·
+        <span class="pill green">MOT</span> = MOT team (Garrett lead) ·
+        <span class="pill purple">Admin</span>
+      </p>
+    </div>
+
+    <!-- ─────────────────────────────────────────────── -->
+    <section id="lifecycle" class="screen">
+      <h3>Lifecycle Diagram</h3>
+      <div class="role-line">Reference</div>
+      <div class="description">A TANSAT request moves through these states. Cancellation is allowed any time pre-active; once posted, no refunds (per LADOT terms).</div>
+
+      <div class="mock">
+        <div class="mock-body">
+          <div class="state-diagram">
+            <div class="state-box" style="border-color: #94A3B8;">draft</div>
+            <div class="state-arrow">→</div>
+            <div class="state-box" style="border-color: #3B82F6; color: #1D4ED8;">packet_ready</div>
+            <div class="state-arrow">→</div>
+            <div class="state-box" style="border-color: #F59E0B; color: #B45309;">emailed</div>
+            <div class="state-arrow">→</div>
+            <div class="state-box" style="border-color: #8B5CF6; color: #6D28D9;">invoice_received</div>
+            <div class="state-arrow">→</div>
+
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div class="state-arrow">↓</div>
+
+            <div class="state-box" style="border-color: #94A3B8;">closed</div>
+            <div class="state-arrow">←</div>
+            <div class="state-box" style="border-color: #10B981; color: #065F46;">active</div>
+            <div class="state-arrow">←</div>
+            <div class="state-box" style="border-color: #10B981; color: #065F46;">posted</div>
+            <div class="state-arrow">←</div>
+            <div class="state-box" style="border-color: #10B981; color: #065F46;">paid</div>
+            <div></div>
+          </div>
+          <div class="callout info">
+            <b>Side branches:</b> any pre-active state → <span class="pill outline">cancelled</span> (refundable before posted). Status <span class="pill outline">revised</span> = LADOT issued a new invoice for date changes (loops back to invoice_received).
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────── -->
+    <section id="new-request" class="screen">
+      <h3>1. SFTC Engineer flags TANSAT need</h3>
+      <div class="role-line"><span class="pill">SFTC</span> New Request modal · Traffic Impacts → TANSAT checkbox</div>
+      <div class="description">When the engineer checks <b>TANSAT (Parking removal required)</b>, an optional phase planner expands. Phases are fluid — engineer can leave them blank now and fill in later. App shows a yellow banner if MOT later opens the plan and finds no phases defined.</div>
+
+      <div class="mock">
+        <div class="mock-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span> New Request — Plan LOC-454</div>
+        <div class="mock-body">
+          <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px;">Traffic Impacts</div>
+          <div class="grid-3" style="margin-bottom: 16px;">
+            <div class="input checked">☑ Driveway Closure</div>
+            <div class="input">☐ Sidewalk Closure</div>
+            <div class="input checked">☑ Crosswalk Closure</div>
+            <div class="input checked">☑ <b>TANSAT (Parking removal)</b></div>
+            <div class="input">☐ I-5 Freeway Encroachment</div>
+            <div class="input">☐ UPRR Bridge</div>
+          </div>
+
+          <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 14px; margin-top: 16px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 10px;">
+              <div style="font-size: 13px; font-weight: 700; color: #92400E;">📋 TANSAT Phase Plan <span style="font-weight: 400; color: #78350F;">(optional · can fill in later)</span></div>
+              <div>
+                <span class="lbl" style="display:inline; margin-right: 6px;">Phase count</span>
+                <input class="input" style="width: 50px; display: inline-block;" value="3" />
+              </div>
+            </div>
+
+            <div class="phase-row">
+              <div class="phase-num">1</div>
+              <input class="input" style="flex: 1;" placeholder="Phase label (optional)" value="Potholing" />
+              <input class="input" style="width: 130px;" type="date" value="2026-05-01" />
+              <span style="color:#64748B;">→</span>
+              <input class="input" style="width: 130px;" type="date" value="2026-05-08" />
+              <span class="pill green">✓ Needs TANSAT</span>
+            </div>
+            <div class="phase-row">
+              <div class="phase-num">2</div>
+              <input class="input" style="flex: 1;" placeholder="Phase label (optional)" value="Conduit Work" />
+              <input class="input" style="width: 130px;" type="date" value="2026-05-09" />
+              <span style="color:#64748B;">→</span>
+              <input class="input" style="width: 130px;" type="date" value="2026-05-22" />
+              <span class="pill green">✓ Needs TANSAT</span>
+            </div>
+            <div class="phase-row">
+              <div class="phase-num">3</div>
+              <input class="input" style="flex: 1;" placeholder="Phase label (optional)" value="Restoration" />
+              <input class="input" style="width: 130px;" type="date" value="2026-05-23" />
+              <span style="color:#64748B;">→</span>
+              <input class="input" style="width: 130px;" type="date" value="2026-05-30" />
+              <span class="pill gray">Skip TANSAT</span>
+            </div>
+          </div>
+
+          <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end;">
+            <button class="btn secondary">Save as Draft</button>
+            <button class="btn">Submit Request</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────── -->
+    <section id="plan-card" class="screen">
+      <h3>2. Plan Card — TANSAT compliance track</h3>
+      <div class="role-line"><span class="pill">All</span> Plan Card · Compliance section · TANSAT track</div>
+      <div class="description">Mirrors the existing PHE / NV / CD compliance pattern. Header summary shows phase coverage + total spend. Each phase has a status pill. Each TANSAT request renders as an expandable row with key fields. <b>Quick-create</b> button opens the packet builder pre-filled.</div>
+
+      <div class="mock">
+        <div class="mock-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span> Plan LOC-454 · Calvert St / Calvert St</div>
+        <div class="mock-body">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <div style="font-size: 16px; font-weight: 700;">🅿️ TANSAT</div>
+            <div style="font-size: 13px; color: #64748B;">3 phases · 2 requests · <b style="color:#10B981;">$754.20 paid</b></div>
+          </div>
+
+          <!-- Phase status -->
+          <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Phases</div>
+          <div class="phase-row">
+            <div class="phase-num">1</div>
+            <div style="flex: 1;"><b style="font-size: 13px;">Potholing</b> <span style="font-size:11px;color:#64748B;">· May 1 → May 8</span></div>
+            <span class="pill green">✓ Covered (LOG #454469)</span>
+          </div>
+          <div class="phase-row alert">
+            <div class="phase-num" style="background:#DC2626;">2</div>
+            <div style="flex: 1;"><b style="font-size: 13px;">Conduit Work</b> <span style="font-size:11px;color:#64748B;">· May 9 → May 22</span></div>
+            <span class="pill red">⚠ Needs packet — starts in 9 days</span>
+          </div>
+          <div class="phase-row" style="opacity: 0.5;">
+            <div class="phase-num" style="background: #94A3B8;">3</div>
+            <div style="flex: 1;"><b style="font-size: 13px;">Restoration</b> <span style="font-size:11px;color:#64748B;">· May 23 → May 30</span></div>
+            <span class="pill gray">Skip TANSAT</span>
+          </div>
+
+          <hr />
+
+          <!-- Request log -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px;">TANSAT Requests</div>
+            <button class="btn" style="padding: 6px 14px;">+ New TANSAT Request</button>
+          </div>
+
+          <table class="real">
+            <thead>
+              <tr>
+                <th>Log #</th>
+                <th>Activity</th>
+                <th>Phases</th>
+                <th>Schedule</th>
+                <th>Amount</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono"><b>454469</b></td>
+                <td>Potholing</td>
+                <td><span class="pill blue">P1</span></td>
+                <td class="mono" style="font-size: 11px;">5/1 → 5/8</td>
+                <td class="mono"><b>$341.60</b></td>
+                <td><span class="pill green">paid · posted</span></td>
+              </tr>
+              <tr>
+                <td class="mono"><b>454520</b></td>
+                <td>Potholing/Paving</td>
+                <td><span class="pill blue">P1</span></td>
+                <td class="mono" style="font-size: 11px;">5/3 → 5/6</td>
+                <td class="mono"><b>$412.60</b></td>
+                <td><span class="pill green">closed</span></td>
+              </tr>
+              <tr style="background: #FEF2F2;">
+                <td class="mono"><b>—</b></td>
+                <td>Conduit Work</td>
+                <td><span class="pill blue">P2</span></td>
+                <td class="mono" style="font-size: 11px;">5/9 → 5/22</td>
+                <td class="mono">—</td>
+                <td><span class="pill red">draft · needs packet</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────── -->
+    <section id="build-packet" class="screen">
+      <h3>3. MOT builds the request packet</h3>
+      <div class="role-line"><span class="pill">MOT</span> Tabbed modal · Activity → <b>Work Area + Schedule (table-style)</b> → Map & NV → Review</div>
+      <div class="description">Per Dale's preference — Work Area and Schedule are <b>fill-in-the-blank stacked tables</b> that visually mirror the email format he already uses. Each editable token gets its own cell; static connector words ("of", "to", "through") sit between as muted labels. Right side shows a live email preview updating as MOT types, so the form ≈ the email Reggie reads.</div>
+
+      <div class="mock">
+        <div class="mock-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span> Build TANSAT Packet — Plan LOC-454, Phase 2 (Conduit Work)</div>
+        <div class="mock-body">
+          <div style="display:flex; gap: 8px; margin-bottom: 16px; font-size: 11px;">
+            <span class="pill green" style="padding: 6px 12px;">1. Activity ✓</span>
+            <span class="pill blue" style="padding: 6px 12px;">2. Work Area + Schedule (current)</span>
+            <span class="pill outline" style="padding: 6px 12px;">3. Map & NV</span>
+            <span class="pill outline" style="padding: 6px 12px;">4. Review</span>
+          </div>
+
+          <div class="grid-2">
+            <!-- Left: fill-in-the-blank tables -->
+            <div>
+              <span class="lbl">📍 Work Area</span>
+              <div style="border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; background: #fff;">
+                <div style="display: grid; grid-template-columns: 110px 1fr; align-items: center; border-bottom: 1px solid #F1F5F9;">
+                  <div style="padding: 8px 10px; background: #F8FAFC; font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid #F1F5F9;">Side</div>
+                  <div style="padding: 6px 10px;">
+                    <select class="input" style="width: 200px;"><option>Southside ▾</option></select>
+                  </div>
+                </div>
+                <div style="text-align: center; padding: 4px; color: #94A3B8; font-style: italic; font-size: 11px; background: #FAFBFC; border-bottom: 1px solid #F1F5F9;">of</div>
+                <div style="display: grid; grid-template-columns: 110px 1fr; align-items: center; border-bottom: 1px solid #F1F5F9;">
+                  <div style="padding: 8px 10px; background: #F8FAFC; font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid #F1F5F9;">Street</div>
+                  <div style="padding: 6px 10px;">
+                    <input class="input" value="Calvert St" />
+                  </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 110px 1fr; align-items: center; border-bottom: 1px solid #F1F5F9;">
+                  <div style="padding: 8px 10px; background: #F8FAFC; font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid #F1F5F9;">From Limit</div>
+                  <div style="padding: 6px 10px;">
+                    <input class="input" value="100' East of Vesper Ave" />
+                  </div>
+                </div>
+                <div style="text-align: center; padding: 4px; color: #94A3B8; font-style: italic; font-size: 11px; background: #FAFBFC; border-bottom: 1px solid #F1F5F9;">to</div>
+                <div style="display: grid; grid-template-columns: 110px 1fr; align-items: center;">
+                  <div style="padding: 8px 10px; background: #F8FAFC; font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid #F1F5F9;">To Limit</div>
+                  <div style="padding: 6px 10px;">
+                    <input class="input" value="Van Nuys Blvd" />
+                  </div>
+                </div>
+              </div>
+
+              <span class="lbl" style="margin-top: 18px;">⏱ Schedule</span>
+              <div style="border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; background: #fff;">
+                <div style="display: grid; grid-template-columns: 110px 1fr; align-items: center; border-bottom: 1px solid #F1F5F9;">
+                  <div style="padding: 8px 10px; background: #F8FAFC; font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid #F1F5F9;">Day Pattern</div>
+                  <div style="padding: 6px 10px;"><select class="input" style="width: 160px;"><option>Daily ▾</option></select></div>
+                </div>
+                <div style="display: grid; grid-template-columns: 110px 1fr; align-items: center; border-bottom: 1px solid #F1F5F9;">
+                  <div style="padding: 8px 10px; background: #F8FAFC; font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid #F1F5F9;">Day</div>
+                  <div style="padding: 8px 10px; font-size: 12px; color:#64748B; font-style: italic;">Saturday <span style="font-size: 10px;">(auto-computed)</span></div>
+                </div>
+                <div style="display: grid; grid-template-columns: 110px 1fr; align-items: center; border-bottom: 1px solid #F1F5F9;">
+                  <div style="padding: 8px 10px; background: #F8FAFC; font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid #F1F5F9;">Date</div>
+                  <div style="padding: 6px 10px;"><input class="input" type="date" value="2026-05-09" style="width: 180px;" /></div>
+                </div>
+                <div style="display: grid; grid-template-columns: 110px 1fr; align-items: center; border-bottom: 1px solid #F1F5F9;">
+                  <div style="padding: 8px 10px; background: #F8FAFC; font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid #F1F5F9;">Time</div>
+                  <div style="padding: 6px 10px;"><input class="input" type="time" value="06:00" style="width: 120px;" /></div>
+                </div>
+                <div style="text-align: center; padding: 6px; color: #94A3B8; font-style: italic; font-size: 11px; background: #FAFBFC; border-bottom: 1px solid #F1F5F9; font-weight: 600;">through</div>
+                <div style="display: grid; grid-template-columns: 110px 1fr; align-items: center; border-bottom: 1px solid #F1F5F9;">
+                  <div style="padding: 8px 10px; background: #F8FAFC; font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid #F1F5F9;">Day Pattern</div>
+                  <div style="padding: 6px 10px;"><select class="input" style="width: 160px;"><option>Daily ▾</option></select></div>
+                </div>
+                <div style="display: grid; grid-template-columns: 110px 1fr; align-items: center; border-bottom: 1px solid #F1F5F9;">
+                  <div style="padding: 8px 10px; background: #F8FAFC; font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid #F1F5F9;">Day</div>
+                  <div style="padding: 8px 10px; font-size: 12px; color:#64748B; font-style: italic;">Friday <span style="font-size: 10px;">(auto-computed)</span></div>
+                </div>
+                <div style="display: grid; grid-template-columns: 110px 1fr; align-items: center; border-bottom: 1px solid #F1F5F9;">
+                  <div style="padding: 8px 10px; background: #F8FAFC; font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid #F1F5F9;">Date</div>
+                  <div style="padding: 6px 10px;"><input class="input" type="date" value="2026-05-22" style="width: 180px;" /></div>
+                </div>
+                <div style="display: grid; grid-template-columns: 110px 1fr; align-items: center;">
+                  <div style="padding: 8px 10px; background: #F8FAFC; font-size: 10px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; border-right: 1px solid #F1F5F9;">Time</div>
+                  <div style="padding: 6px 10px;"><input class="input" type="time" value="18:00" style="width: 120px;" /></div>
+                </div>
+              </div>
+
+              <div style="margin-top: 10px; font-size: 11px; color:#64748B; font-style: italic;">
+                Actual posting date (computed): <b>Thursday 5/7/2026</b> (Sat target → posted 2 days prior per LADOT calendar quirk)
+              </div>
+            </div>
+
+            <!-- Right: live email preview -->
+            <div>
+              <span class="lbl">📨 Live Email Preview <span style="font-weight: 400; color: #94A3B8;">(updates as you type)</span></span>
+              <div class="email-preview">
+                <div class="header-row"><b>To:</b><span style="font-size:11px;">reggie.pilotin@lacity.org</span></div>
+                <div class="header-row"><b>Subject:</b><span style="font-size:11px;">TANSAT Request — Plan LOC-454 — Conduit Work — Phase 2</span></div>
+                <div class="body-text">Reggie,
+
+Please find the below TANSAT request, as a part of the continued METRO SFTC project:
+
+Southside
+of
+Calvert St
+100' East of Vesper Ave
+to
+Van Nuys Blvd
+
+Daily
+Saturday
+5/9/2026
+6:00 AM
+through
+Daily
+Friday
+5/22/2026
+6:00 PM
+
+[Map attached]
+[Noise Variance attached]</div>
+              </div>
+              <div style="margin-top: 12px; font-size: 11px; color: #475569; background: #DCFCE7; border: 1px solid #A7F3D0; padding: 8px 12px; border-radius: 6px;">
+                <b>Why the table layout:</b> Dale's existing Outlook template uses one token per line. The form mirrors that exactly, so what you fill in IS what Reggie sees — no translation step, no surprises.
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top: 20px; display: flex; gap: 8px; justify-content: flex-end;">
+            <button class="btn secondary">← Back to Activity</button>
+            <button class="btn">Continue to Map & NV →</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────── -->
+    <section id="email-compose" class="screen">
+      <h3>4. Email Reggie at LADOT</h3>
+      <div class="role-line"><span class="pill">MOT</span> Email composer · Phase 1 = mailto handoff · Phase 2 = automated send</div>
+      <div class="description">App pre-fills every field of the email — recipients (with grouped CC toggles), subject, body (rendered from the template), and the attachment list. <b>Phase 1 (now):</b> "Open in Outlook" launches the user's mail client with body pre-populated. <b>Phase 2 (post-IT):</b> "Send" goes straight through the existing email pipeline, captures `emailMessageId`.</div>
+
+      <div class="mock">
+        <div class="mock-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span> Email TANSAT Packet — Phase 2 / Conduit Work</div>
+        <div class="mock-body">
+          <div class="grid-2">
+            <!-- Left: form -->
+            <div>
+              <span class="lbl">To</span>
+              <input class="input" value="reggie.pilotin@lacity.org" />
+
+              <div style="margin-top: 14px;">
+                <span class="lbl">CC Groups</span>
+                <div style="display:flex; flex-direction:column; gap: 6px;">
+                  <label style="display:flex; align-items:center; gap:6px; padding: 6px 10px; border: 1px solid #E2E8F0; border-radius: 6px; background: #F8FAFC;">
+                    <input type="checkbox" checked /> <b style="font-size:12px;">DOT Contacts</b> <span style="font-size:10px;color:#64748B;">(5 emails)</span>
+                  </label>
+                  <label style="display:flex; align-items:center; gap:6px; padding: 6px 10px; border: 1px solid #E2E8F0; border-radius: 6px; background: #F8FAFC;">
+                    <input type="checkbox" checked /> <b style="font-size:12px;">Internal (Skanska)</b> <span style="font-size:10px;color:#64748B;">(2 emails)</span>
+                  </label>
+                  <label style="display:flex; align-items:center; gap:6px; padding: 6px 10px; border: 1px solid #E2E8F0; border-radius: 6px; background: #F8FAFC;">
+                    <input type="checkbox" checked /> <b style="font-size:12px;">Client (Metro)</b> <span style="font-size:10px;color:#64748B;">(1 email)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div style="margin-top: 14px;">
+                <span class="lbl">Subject</span>
+                <input class="input" value="TANSAT Request — Plan LOC-454 — Conduit Work — Phase 2" />
+              </div>
+
+              <div style="margin-top: 14px;">
+                <span class="lbl">Attachments</span>
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                  <div style="display:flex; gap:6px; align-items:center; padding: 6px 10px; border:1px solid #E2E8F0; border-radius: 6px; background: #F8FAFC;">
+                    📎 <span style="font-size: 12px;">map_oxnard_phase2.png</span>
+                    <span style="font-size: 10px; color:#64748B; margin-left:auto;">820 KB</span>
+                  </div>
+                  <div style="display:flex; gap:6px; align-items:center; padding: 6px 10px; border:1px solid #E2E8F0; border-radius: 6px; background: #F8FAFC;">
+                    📎 <span style="font-size: 12px;">NV-2026-0118-rev2.pdf</span>
+                    <span style="font-size: 10px; color:#64748B; margin-left:auto;">340 KB</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: rendered email preview -->
+            <div>
+              <span class="lbl">Email Preview</span>
+              <div class="email-preview">
+                <div class="header-row"><b>To:</b><span style="font-size:11px;">reggie.pilotin@lacity.org</span></div>
+                <div class="header-row"><b>CC:</b><span style="font-size:10px; color:#475569;">8 recipients across 3 groups</span></div>
+                <div class="body-text">Reggie,
+
+Please find the below TANSAT request, as a part of the continued METRO SFTC project:
+
+Southside
+of
+Calvert St.
+100' East of Vesper Ave
+to
+Van Nuys Blvd
+
+Daily
+Saturday
+5/9/2026
+6:00 AM
+through
+Daily
+Friday
+5/22/2026
+6:00 PM
+
+[Map attached]
+[Noise Variance attached]</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout" style="margin-top: 18px;">
+            <b>Phase 1 (band-aid):</b> Click "Open in Outlook" — body, recipients, and subject populate in your mail client. Drag attachments into the compose window from the list above, then hit Send yourself. Status auto-advances to <span class="pill amber" style="display:inline;">emailed</span>; "Mark as not sent" undo button is available if you abandon.
+          </div>
+
+          <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end;">
+            <button class="btn secondary">Save Draft</button>
+            <button class="btn">📤 Open in Outlook</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────── -->
+    <section id="invoice-intake" class="screen">
+      <h3>5. Reggie returns the invoice → AI extraction</h3>
+      <div class="role-line"><span class="pill">MOT</span> Invoice intake form · Gemini 2.5 Flash auto-fill</div>
+      <div class="description">MOT uploads the LADOT invoice PDF (or docx). The "✨ Auto-fill from invoice PDF" button kicks off a Gemini extraction call (same pattern as driveway letter scanning). Each field shows the AI suggestion; MOT clicks ✨ to accept or types over.</div>
+
+      <div class="mock">
+        <div class="mock-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span> Log Invoice — TANSAT Request (LOC-454, Phase 2)</div>
+        <div class="mock-body">
+          <div style="border: 2px dashed #DDD6FE; background: #F5F3FF; border-radius: 8px; padding: 14px; margin-bottom: 16px; display:flex; align-items:center; gap: 12px;">
+            <div style="font-size: 28px;">📄</div>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 700;">454469.docx <span style="font-size: 10px; color:#94A3B8; font-weight: 400;">2.1 MB · uploaded</span></div>
+              <div style="font-size: 11px; color: #64748B;">LADOT Temporary Sign Posting Billing Statement</div>
+            </div>
+            <button class="btn ai">✨ Auto-fill from invoice PDF</button>
+          </div>
+
+          <div class="grid-2">
+            <div>
+              <span class="lbl">Log #</span>
+              <input class="input" value="454469" />
+              <span class="badge-ai" style="margin-top: 4px;">✨ AI extracted</span>
+            </div>
+            <div>
+              <span class="lbl">Invoice Amount</span>
+              <input class="input" value="$341.60" />
+              <span class="badge-ai" style="margin-top: 4px;">✨ AI extracted</span>
+            </div>
+            <div>
+              <span class="lbl">Payment Due Date</span>
+              <input class="input" value="2026-04-23" />
+              <span class="badge-ai" style="margin-top: 4px;">✨ AI extracted (was "DUE TODAY")</span>
+            </div>
+            <div>
+              <span class="lbl">Customer Name</span>
+              <input class="input" value="SFT CONSTRUCTORS / DALE GATICA Jr" />
+              <span class="badge-ai" style="margin-top: 4px;">✨ AI extracted</span>
+            </div>
+          </div>
+
+          <div class="callout info" style="margin-top: 16px;">
+            <b>AI confidence:</b> all 4 required fields populated. MOT can edit any field — typing in the box clears the ✨ badge for that field. If extraction fails, fields stay empty and you fill in manually. No cost incurred for re-uploads of same file (hash-based cache).
+          </div>
+
+          <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end;">
+            <button class="btn secondary">Cancel</button>
+            <button class="btn">Save & Mark Invoice Received</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────── -->
+    <section id="mark-paid" class="screen">
+      <h3>6. MOT pays via Paymentus → marks paid</h3>
+      <div class="role-line"><span class="pill">MOT</span> Mark Paid form · receipt PDF required (hard block)</div>
+      <div class="description">After paying on the LADOT Paymentus site, MOT prints the confirmation PDF and uploads it. Status cannot advance to <span class="pill green" style="display:inline;">paid</span> without the receipt. The PDF contains the approval code so we don't need a separate field — anyone needing to look it up just opens the file.</div>
+
+      <div class="mock">
+        <div class="mock-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span> Mark Paid — LOG #454469</div>
+        <div class="mock-body">
+          <div style="background: #FEF3C7; border: 1px solid #FDE68A; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px;">
+            <a href="#" style="color:#92400E; font-weight: 700; text-decoration: none;">→ Pay on Paymentus (LADOT)</a>
+            <div style="font-size: 10px; color:#78350F; margin-top: 2px;">Opens https://ipn4.paymentus.com/rotp/latw?pt=SIGN — pay using your reference info above, then return here.</div>
+          </div>
+
+          <div class="grid-3">
+            <div>
+              <span class="lbl">Paid Date</span>
+              <input class="input" type="date" value="2026-04-22" />
+            </div>
+            <div>
+              <span class="lbl">Paid Amount</span>
+              <input class="input" value="$341.60" />
+            </div>
+            <div>
+              <span class="lbl">Paid By</span>
+              <input class="input" value="Justin Dunleavy (MOT)" />
+            </div>
+          </div>
+
+          <div style="margin-top: 16px;">
+            <span class="lbl">Payment Confirmation PDF <span style="color:#DC2626; font-weight: 700;">required</span></span>
+            <div style="border: 2px dashed #FCA5A5; background: #FEF2F2; border-radius: 8px; padding: 16px; text-align: center;">
+              <div style="font-size: 28px;">📄</div>
+              <div style="font-size: 12px; font-weight: 700; margin-top: 4px;">paymentus_receipt_454469.pdf</div>
+              <div style="font-size: 10px; color: #64748B;">142 KB · uploaded</div>
+            </div>
+            <div style="font-size: 10px; color: #94A3B8; margin-top: 4px; font-style: italic;">Cannot mark paid without the receipt. The PDF contains your approval code, last-4 of card, and date — no need to type those separately.</div>
+          </div>
+
+          <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end;">
+            <button class="btn secondary">Cancel</button>
+            <button class="btn success">✓ Mark Paid</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────── -->
+    <section id="library" class="screen">
+      <h3>7. Library → TANSAT Log</h3>
+      <div class="role-line"><span class="pill">All</span> Library section · filterable · CSV export matching Justin's xlsx columns</div>
+      <div class="description">Centralized log of every TANSAT request across every plan. Powerful filters (status, plan, activity, paid/unpaid, date range, "unlinked imports"). The header card-grid summarizes total spend, this-month spend, and overdue counts. Imported legacy rows show <code>importedPlanText</code> and a 🔗 button to link them to a real plan when MOT has a chance.</div>
+
+      <div class="mock">
+        <div class="mock-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span> Library · TANSAT Log</div>
+        <div class="mock-body">
+          <!-- Summary cards -->
+          <div class="grid-4" style="margin-bottom: 16px;">
+            <div class="kpi-tile">
+              <div class="num" style="color: #1E293B;">132</div>
+              <div class="lbl" style="color:#64748B;">Total requests</div>
+            </div>
+            <div class="kpi-tile">
+              <div class="num" style="color: #10B981;">$31,254</div>
+              <div class="lbl" style="color:#64748B;">All-time spend</div>
+            </div>
+            <div class="kpi-tile">
+              <div class="num" style="color: #3B82F6;">$1,742</div>
+              <div class="lbl" style="color:#64748B;">This month</div>
+            </div>
+            <div class="kpi-tile alert">
+              <div class="num" style="color: #DC2626;">7</div>
+              <div class="lbl" style="color:#991B1B;">Needs attention</div>
+            </div>
+          </div>
+
+          <!-- Filters -->
+          <div style="display:flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
+            <select class="input" style="width: auto;"><option>All status ▾</option></select>
+            <select class="input" style="width: auto;"><option>All plans ▾</option></select>
+            <select class="input" style="width: auto;"><option>All activities ▾</option></select>
+            <input class="input" type="date" style="width: 140px;" value="2024-01-01" />
+            <span style="align-self:center;">→</span>
+            <input class="input" type="date" style="width: 140px;" value="2026-04-29" />
+            <label style="align-self:center; font-size: 12px;"><input type="checkbox" /> Unlinked imports</label>
+            <button class="btn secondary" style="margin-left:auto;">⬇ Export CSV</button>
+          </div>
+
+          <!-- Table -->
+          <table class="real">
+            <thead>
+              <tr>
+                <th>Log #</th>
+                <th>Plan</th>
+                <th>Activity</th>
+                <th>Phases</th>
+                <th>Schedule</th>
+                <th>Amount</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono"><b>454469</b></td>
+                <td><span class="pill blue" style="background:#DBEAFE;">LOC-454</span></td>
+                <td>Potholing</td>
+                <td><span class="pill blue">P1</span></td>
+                <td class="mono" style="font-size:11px;">5/1 → 5/8</td>
+                <td class="mono"><b>$341.60</b></td>
+                <td><span class="pill green">paid</span></td>
+              </tr>
+              <tr style="background:#F8FAFC;">
+                <td class="mono">—</td>
+                <td><span style="color:#94A3B8; font-style:italic; font-size:11px;">UA 4 WATCH</span> <button style="border: 1px solid #CBD5E1; background:#fff; border-radius: 4px; padding: 1px 4px; font-size:9px; cursor:pointer;">🔗 Link</button></td>
+                <td>Potholing</td>
+                <td><span class="pill outline">All</span></td>
+                <td class="mono" style="font-size:11px;">12/9/23 → 12/23/23</td>
+                <td class="mono"><b>$751.52</b></td>
+                <td><span class="pill gray">closed (imported)</span></td>
+              </tr>
+              <tr>
+                <td class="mono"><b>452807</b></td>
+                <td><span class="pill blue" style="background:#DBEAFE;">LOC-441</span></td>
+                <td>Utility Support</td>
+                <td><span class="pill blue">All</span></td>
+                <td class="mono" style="font-size:11px;">4/2 → 4/13</td>
+                <td class="mono"><b>$102.48</b></td>
+                <td><span class="pill green">paid</span></td>
+              </tr>
+              <tr style="background:#FEF2F2;">
+                <td class="mono">—</td>
+                <td><span class="pill blue" style="background:#DBEAFE;">LOC-454</span></td>
+                <td>Conduit Work</td>
+                <td><span class="pill blue">P2</span></td>
+                <td class="mono" style="font-size:11px;">5/9 → 5/22</td>
+                <td class="mono">—</td>
+                <td><span class="pill red">⚠ needs packet</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────── -->
+    <section id="dashboard" class="screen">
+      <h3>8. Dashboard KPI tiles</h3>
+      <div class="role-line"><span class="pill">All</span> MetricsView · KPI grid</div>
+      <div class="description">Two new tiles in the existing KPI grid (mirrors DOT Overdue pattern). "TANSAT Spend (this month)" gives leadership the running tally; "TANSAT Needs Attention" sums all flagged items across notification triggers. Click either tile to filter the table.</div>
+
+      <div class="mock">
+        <div class="mock-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span> Dashboard · KPI Grid</div>
+        <div class="mock-body">
+          <div class="grid-4">
+            <div class="kpi-tile">
+              <div class="num" style="color:#1E293B;">37</div>
+              <div class="lbl" style="color:#64748B;">Active Plans</div>
+            </div>
+            <div class="kpi-tile alert">
+              <div class="num" style="color:#DC2626;">5</div>
+              <div class="lbl" style="color:#991B1B;">Overdue with DOT</div>
+            </div>
+            <div class="kpi-tile" style="border-color:#A7F3D0; background: #ECFDF5;">
+              <div class="num" style="color:#065F46;">$1,742</div>
+              <div class="lbl" style="color:#047857;">🅿️ TANSAT spend (this month)</div>
+            </div>
+            <div class="kpi-tile alert">
+              <div class="num" style="color:#DC2626;">7</div>
+              <div class="lbl" style="color:#991B1B;">🅿️ TANSAT needs attention</div>
+            </div>
+          </div>
+
+          <hr />
+
+          <!-- Status Report excerpt -->
+          <div style="font-size: 13px; font-weight: 700; color:#991B1B; margin-bottom: 8px;">🅿️ TANSAT — needs attention this week</div>
+          <table class="real">
+            <thead>
+              <tr>
+                <th>Plan</th>
+                <th>Activity</th>
+                <th>Issue</th>
+                <th>Due In</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="background: #FEF2F2;">
+                <td><b>LOC-454</b> · Calvert St</td>
+                <td>Conduit Work</td>
+                <td>Phase needs packet</td>
+                <td><span class="pill red">9 days</span></td>
+              </tr>
+              <tr style="background: #FFFBEB;">
+                <td><b>LOC-441</b> · Oxnard / Vesper</td>
+                <td>Utility Support</td>
+                <td>Awaiting invoice from Reggie</td>
+                <td><span class="pill amber">8 days waited</span></td>
+              </tr>
+              <tr style="background: #FEF2F2;">
+                <td><b>LOC-470</b> · Sherman Way</td>
+                <td>Paving</td>
+                <td>Payment due in 2 days</td>
+                <td><span class="pill red">2 days</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────── -->
+    <section id="mot-hub" class="screen">
+      <h3>9. MOT Hub — daily triage workspace</h3>
+      <div class="role-line"><span class="pill">MOT</span> /mot-hub · Justin & Dale's landing page</div>
+      <div class="description">Mirrors the CR Hub pattern Paula already uses. Action-oriented — opens to "what needs me today" rather than the full historical Library. 7 prioritized cards, each scannable in seconds, each clicking through to filtered detail. Future-proofs for sidewalk/crosswalk + I-5/UPRR workflows.</div>
+
+      <div class="mock">
+        <div class="mock-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span> MOT Hub · Wednesday April 29, 2026</div>
+        <div class="mock-body">
+          <!-- Top header bar -->
+          <div style="display:flex; justify-content:space-between; align-items:center; padding: 12px 16px; background:#0F172A; color:#fff; border-radius: 10px; margin-bottom: 16px;">
+            <div>
+              <div style="font-size: 18px; font-weight: 800;">Good morning, Justin 👋</div>
+              <div style="font-size: 12px; color: #CBD5E1;">12 items need attention · 4 of them are red</div>
+            </div>
+            <div style="display:flex; gap: 16px;">
+              <div style="text-align: center;">
+                <div style="font-size: 24px; font-weight: 800; color: #F87171;">4</div>
+                <div style="font-size: 10px; color: #FCA5A5; text-transform: uppercase; letter-spacing: 0.5px;">Urgent</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="font-size: 24px; font-weight: 800; color: #FCD34D;">5</div>
+                <div style="font-size: 10px; color: #FDE68A; text-transform: uppercase; letter-spacing: 0.5px;">This week</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="font-size: 24px; font-weight: 800; color: #34D399;">$1,742</div>
+                <div style="font-size: 10px; color: #6EE7B7; text-transform: uppercase; letter-spacing: 0.5px;">Spent this month</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Triage card grid -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+
+            <!-- Card 1: TANSAT needs packet -->
+            <div style="border: 2px solid #FCA5A5; background: #FEF2F2; border-radius: 10px; padding: 14px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                <div style="font-size: 14px; font-weight: 700; color: #991B1B;">🔴 TANSAT — Needs Packet</div>
+                <span class="pill red" style="padding: 3px 9px;">2</span>
+              </div>
+              <div style="font-size: 11px; color: #7F1D1D; margin-bottom: 8px;">Phase starts within 14 days, no packet built yet.</div>
+              <div style="background: #fff; border: 1px solid #FECACA; border-radius: 6px; padding: 8px; margin-bottom: 6px;">
+                <div style="font-size: 12px; font-weight: 700;">LOC-454 · Conduit Work (P2)</div>
+                <div style="font-size: 11px; color: #64748B;">Calvert St · starts <b style="color:#DC2626;">in 9 days</b></div>
+              </div>
+              <div style="background: #fff; border: 1px solid #FECACA; border-radius: 6px; padding: 8px;">
+                <div style="font-size: 12px; font-weight: 700;">LOC-470 · Paving (P1)</div>
+                <div style="font-size: 11px; color: #64748B;">Sherman Way · starts <b style="color:#DC2626;">in 11 days</b></div>
+              </div>
+              <button class="btn secondary" style="width: 100%; margin-top: 8px; font-size: 11px; padding: 6px;">View all 2 →</button>
+            </div>
+
+            <!-- Card 2: Payment due -->
+            <div style="border: 2px solid #FCA5A5; background: #FEF2F2; border-radius: 10px; padding: 14px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                <div style="font-size: 14px; font-weight: 700; color: #991B1B;">🔴 TANSAT — Payment Due</div>
+                <span class="pill red" style="padding: 3px 9px;">1</span>
+              </div>
+              <div style="font-size: 11px; color: #7F1D1D; margin-bottom: 8px;">Invoice received, payment due within 3 days.</div>
+              <div style="background: #fff; border: 1px solid #FECACA; border-radius: 6px; padding: 8px;">
+                <div style="display:flex; justify-content:space-between;">
+                  <div style="font-size: 12px; font-weight: 700;">LOG #454520 · LOC-454</div>
+                  <div class="mono" style="font-size: 12px; font-weight: 700; color: #DC2626;">$412.60</div>
+                </div>
+                <div style="font-size: 11px; color: #64748B;">Due <b style="color:#DC2626;">in 2 days (5/1)</b></div>
+              </div>
+              <button class="btn" style="width: 100%; margin-top: 8px; font-size: 11px; padding: 6px;">→ Pay on Paymentus</button>
+            </div>
+
+            <!-- Card 3: DOT overdue -->
+            <div style="border: 2px solid #FCA5A5; background: #FEF2F2; border-radius: 10px; padding: 14px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                <div style="font-size: 14px; font-weight: 700; color: #991B1B;">🔴 DOT Pipeline — Overdue</div>
+                <span class="pill red" style="padding: 3px 9px;">5</span>
+              </div>
+              <div style="font-size: 11px; color: #7F1D1D; margin-bottom: 8px;">Plans submitted but past SLA target with DOT.</div>
+              <div style="background: #fff; border: 1px solid #FECACA; border-radius: 6px; padding: 6px 8px; margin-bottom: 4px; display:flex; justify-content:space-between;">
+                <span style="font-size: 11px; font-weight: 700;">LOC-419 · UA 2/3 Stage 1</span>
+                <span class="pill red" style="font-size: 9px;">42d</span>
+              </div>
+              <div style="background: #fff; border: 1px solid #FECACA; border-radius: 6px; padding: 6px 8px; margin-bottom: 4px; display:flex; justify-content:space-between;">
+                <span style="font-size: 11px; font-weight: 700;">LOC-432 · UA 6 Engineered</span>
+                <span class="pill red" style="font-size: 9px;">38d</span>
+              </div>
+              <div style="background: #fff; border: 1px solid #FECACA; border-radius: 6px; padding: 6px 8px; display:flex; justify-content:space-between;">
+                <span style="font-size: 11px; font-weight: 700;">LOC-441 · Pacoima Wash</span>
+                <span class="pill red" style="font-size: 9px;">31d</span>
+              </div>
+              <button class="btn secondary" style="width: 100%; margin-top: 8px; font-size: 11px; padding: 6px;">View all 5 →</button>
+            </div>
+
+            <!-- Card 4: Extension window -->
+            <div style="border: 2px solid #FDE68A; background: #FFFBEB; border-radius: 10px; padding: 14px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                <div style="font-size: 14px; font-weight: 700; color: #B45309;">🟡 TANSAT — Extension Window</div>
+                <span class="pill amber" style="padding: 3px 9px;">2</span>
+              </div>
+              <div style="font-size: 11px; color: #78350F; margin-bottom: 8px;">Phase ends ≤ 10 business days. File extension if work overruns.</div>
+              <div style="background: #fff; border: 1px solid #FDE68A; border-radius: 6px; padding: 8px; margin-bottom: 6px;">
+                <div style="font-size: 12px; font-weight: 700;">LOG #452807 · LOC-441</div>
+                <div style="font-size: 11px; color: #64748B;">Ends 5/13 · file extension by <b>5/8 (8 days)</b></div>
+              </div>
+              <div style="background: #fff; border: 1px solid #FDE68A; border-radius: 6px; padding: 8px;">
+                <div style="font-size: 12px; font-weight: 700;">LOG #454469 · LOC-454</div>
+                <div style="font-size: 11px; color: #64748B;">Ends 5/15 · file by 5/8 if needed</div>
+              </div>
+              <button class="btn secondary" style="width: 100%; margin-top: 8px; font-size: 11px; padding: 6px;">View all 2 →</button>
+            </div>
+
+            <!-- Card 5: Awaiting invoice -->
+            <div style="border: 2px solid #FDE68A; background: #FFFBEB; border-radius: 10px; padding: 14px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                <div style="font-size: 14px; font-weight: 700; color: #B45309;">🟡 TANSAT — Awaiting Invoice</div>
+                <span class="pill amber" style="padding: 3px 9px;">3</span>
+              </div>
+              <div style="font-size: 11px; color: #78350F; margin-bottom: 8px;">Emailed Reggie > 7 days, no log # received yet.</div>
+              <div style="background: #fff; border: 1px solid #FDE68A; border-radius: 6px; padding: 6px 8px; margin-bottom: 4px;">
+                <div style="font-size: 11px; font-weight: 700;">LOC-449 · Krail Implementation</div>
+                <div style="font-size: 10px; color: #78350F;">Sent 4/19 · <b>10 days waited</b> — follow up?</div>
+              </div>
+              <div style="background: #fff; border: 1px solid #FDE68A; border-radius: 6px; padding: 6px 8px;">
+                <div style="font-size: 11px; font-weight: 700;">LOC-455 · Tree Removal</div>
+                <div style="font-size: 10px; color: #78350F;">Sent 4/22 · 7 days waited</div>
+              </div>
+              <button class="btn secondary" style="width: 100%; margin-top: 8px; font-size: 11px; padding: 6px;">View all 3 →</button>
+            </div>
+
+            <!-- Card 6: Close-out pending -->
+            <div style="border: 2px solid #CBD5E1; background: #F8FAFC; border-radius: 10px; padding: 14px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                <div style="font-size: 14px; font-weight: 700; color: #475569;">⚪ TANSAT — Close-out Pending</div>
+                <span class="pill gray" style="padding: 3px 9px;">3</span>
+              </div>
+              <div style="font-size: 11px; color: #64748B; margin-bottom: 8px;">Work end date passed, status not yet closed.</div>
+              <div style="background: #fff; border: 1px solid #CBD5E1; border-radius: 6px; padding: 6px 8px; margin-bottom: 4px;">
+                <div style="font-size: 11px; font-weight: 700;">LOG #452253 · LOC-422</div>
+                <div style="font-size: 10px; color: #64748B;">Ended 4/1 · close out?</div>
+              </div>
+              <div style="background: #fff; border: 1px solid #CBD5E1; border-radius: 6px; padding: 6px 8px;">
+                <div style="font-size: 11px; font-weight: 700;">LOG #452611 · LOC-431</div>
+                <div style="font-size: 10px; color: #64748B;">Ended 4/15</div>
+              </div>
+              <button class="btn secondary" style="width: 100%; margin-top: 8px; font-size: 11px; padding: 6px;">View all 3 →</button>
+            </div>
+
+            <!-- Card 7: Today's spend (info, full-width) -->
+            <div style="border: 2px solid #A7F3D0; background: #ECFDF5; border-radius: 10px; padding: 14px; grid-column: span 2;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                <div style="font-size: 14px; font-weight: 700; color: #065F46;">🟢 Today's Spend Tracker</div>
+                <span class="pill green" style="padding: 3px 9px;">$1,742 this month</span>
+              </div>
+              <table class="real" style="font-size: 11px;">
+                <thead>
+                  <tr style="background: transparent;">
+                    <th style="background: transparent; border-bottom-color: #A7F3D0;">Last 5 paid</th>
+                    <th style="background: transparent; border-bottom-color: #A7F3D0;">Plan</th>
+                    <th style="background: transparent; border-bottom-color: #A7F3D0;">Activity</th>
+                    <th style="background: transparent; border-bottom-color: #A7F3D0;">Paid</th>
+                    <th style="background: transparent; border-bottom-color: #A7F3D0;">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td class="mono">454469</td><td>LOC-454</td><td>Potholing</td><td class="mono">4/22</td><td class="mono"><b>$341.60</b></td></tr>
+                  <tr><td class="mono">452809</td><td>LOC-446</td><td>Tree Planting</td><td class="mono">4/20</td><td class="mono"><b>$136.64</b></td></tr>
+                  <tr><td class="mono">452807</td><td>LOC-441</td><td>Utility Support</td><td class="mono">4/18</td><td class="mono"><b>$102.48</b></td></tr>
+                  <tr><td class="mono">452611</td><td>LOC-431</td><td>Utility Support</td><td class="mono">4/16</td><td class="mono"><b>$239.12</b></td></tr>
+                  <tr><td class="mono">452253</td><td>LOC-422</td><td>ATT Support</td><td class="mono">4/14</td><td class="mono"><b>$187.88</b></td></tr>
+                </tbody>
+              </table>
+              <div style="margin-top: 8px; display:flex; justify-content:space-between; font-size: 10px; color: #047857;">
+                <span>YTD spend: <b>$8,420</b></span>
+                <a href="#" style="color: #047857; text-decoration: underline;">View Library Log →</a>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="callout info" style="margin-top: 18px;">
+            <b>Why a Hub instead of just filtering the table?</b>
+            Action-oriented landing page beats "remember to filter the Library every morning." Hub remembers what matters; Library is for browsing/export. Same pattern Paula already uses in the CR Hub.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────── -->
+    <section id="extension" class="screen">
+      <h3>10. Extension request</h3>
+      <div class="role-line"><span class="pill">MOT</span> Extension form · 10 business days before phase end</div>
+      <div class="description">When a phase is going to overrun, MOT files an extension. App generates the email to Reggie ("FOR EXTENSIONS PLEASE EMAIL US 10 BUSINESS DAYS PRIOR..."). Each extension tracks its own LOG #, additional cost, and payment — preserves separate spend tracking from the original posting.</div>
+
+      <div class="mock">
+        <div class="mock-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span> Request Extension — LOG #454469 (Original)</div>
+        <div class="mock-body">
+          <div style="background:#FEF3C7; border:1px solid #FDE68A; border-radius:8px; padding:12px; margin-bottom: 14px; font-size: 12px; color: #78350F;">
+            <b>⚠ Extension window:</b> Original phase ends 5/22/2026. Reggie requires 10 business days notice → file by 5/8/2026 (8 days from now).
+          </div>
+
+          <div class="grid-2">
+            <div>
+              <span class="lbl">Original End Date</span>
+              <input class="input" value="2026-05-22" disabled style="background:#F1F5F9;" />
+            </div>
+            <div>
+              <span class="lbl">New End Date</span>
+              <input class="input" type="date" value="2026-05-29" />
+            </div>
+          </div>
+
+          <div style="margin-top: 14px;">
+            <span class="lbl">Reason for Extension</span>
+            <textarea class="input" rows="2">Conduit work running ~1 week behind schedule due to subsurface utility conflict.</textarea>
+          </div>
+
+          <div style="margin-top: 14px;">
+            <span class="lbl">Anticipated Additional Cost</span>
+            <input class="input" style="width: 200px;" value="$45.00" />
+            <div style="font-size: 10px; color: #64748B; margin-top: 4px; font-style: italic;">Reggie will issue a new LOG # for the extension. Track separately so monthly spend reports distinguish "original" vs "extension" costs.</div>
+          </div>
+
+          <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end;">
+            <button class="btn secondary">Cancel</button>
+            <button class="btn">Send Extension Request to Reggie</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────── -->
+    <section id="settings" class="screen">
+      <h3>10. Settings tab (Admin)</h3>
+      <div class="role-line"><span class="pill">Admin</span> Settings → TANSAT</div>
+      <div class="description">All knobs in one place. Reggie's email + the three CC groups (DOT / Internal / Client) — each group has names + emails, and per-recipient default-include toggles so MOT doesn't have to manually CC the same 8 people every time. SLA thresholds tunable. AI extraction can be globally disabled.</div>
+
+      <div class="mock">
+        <div class="mock-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span> Settings · TANSAT</div>
+        <div class="mock-body">
+          <div class="grid-2">
+            <div>
+              <span class="lbl">Reggie's Email (To:)</span>
+              <input class="input" value="reggie.pilotin@lacity.org" />
+            </div>
+            <div>
+              <span class="lbl">Default Customer Name (on invoice)</span>
+              <input class="input" value="SFT CONSTRUCTORS / DALE GATICA Jr" />
+            </div>
+            <div>
+              <span class="lbl">From Address (Phase 2 only)</span>
+              <input class="input" placeholder="awaiting IT provisioning…" disabled style="background:#F1F5F9;" />
+            </div>
+            <div>
+              <span class="lbl">AI Invoice Extraction</span>
+              <div class="input">☑ Enabled (uses existing Gemini key)</div>
+            </div>
+          </div>
+
+          <hr />
+
+          <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px;">CC Groups</div>
+          <div style="display:flex; flex-direction:column; gap: 12px;">
+
+            <div style="border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px;">
+              <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
+                <b style="font-size: 13px;">📩 DOT Contacts</b>
+                <button class="btn secondary" style="padding: 3px 8px; font-size: 10px;">+ Add</button>
+              </div>
+              <div style="font-size: 11px; color:#64748B; display:flex; flex-direction:column; gap: 4px;">
+                <div>☑ Reggie Pilotin · reggie.pilotin@lacity.org · <span style="color:#94A3B8;">also in To:</span></div>
+                <div>☑ Lagina Huckaby · lagina.huckaby@lacity.org</div>
+                <div>☑ Dylan Bryant · dylan.bryant@lacity.org</div>
+                <div>☑ Robert Soriano · robert.soriano@lacity.org</div>
+                <div>☑ Wynonna Leilua · wynonna.m.leilua@lacity.org</div>
+                <div>☑ Trina Pena · trina.pena@lacity.org</div>
+              </div>
+            </div>
+
+            <div style="border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px;">
+              <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
+                <b style="font-size: 13px;">🏢 Internal (Skanska)</b>
+                <button class="btn secondary" style="padding: 3px 8px; font-size: 10px;">+ Add</button>
+              </div>
+              <div style="font-size: 11px; color:#64748B; display:flex; flex-direction:column; gap: 4px;">
+                <div>☑ Dale Gatica · dale.gatica@skanska.com</div>
+                <div>☑ Justin Dunleavy · justin.Dunleavy@skanska.com</div>
+              </div>
+            </div>
+
+            <div style="border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px;">
+              <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
+                <b style="font-size: 13px;">🚇 Client (Metro)</b>
+                <button class="btn secondary" style="padding: 3px 8px; font-size: 10px;">+ Add</button>
+              </div>
+              <div style="font-size: 11px; color:#64748B; display:flex; flex-direction:column; gap: 4px;">
+                <div>☑ Utz T · UtzT@metro.net</div>
+              </div>
+            </div>
+
+          </div>
+
+          <hr />
+
+          <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px;">SLA Thresholds (notification windows)</div>
+          <div class="grid-3">
+            <div>
+              <span class="lbl">Needs Packet</span>
+              <input class="input" value="14" /> <span style="font-size:10px; color:#64748B;">days before phase start</span>
+            </div>
+            <div>
+              <span class="lbl">Awaiting Invoice</span>
+              <input class="input" value="7" /> <span style="font-size:10px; color:#64748B;">days after email sent</span>
+            </div>
+            <div>
+              <span class="lbl">Payment Due</span>
+              <input class="input" value="3" /> <span style="font-size:10px; color:#64748B;">days before due date</span>
+            </div>
+            <div>
+              <span class="lbl">Extension Window</span>
+              <input class="input" value="10" /> <span style="font-size:10px; color:#64748B;">business days before phase end</span>
+            </div>
+            <div>
+              <span class="lbl">Meter Duration Limit</span>
+              <input class="input" value="30" /> <span style="font-size:10px; color:#64748B;">days (Bureau of Parking warning)</span>
+            </div>
+          </div>
+
+          <hr />
+
+          <button class="btn ai">📥 Import Legacy xlsx (one-time)</button>
+          <span style="font-size: 11px; color: #64748B; margin-left: 12px;">Imports Justin's TANSAT Tracking Log. Rows preserve <code>importedPlanText</code> until manually linked.</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="intro" style="margin-top: 32px;">
+      <h2>Ship Plan</h2>
+      <p><b>6 PRs · 16 tickets.</b> Build order: Foundations (PR 1) → Request creation + email (PR 2) → Invoice + payment + AI (PR 3) → Extensions (PR 4) → Library + dashboard + reports (PR 5) → Notifications + xlsx import (PR 6).</p>
+      <p><b>T-2.3a</b> ships the Phase 1 mailto handoff. <b>T-2.3b</b> swaps to automated send when IT provisions a company-domain email — same UX, same data shape, only the send mechanism changes.</p>
+      <p>Spec: <a href="tansat.md">docs/specs/tansat.md</a></p>
+    </div>
+
+  </main>
+</div>
+</body>
+</html>
