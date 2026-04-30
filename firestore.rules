@@ -60,6 +60,13 @@ service cloud.firestore {
       allow write: if isMot();
     }
 
+    // TANSAT requests — any writer can read; MOT+ can mutate.
+    // Mirrors the MOT-led workflow described in docs/specs/tansat.md §9.
+    match /tansatRequests/{requestId} {
+      allow read:  if authed();
+      allow write: if isMot();
+    }
+
     // App-wide settings (fieldPermissions, aiConfig, etc.) — MOT+ write
     match /settings/{settingId} {
       allow read:  if authed();
