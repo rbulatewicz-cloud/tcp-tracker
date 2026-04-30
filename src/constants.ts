@@ -149,6 +149,49 @@ export const CLOCK_TARGETS: Record<string, Record<string, { target: number; warn
   },
 };
 
+// ── TANSAT defaults ──────────────────────────────────────────────────────────
+// Seed values match the recipient list and customer name from Justin's existing
+// LADOT email correspondence. Admins edit these via Settings → TANSAT.
+export const DEFAULT_TANSAT_SETTINGS = {
+  reggieEmail: 'reggie.pilotin@lacity.org',
+  defaultCustomerName: 'SFT CONSTRUCTORS / DALE GATICA Jr',
+  fromAddress: '',  // populated after IT provisions company-domain email
+  ccGroups: {
+    dot: {
+      name: 'DOT Contacts',
+      contacts: [
+        { name: 'Reggie Pilotin',  email: 'reggie.pilotin@lacity.org',  defaultIncluded: false }, // also in To:
+        { name: 'Lagina Huckaby',  email: 'lagina.huckaby@lacity.org',  defaultIncluded: true  },
+        { name: 'Dylan Bryant',    email: 'dylan.bryant@lacity.org',    defaultIncluded: true  },
+        { name: 'Robert Soriano',  email: 'robert.soriano@lacity.org',  defaultIncluded: true  },
+        { name: 'Wynonna Leilua',  email: 'wynonna.m.leilua@lacity.org', defaultIncluded: true },
+        { name: 'Trina Pena',      email: 'trina.pena@lacity.org',      defaultIncluded: true  },
+      ],
+    },
+    internal: {
+      name: 'Internal (Skanska)',
+      contacts: [
+        { name: 'Dale Gatica',     email: 'dale.gatica@skanska.com',     defaultIncluded: true },
+        { name: 'Justin Dunleavy', email: 'justin.Dunleavy@skanska.com', defaultIncluded: true },
+      ],
+    },
+    client: {
+      name: 'Client (Metro)',
+      contacts: [
+        { name: 'Utz T', email: 'UtzT@metro.net', defaultIncluded: true },
+      ],
+    },
+  },
+  thresholds: {
+    needsPacketDays:             14,
+    awaitingInvoiceDays:          7,
+    paymentDueDays:               3,
+    extensionWindowBusinessDays: 10,
+    metersAffectedMaxDays:       30,
+  },
+  aiExtractionEnabled: true,
+};
+
 export const DEFAULT_APP_CONFIG = {
   logoUrl: null as string | null,
   appName: 'ESFV LRT — TCP Tracker',
@@ -162,6 +205,7 @@ export const DEFAULT_APP_CONFIG = {
   driveway_metroWarnDays: 3,
   driveway_leadTimeDays:  10,
   driveway_reissueDays:   5,
+  tansatSettings: DEFAULT_TANSAT_SETTINGS,
 };
 
 export const PLAN_TYPES = ["WATCH", "Standard", "Engineered"];

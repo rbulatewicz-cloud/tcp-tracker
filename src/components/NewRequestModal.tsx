@@ -8,13 +8,14 @@ import { RequestFormFields } from './NewRequestModal/RequestFormFields';
 import { findSimilarPlans } from './NewRequestModal/similarity';
 import { SimilarPlansBanner } from './NewRequestModal/SimilarPlansBanner';
 import { PlanIdentificationSection } from './NewRequestModal/PlanIdentificationSection';
+import { TansatPhasePlanner } from './NewRequestModal/TansatPhasePlanner';
 import { HoursOfWorkForm } from './HoursOfWorkForm';
 import { ComplianceBanner } from './ComplianceBanner';
 import { formatFileSize, getNextRevisionLoc } from '../utils/plans';
 import { usePermissions } from '../hooks/usePermissions';
 import { useApp } from '../hooks/useApp';
 import { getTurnaroundStats } from '../utils/planStats';
-import { User, ReportTemplate, LoadingState, PlanForm, WorkHours, DrivewayProperty, Plan } from '../types';
+import { User, ReportTemplate, LoadingState, PlanForm, WorkHours, DrivewayProperty, Plan, PlanTansatPhase } from '../types';
 import { subscribeToDrivewayProperties } from '../services/drivewayPropertyService';
 
 const DIR_FIELDS = ['dir_nb', 'dir_sb', 'dir_directional', 'side_street'];
@@ -310,6 +311,17 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
                   </label>
                 ))}
               </div>
+
+              {/* TANSAT phase planner — expands when "TANSAT Needed" is checked.
+                  Phases are fluid: SFTC engineer can leave them blank now and
+                  populate later via plan card. MOT references these phase
+                  numbers when building TANSAT request packets. */}
+              {!!form.impact_transit && (
+                <TansatPhasePlanner
+                  phases={(form.tansatPhases as PlanTansatPhase[] | undefined) ?? []}
+                  onChange={next => update('tansatPhases', next)}
+                />
+              )}
             </div>
 
             {/* Encroachments — third-party-agency coordination.

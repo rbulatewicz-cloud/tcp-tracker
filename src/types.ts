@@ -89,6 +89,45 @@ export interface AppConfig {
   driveway_contactPhone?: string;      // Direct phone for CR contact
   driveway_contactEmail?: string;      // Email for CR contact
   driveway_defaultWorkHours?: string;  // e.g. "nighttime hours (9:00 PM to 6:00 AM), Mon–Fri"
+
+  // ── TANSAT (Temporary Authorization for No Standing / Tow-Away) ──────────
+  // Admin-tunable settings driving the TANSAT request workflow. See
+  // docs/specs/tansat.md §5.7 (settings) and §6 (email integration).
+  tansatSettings?: TansatSettings;
+}
+
+// ── TANSAT settings ──────────────────────────────────────────────────────────
+// Lives on AppConfig. Drives email recipients + SLA notification thresholds.
+// Per-recipient default-include toggles let MOT skip manually CC'ing the same
+// 8+ people every time.
+export interface TansatContact {
+  name: string;
+  email: string;
+  defaultIncluded: boolean;
+}
+
+export interface TansatCcGroup {
+  name: string;       // Display label, e.g. "DOT Contacts"
+  contacts: TansatContact[];
+}
+
+export interface TansatSettings {
+  reggieEmail: string;             // primary recipient (To: field)
+  defaultCustomerName: string;     // shown on invoice, e.g. "SFT CONSTRUCTORS / DALE GATICA Jr"
+  fromAddress?: string;            // Phase 2 only — populated after IT provisions company-domain email
+  ccGroups: {
+    dot: TansatCcGroup;
+    internal: TansatCcGroup;
+    client: TansatCcGroup;
+  };
+  thresholds: {
+    needsPacketDays: number;            // default 14 — notify when phase start within N days, no packet
+    awaitingInvoiceDays: number;        // default 7  — notify when emailed N days ago, no log #
+    paymentDueDays: number;             // default 3  — notify when payment due within N days
+    extensionWindowBusinessDays: number;// default 10 — notify within N business days of phase end
+    metersAffectedMaxDays: number;      // default 30 — Bureau of Parking referral threshold
+  };
+  aiExtractionEnabled: boolean;    // toggle to globally disable Gemini invoice extraction
 }
 
 // ── Compliance Track types ────────────────────────────────────────────────────
@@ -711,6 +750,139 @@ export interface ReferenceDoc {
   uploadedBy: string;              // display name or email
 }
 
+// ── TANSAT request types ─────────────────────────────────────────────────────
+// Top-level Firestore collection `tansatRequests/*`. Each document represents
+// a single TANSAT submission to LADOT. One plan can have many requests; each
+// request can cover one or more phase numbers from the plan's tansatPhases.
+// See docs/specs/tansat.md §3.2.
+
+export type TansatActivity =
+  | 'potholing' | 'paving' | 'paving_restoration' | 'restoration'
+  | 'conduit_work' | 'asbestos_pipe' | 'sawcutting' | 'vault_conduit'
+  | 'krail_delivery' | 'krail_implementation' | 'pile_installation'
+  | 'demo' | 'building_demo' | 'implementation'
+  | 'utility_support' | 'median_removal' | 'tree_planting' | 'tree_removal'
+  | 'temp_street_light' | 'inside_out' | 'other';
+
+export type TansatStatus =
+  | 'draft'              // packet being assembled
+  | 'packet_ready'       // ready to email Reggie
+  | 'emailed'            // sent, awaiting invoice
+  | 'invoice_received'   // logNumber + amount populated
+  | 'paid'               // paymentConfirmation uploaded
+  | 'posted'             // signs installed
+  | 'active'             // work window active
+  | 'closed'             // work complete
+  | 'cancelled'          // before signs installed
+  | 'revised'            // dates changed, new invoice issued
+  | 'expired';           // log # past expiration, must be renewed (new request)
+
+export type TansatSide = 'N' | 'S' | 'E' | 'W' | 'NB' | 'SB' | 'EB' | 'WB' | 'BOTH';
+
+export type TansatDayPattern = 'daily' | 'weekdays' | 'weekends' | 'custom';
+
+export interface TansatAttachment {
+  name: string;
+  url: string;
+  storagePath: string;
+  uploadedAt: string;
+  uploadedBy: string;
+  size?: number;
+}
+
+// FREE email reply to Reggie's original thread with the log # and new dates.
+// Same log # stays in effect; no new payment. Per LADOT: must be requested 10
+// days before expiration (in practice they're flexible). Once expired, the
+// log # CANNOT be extended and must be renewed (= new TansatRequest).
+export interface TansatExtension {
+  id: string;
+  requestedAt: string;
+  newEndDate: string;
+  emailReplyMessageId?: string;        // Phase 2: ties to existing email thread
+  emailReplyAttachment?: TansatAttachment;  // Phase 1: uploaded reply as proof
+  notes?: string;
+  status: 'pending' | 'sent' | 'confirmed';
+}
+
+export interface TansatRequest {
+  id: string;
+  planId?: string;                     // optional — unset for unlinked legacy imports
+  importedPlanText?: string;           // raw text from xlsx ("UA 4 WATCH") — preserved for unlinked rows
+  phaseNumbers: number[];              // covers 1+ phases on the plan
+
+  activity: TansatActivity;
+  activityOther?: string;              // free text when activity = 'other'
+
+  workArea: {
+    side: TansatSide;
+    street: string;
+    fromLimit: string;                 // e.g. "300' West of Vesper Ave"
+    toLimit: string;                   // e.g. "Van Nuys Blvd"
+  };
+  schedule: {
+    dayPattern: TansatDayPattern;
+    startDate: string;                 // ISO
+    startTime: string;                 // "HH:mm"
+    endDate: string;
+    endTime: string;
+  };
+  mapScreenshot?: TansatAttachment;
+  attachedVarianceIds?: string[];      // refs into noiseVariances library
+
+  // Email audit (one of these populated depending on send path)
+  emailSentAt?: string;
+  emailMessageId?: string;             // Phase 2: automated send via mailLog
+  emailDocument?: TansatAttachment;    // Bypass: uploaded email memo
+  ccGroupsUsed?: { dot: boolean; internal: boolean; client: boolean };
+
+  // DOT response (manually entered OR AI-extracted from invoice PDF)
+  logNumber?: string;
+  invoiceAmount?: number;
+  paymentDueDate?: string;
+  customerName?: string;
+  invoiceAttachment?: TansatAttachment;
+
+  // Payment
+  paidAt?: string;
+  paidAmount?: number;
+  paymentConfirmation?: TansatAttachment;
+  paidBy?: string;
+
+  // Extensions (FREE email replies, same log #)
+  extensions?: TansatExtension[];
+
+  // Renewal lineage — when a log # expires, a new TansatRequest is created
+  // with renewalOfRequestId pointing back. Full workflow + new payment required.
+  renewalOfRequestId?: string;
+  renewedByRequestId?: string;
+
+  status: TansatStatus;
+  notes?: string;
+
+  // AI extraction failure capture (mirrors driveway letter scan pattern)
+  scanError?: string;
+  scanCompletedAt?: string;
+
+  // Audit
+  createdBy: string;
+  createdAt: string;                   // ISO timestamp
+  updatedAt: string;
+  importedFrom?: string;               // e.g. "TANSAT Tracking Log xlsx" for legacy imports
+}
+
+// ── TANSAT phase plan (lives on a Plan) ──────────────────────────────────────
+// Engineer-defined work segments. A plan can have 0..N phases. Each phase has
+// anticipated dates and a flag indicating whether it needs a TANSAT posting.
+// MOT later creates one or more TansatRequest records that reference these
+// phase numbers. See docs/specs/tansat.md §3.1.
+export interface PlanTansatPhase {
+  phaseNumber: number;             // 1, 2, 3...
+  label?: string;                  // optional, e.g. "Potholing", "Conduit Work"
+  anticipatedStart?: string;       // ISO date — may be empty if not yet known
+  anticipatedEnd?: string;
+  needsTansat: boolean;            // engineer flags which phases need parking removal
+}
+
 export interface PlanForm {
   id: string;
   rev: number;
@@ -738,6 +910,9 @@ export interface PlanForm {
   impact_transit: boolean;
   impact_i5Freeway?: boolean;       // Caltrans encroachment — triggers future MOT workflow
   impact_uprrBridge?: boolean;      // UPRR encroachment — triggers future MOT workflow
+  // TANSAT phase plan — populated when impact_transit ("TANSAT Needed") is true.
+  // Fluid: SFTC engineer can leave empty and fill in later via plan card.
+  tansatPhases?: PlanTansatPhase[];
   work_hours?: WorkHours;
   phe_justification?: string;   // "Why is peak hour work required?" — captured at request time
   revisionSuffix?: string;      // ".1", ".2" — set when submitting a renewal
@@ -821,6 +996,10 @@ export interface Plan {
   // Encroachments — future MOT workflows will key off these (see project_deferred_features.md).
   impact_i5Freeway?: boolean;
   impact_uprrBridge?: boolean;
+  // TANSAT phase plan — populated when impact_transit ("TANSAT Needed") is true.
+  // MOT creates TansatRequest records referencing these phase numbers.
+  // See docs/specs/tansat.md §3.1.
+  tansatPhases?: PlanTansatPhase[];
 
   // Documents
   attachments: { name: string; data: string }[];   // draft attachments from initial request
