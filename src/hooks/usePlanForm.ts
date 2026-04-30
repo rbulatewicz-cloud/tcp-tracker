@@ -30,6 +30,7 @@ const EMPTY_FORM: PlanForm = {
   impact_transit: false,
   impact_i5Freeway: false,
   impact_uprrBridge: false,
+  tansatPhases: [],
   work_hours: undefined,
   phe_justification: '',
   planDurationDays: undefined,

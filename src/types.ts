@@ -750,6 +750,19 @@ export interface ReferenceDoc {
   uploadedBy: string;              // display name or email
 }
 
+// ── TANSAT phase plan (lives on a Plan) ──────────────────────────────────────
+// Engineer-defined work segments. A plan can have 0..N phases. Each phase has
+// anticipated dates and a flag indicating whether it needs a TANSAT posting.
+// MOT later creates one or more TansatRequest records that reference these
+// phase numbers. See docs/specs/tansat.md §3.1.
+export interface PlanTansatPhase {
+  phaseNumber: number;             // 1, 2, 3...
+  label?: string;                  // optional, e.g. "Potholing", "Conduit Work"
+  anticipatedStart?: string;       // ISO date — may be empty if not yet known
+  anticipatedEnd?: string;
+  needsTansat: boolean;            // engineer flags which phases need parking removal
+}
+
 export interface PlanForm {
   id: string;
   rev: number;
@@ -777,6 +790,9 @@ export interface PlanForm {
   impact_transit: boolean;
   impact_i5Freeway?: boolean;       // Caltrans encroachment — triggers future MOT workflow
   impact_uprrBridge?: boolean;      // UPRR encroachment — triggers future MOT workflow
+  // TANSAT phase plan — populated when impact_transit ("TANSAT Needed") is true.
+  // Fluid: SFTC engineer can leave empty and fill in later via plan card.
+  tansatPhases?: PlanTansatPhase[];
   work_hours?: WorkHours;
   phe_justification?: string;   // "Why is peak hour work required?" — captured at request time
   revisionSuffix?: string;      // ".1", ".2" — set when submitting a renewal
@@ -860,6 +876,10 @@ export interface Plan {
   // Encroachments — future MOT workflows will key off these (see project_deferred_features.md).
   impact_i5Freeway?: boolean;
   impact_uprrBridge?: boolean;
+  // TANSAT phase plan — populated when impact_transit ("TANSAT Needed") is true.
+  // MOT creates TansatRequest records referencing these phase numbers.
+  // See docs/specs/tansat.md §3.1.
+  tansatPhases?: PlanTansatPhase[];
 
   // Documents
   attachments: { name: string; data: string }[];   // draft attachments from initial request
