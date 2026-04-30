@@ -1,13 +1,15 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { updateDoc, doc } from 'firebase/firestore';
 import { db } from '../../firebase';
-import type { Plan, PlanTansatPhase, TansatRequest } from '../../types';
+import type { PlanTansatPhase, TansatRequest } from '../../types';
 import { usePlanData, usePlanPermissions } from '../PlanCardContext';
 import { subscribeToTansatRequestsForPlan } from '../../services/tansatService';
 import { getTotalPaid } from '../../utils/tansatSpend';
 import { fmtDate } from '../../utils/plans';
 import { TansatStatusPill, ACTIVITY_LABELS, fmtMoney, PhaseChips } from './tansat/tansatShared';
 import { TansatPhasePlanner } from '../NewRequestModal/TansatPhasePlanner';
+import { PacketBuilderModal } from '../Tansat/PacketBuilderModal';
+import { useApp } from '../../hooks/useApp';
 
 /**
  * Plan card → TANSAT track. Mirrors the visual language of the compliance
@@ -25,7 +27,8 @@ import { TansatPhasePlanner } from '../NewRequestModal/TansatPhasePlanner';
  */
 export const TansatSection: React.FC = React.memo(() => {
   const { selectedPlan } = usePlanData();
-  const { canEditFields } = usePlanPermissions();
+  const { canEditFields, currentUser } = usePlanPermissions();
+  const { firestoreData } = useApp();
 
   const [requests, setRequests] = useState<TansatRequest[]>([]);
   const [phaseEditorOpen, setPhaseEditorOpen] = useState(false);
@@ -175,10 +178,12 @@ export const TansatSection: React.FC = React.memo(() => {
         </div>
       )}
 
-      {/* Packet builder modal placeholder — wired up in T-2.2 */}
+      {/* Packet builder modal — T-2.2 */}
       {packetBuilderOpen && (
-        <PacketBuilderPlaceholder
+        <PacketBuilderModal
           plan={selectedPlan}
+          appConfig={firestoreData?.appConfig}
+          currentUserName={currentUser?.name ?? currentUser?.email ?? 'unknown'}
           onClose={() => setPacketBuilderOpen(false)}
         />
       )}
@@ -279,21 +284,3 @@ const PhaseStatusPill: React.FC<{ status?: PhaseStatus }> = ({ status }) => {
   }
 };
 
-// ── Placeholder modal — replaced by real packet builder in T-2.2 ────────────
-const PacketBuilderPlaceholder: React.FC<{ plan: Plan; onClose: () => void }> = ({ plan, onClose }) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-    <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-      <h3 className="text-lg font-bold mb-2">Packet Builder</h3>
-      <p className="text-sm text-slate-600 mb-4">
-        The TANSAT packet builder modal will land in T-2.2. For now, this confirms the entry point
-        works for plan <b className="font-mono">{plan.loc || plan.id}</b>.
-      </p>
-      <button
-        onClick={onClose}
-        className="w-full py-2 bg-slate-900 text-white rounded font-bold text-sm hover:bg-slate-700"
-      >
-        Close
-      </button>
-    </div>
-  </div>
-);

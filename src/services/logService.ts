@@ -132,10 +132,10 @@ export interface GlobalLogEntry {
   createdAt: string;     // ISO timestamp for precise sort
   action: string;
   user: string;
-  source: 'cr_hub' | 'library' | 'plan';
+  source: 'cr_hub' | 'library' | 'plan' | 'tansat';
   reference: string;     // e.g. "123 Main St" or "NV Permit 2345" or "LOC-390"
   referenceId: string;
-  referenceType: 'letter' | 'variance' | 'plan';
+  referenceType: 'letter' | 'variance' | 'plan' | 'tansat_request';
   planLoc?: string;
   // Plan-delete audit snapshot — only populated when source === 'plan'
   deletedPlanStage?: string;
@@ -146,10 +146,10 @@ export interface GlobalLogEntry {
 
 export const writeGlobalLog = async (
   action: string,
-  source: 'cr_hub' | 'library' | 'plan',
+  source: 'cr_hub' | 'library' | 'plan' | 'tansat',
   reference: string,
   referenceId: string,
-  referenceType: 'letter' | 'variance' | 'plan',
+  referenceType: 'letter' | 'variance' | 'plan' | 'tansat_request',
   planLoc?: string,
   extras?: Partial<Pick<GlobalLogEntry,
     'deletedPlanStage' | 'deletedPlanStreet' | 'deletedPlanRequestedBy' | 'deletionReason'>>,

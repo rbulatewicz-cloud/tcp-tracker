@@ -1,4 +1,3 @@
-import React from 'react';
 import type { TansatStatus, TansatActivity } from '../../../types';
 
 // ── Status colors ────────────────────────────────────────────────────────────
