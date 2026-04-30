@@ -6,6 +6,7 @@ import { FieldsGrid } from './PlanCardSections/FieldsGrid';
 import { ImpactRequirementsDisplay } from './PlanCardSections/ImpactRequirementsDisplay';
 import { HoursOfWorkDisplay } from './PlanCardSections/HoursOfWorkDisplay';
 import { ComplianceSection } from './PlanCardSections/ComplianceSection';
+import { TansatSection } from './PlanCardSections/TansatSection';
 import { SiblingPlansSection } from './PlanCardSections/SiblingPlansSection';
 import { PlanNotes } from './PlanCardSections/PlanNotes';
 import { Documents } from './PlanCardSections/Documents';
@@ -75,6 +76,10 @@ const PlanCardComponent: React.FC = () => {
 
             <CollapsibleSection title="Compliance">
               <ComplianceSection />
+            </CollapsibleSection>
+
+            <CollapsibleSection title="🅿️ TANSAT" defaultOpen={false}>
+              <TansatSection />
             </CollapsibleSection>
 
             <CollapsibleSection title="Sibling LOCs" defaultOpen={false}>
