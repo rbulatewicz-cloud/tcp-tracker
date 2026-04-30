@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AppConfig, TansatContact, TansatSettings } from '../../types';
 import { DEFAULT_TANSAT_SETTINGS } from '../../constants';
+import { ImportLegacyXlsxModal } from '../../components/Tansat/ImportLegacyXlsxModal';
+import { useApp } from '../../hooks/useApp';
 
 interface TansatTabProps {
   form: AppConfig;
@@ -16,6 +18,11 @@ function readSettings(form: AppConfig): TansatSettings {
 
 export const TansatTab: React.FC<TansatTabProps> = ({ form, setForm }) => {
   const s = readSettings(form);
+  const [importOpen, setImportOpen] = useState(false);
+  const { auth } = useApp();
+  const uploadedBy = auth?.currentUser?.email
+    || auth?.currentUser?.displayName
+    || 'admin';
 
   const update = (mut: (draft: TansatSettings) => TansatSettings) => {
     setForm(p => ({ ...p, tansatSettings: mut(readSettings(p)) }));
@@ -241,9 +248,33 @@ export const TansatTab: React.FC<TansatTabProps> = ({ form, setForm }) => {
         </div>
       </section>
 
+      {/* Legacy xlsx import — Admin-only one-time migration */}
+      <section className="border-t border-slate-100 dark:border-slate-700 pt-6">
+        <h2 className="text-base font-bold text-slate-800 dark:text-slate-200 mb-1">Legacy Import</h2>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+          One-time migration of Justin's existing "TANSAT Tracking Log" spreadsheet into Firestore.
+          Idempotent — re-running skips Log #s already in the system. Imported rows preserve their
+          plan/location text; link them to real plans later via Library → TANSAT Log.
+        </p>
+        <button
+          type="button"
+          onClick={() => setImportOpen(true)}
+          className="text-xs font-bold px-4 py-2 rounded bg-violet-600 text-white hover:bg-violet-700 inline-flex items-center gap-1.5"
+        >
+          📥 Import legacy xlsx
+        </button>
+      </section>
+
       <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/40 p-4 text-xs text-blue-900 dark:text-blue-200">
         <b>Save</b> using the global "Save Settings" button at the bottom — this tab uses the shared save flow.
       </div>
+
+      {importOpen && (
+        <ImportLegacyXlsxModal
+          uploadedBy={uploadedBy}
+          onClose={() => setImportOpen(false)}
+        />
+      )}
     </div>
   );
 };

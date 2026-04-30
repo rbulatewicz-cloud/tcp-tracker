@@ -75,6 +75,14 @@ interface PlanCompliance {
   phe?: PHETrack;
 }
 
+interface PlanTansatPhase {
+  phaseNumber: number;
+  label?: string;
+  anticipatedStart?: string;
+  anticipatedEnd?: string;
+  needsTansat: boolean;
+}
+
 interface Plan {
   id: string;
   loc: string;
@@ -84,7 +92,43 @@ interface Plan {
   status?: string;
   compliance?: PlanCompliance;
   createdAt?: string;
+  tansatPhases?: PlanTansatPhase[];
+  impact_transit?: boolean;
 }
+
+interface TansatExtension {
+  id: string;
+  newEndDate: string;
+  status?: string;
+}
+
+interface TansatRequest {
+  id: string;
+  planId?: string;
+  phaseNumbers?: number[];
+  status: string;
+  emailSentAt?: string;
+  paymentDueDate?: string;
+  logNumber?: string;
+  schedule?: { startDate?: string; endDate?: string };
+  extensions?: TansatExtension[];
+}
+
+interface TansatThresholds {
+  needsPacketDays: number;
+  awaitingInvoiceDays: number;
+  paymentDueDays: number;
+  extensionWindowBusinessDays: number;
+  metersAffectedMaxDays: number;
+}
+
+const DEFAULT_TANSAT_THRESHOLDS: TansatThresholds = {
+  needsPacketDays:             14,
+  awaitingInvoiceDays:          7,
+  paymentDueDays:               3,
+  extensionWindowBusinessDays: 10,
+  metersAffectedMaxDays:       30,
+};
 
 type NotifyEvent =
   | 'status_change'
@@ -100,7 +144,13 @@ type NotifyEvent =
   | 'cd_overdue'
   | 'cd_warning'
   | 'phe_deadline'
-  | 'missing_slide';
+  | 'missing_slide'
+  // TANSAT triggers (5 — see docs/specs/tansat.md §8)
+  | 'tansat_needs_packet'
+  | 'tansat_awaiting_invoice'
+  | 'tansat_payment_due'
+  | 'tansat_extension_window'
+  | 'tansat_closeout_pending';
 
 interface AppNotification {
   userId: string;
@@ -128,6 +178,23 @@ function daysUntil(isoDate: string): number {
 
 function planLocation(plan: Plan): string {
   return [plan.street1, plan.street2].filter(Boolean).join(' & ');
+}
+
+/** Count Mon-Fri business days from now until the target date, exclusive of today. */
+function businessDaysUntil(targetIso: string): number {
+  const target = new Date(targetIso + (targetIso.length === 10 ? 'T00:00:00' : ''));
+  if (isNaN(target.getTime())) return Infinity;
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  if (start >= target) return 0;
+  let count = 0;
+  const cursor = new Date(start);
+  while (cursor < target) {
+    cursor.setDate(cursor.getDate() + 1);
+    const dow = cursor.getDay();
+    if (dow !== 0 && dow !== 6) count++;
+  }
+  return count;
 }
 
 /** Write a single in-app notification document */
@@ -323,6 +390,200 @@ export const dailyComplianceAlerts = onSchedule(
           }
         }
       }
+    }
+
+    // ── TANSAT alerts ─────────────────────────────────────────────────────
+    // Mirrors the 5 triage triggers the MOT Hub surfaces (see
+    // src/utils/tansatSpend.ts → getRequestsNeedingAttention).
+    // - needs_packet      (phase start ≤ N days, no covering request)
+    // - awaiting_invoice  (status emailed > N days, no log #)
+    // - payment_due       (invoice received, due ≤ N days, not paid)
+    // - extension_window  (phase end ≤ N business days, no extension)
+    // - closeout_pending  (work end passed, status not closed)
+    try {
+      // Load TANSAT settings (thresholds)
+      let thresholds = DEFAULT_TANSAT_THRESHOLDS;
+      try {
+        const cfgSnap = await db.collection('settings').doc('appConfig').get();
+        const cfg = cfgSnap.data() as { tansatSettings?: { thresholds?: Partial<TansatThresholds> } } | undefined;
+        if (cfg?.tansatSettings?.thresholds) {
+          thresholds = { ...DEFAULT_TANSAT_THRESHOLDS, ...cfg.tansatSettings.thresholds };
+        }
+      } catch (err) {
+        console.warn('[tansat] failed to load thresholds, using defaults', err);
+      }
+
+      // Load all TANSAT requests
+      const requestsSnap = await db.collection('tansatRequests').get();
+      const tansatRequests: TansatRequest[] = [];
+      requestsSnap.forEach(d => tansatRequests.push({ ...(d.data() as TansatRequest), id: d.id }));
+
+      // Index requests by plan for needs_packet detection
+      const requestsByPlan = new Map<string, TansatRequest[]>();
+      for (const r of tansatRequests) {
+        if (!r.planId) continue;
+        const arr = requestsByPlan.get(r.planId) ?? [];
+        arr.push(r);
+        requestsByPlan.set(r.planId, arr);
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+
+      // 1. needs_packet — for each phase that needs TANSAT, alert if start
+      //    is within threshold AND no active request covers it.
+      for (const plan of plans) {
+        const phases = plan.tansatPhases ?? [];
+        if (phases.length === 0) continue;
+        const planRequests = requestsByPlan.get(plan.id) ?? [];
+        for (const phase of phases) {
+          if (!phase.needsTansat || !phase.anticipatedStart) continue;
+          const daysToStart = Math.ceil(
+            (new Date(phase.anticipatedStart + 'T00:00:00').getTime() - Date.now()) / 86_400_000
+          );
+          if (daysToStart > thresholds.needsPacketDays || daysToStart < 0) continue;
+          const covered = planRequests.some(r =>
+            (r.phaseNumbers ?? []).includes(phase.phaseNumber)
+            && r.status !== 'cancelled' && r.status !== 'expired'
+          );
+          if (covered) continue;
+          const alertKey = `${plan.id}_tansat_p${phase.phaseNumber}_needs_packet`;
+          if (await shouldAlert(alertKey, 3)) {
+            for (const email of recipientEmails) {
+              writes.push(writeNotification({
+                userId: email,
+                type: 'tansat_needs_packet',
+                planId: plan.id,
+                planLoc: plan.loc || plan.id,
+                location: planLocation(plan),
+                title: `🅿️ TANSAT packet needed — ${plan.loc} P${phase.phaseNumber}`,
+                body: `${phase.label || `Phase ${phase.phaseNumber}`} starts in ${daysToStart} day${daysToStart === 1 ? '' : 's'} (${phase.anticipatedStart}). No TANSAT request created yet.`,
+                read: false,
+                createdAt: new Date().toISOString(),
+              }));
+            }
+            writes.push(markAlertSent(alertKey));
+            console.log(`TANSAT needs_packet: ${alertKey} (start in ${daysToStart}d)`);
+          }
+        }
+      }
+
+      // Plan lookup for the rest of the triggers
+      const planById = new Map<string, Plan>();
+      plans.forEach(p => planById.set(p.id, p));
+
+      for (const r of tansatRequests) {
+        const plan = r.planId ? planById.get(r.planId) : undefined;
+        const loc = plan?.loc || r.planId || '—';
+        const location = plan ? planLocation(plan) : '';
+
+        // 2. awaiting_invoice — emailed > N days, no logNumber
+        if (r.status === 'emailed' && r.emailSentAt && !r.logNumber) {
+          const daysWaited = daysSince(r.emailSentAt);
+          if (daysWaited >= thresholds.awaitingInvoiceDays) {
+            const alertKey = `tansat_${r.id}_awaiting_invoice`;
+            if (await shouldAlert(alertKey, 3)) {
+              for (const email of recipientEmails) {
+                writes.push(writeNotification({
+                  userId: email,
+                  type: 'tansat_awaiting_invoice',
+                  planId: plan?.id,
+                  planLoc: loc,
+                  location,
+                  title: `🅿️ TANSAT invoice late — ${loc}`,
+                  body: `Emailed Reggie ${daysWaited} days ago, no LOG # received yet. Consider following up.`,
+                  read: false,
+                  createdAt: new Date().toISOString(),
+                }));
+              }
+              writes.push(markAlertSent(alertKey));
+              console.log(`TANSAT awaiting_invoice: ${alertKey} (${daysWaited}d)`);
+            }
+          }
+        }
+
+        // 3. payment_due — invoice_received, due in ≤ N days, not paid
+        if (r.status === 'invoice_received' && r.paymentDueDate) {
+          const daysUntilDue = daysUntil(r.paymentDueDate);
+          if (daysUntilDue <= thresholds.paymentDueDays) {
+            const alertKey = `tansat_${r.id}_payment_due`;
+            if (await shouldAlert(alertKey, 1)) {
+              for (const email of recipientEmails) {
+                writes.push(writeNotification({
+                  userId: email,
+                  type: 'tansat_payment_due',
+                  planId: plan?.id,
+                  planLoc: loc,
+                  location,
+                  title: daysUntilDue < 0
+                    ? `🅿️ TANSAT payment OVERDUE — LOG #${r.logNumber} (${loc})`
+                    : `🅿️ TANSAT payment due in ${daysUntilDue}d — LOG #${r.logNumber} (${loc})`,
+                  body: `LADOT payment due ${r.paymentDueDate}. Pay on Paymentus and upload the receipt to mark paid.`,
+                  read: false,
+                  createdAt: new Date().toISOString(),
+                }));
+              }
+              writes.push(markAlertSent(alertKey));
+              console.log(`TANSAT payment_due: ${alertKey} (${daysUntilDue}d)`);
+            }
+          }
+        }
+
+        // 4. extension_window — paid/posted/active, end ≤ N business days,
+        //    no active extension
+        if ((r.status === 'paid' || r.status === 'posted' || r.status === 'active') && r.schedule?.endDate) {
+          const bizDays = businessDaysUntil(r.schedule.endDate);
+          if (bizDays <= thresholds.extensionWindowBusinessDays && bizDays >= 0) {
+            const hasActiveExt = (r.extensions ?? []).some(e => e.status === 'sent' || e.status === 'confirmed');
+            if (!hasActiveExt) {
+              const alertKey = `tansat_${r.id}_extension_window`;
+              if (await shouldAlert(alertKey, 5)) {
+                for (const email of recipientEmails) {
+                  writes.push(writeNotification({
+                    userId: email,
+                    type: 'tansat_extension_window',
+                    planId: plan?.id,
+                    planLoc: loc,
+                    location,
+                    title: `🅿️ TANSAT extension window — LOG #${r.logNumber} (${loc})`,
+                    body: `Phase ends ${r.schedule.endDate} (${bizDays} business days). LADOT prefers extension requests filed inside this window.`,
+                    read: false,
+                    createdAt: new Date().toISOString(),
+                  }));
+                }
+                writes.push(markAlertSent(alertKey));
+                console.log(`TANSAT extension_window: ${alertKey} (${bizDays} biz days)`);
+              }
+            }
+          }
+        }
+
+        // 5. closeout_pending — end date passed, status not closed/cancelled
+        if (r.status !== 'closed' && r.status !== 'cancelled' && r.schedule?.endDate) {
+          const daysSinceEnd = daysSince(r.schedule.endDate);
+          if (daysSinceEnd > 0) {
+            const alertKey = `tansat_${r.id}_closeout`;
+            if (await shouldAlert(alertKey, 7)) {
+              for (const email of recipientEmails) {
+                writes.push(writeNotification({
+                  userId: email,
+                  type: 'tansat_closeout_pending',
+                  planId: plan?.id,
+                  planLoc: loc,
+                  location,
+                  title: `🅿️ TANSAT close-out pending — LOG #${r.logNumber} (${loc})`,
+                  body: `Phase ended ${r.schedule.endDate} (${daysSinceEnd}d ago). Mark the request closed once work is complete.`,
+                  read: false,
+                  createdAt: new Date().toISOString(),
+                }));
+              }
+              writes.push(markAlertSent(alertKey));
+              console.log(`TANSAT closeout_pending: ${alertKey} (${daysSinceEnd}d ago)`);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[tansat] alert scan failed', err);
     }
 
     // 3. Flush all writes
