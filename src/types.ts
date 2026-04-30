@@ -89,6 +89,45 @@ export interface AppConfig {
   driveway_contactPhone?: string;      // Direct phone for CR contact
   driveway_contactEmail?: string;      // Email for CR contact
   driveway_defaultWorkHours?: string;  // e.g. "nighttime hours (9:00 PM to 6:00 AM), Mon–Fri"
+
+  // ── TANSAT (Temporary Authorization for No Standing / Tow-Away) ──────────
+  // Admin-tunable settings driving the TANSAT request workflow. See
+  // docs/specs/tansat.md §5.7 (settings) and §6 (email integration).
+  tansatSettings?: TansatSettings;
+}
+
+// ── TANSAT settings ──────────────────────────────────────────────────────────
+// Lives on AppConfig. Drives email recipients + SLA notification thresholds.
+// Per-recipient default-include toggles let MOT skip manually CC'ing the same
+// 8+ people every time.
+export interface TansatContact {
+  name: string;
+  email: string;
+  defaultIncluded: boolean;
+}
+
+export interface TansatCcGroup {
+  name: string;       // Display label, e.g. "DOT Contacts"
+  contacts: TansatContact[];
+}
+
+export interface TansatSettings {
+  reggieEmail: string;             // primary recipient (To: field)
+  defaultCustomerName: string;     // shown on invoice, e.g. "SFT CONSTRUCTORS / DALE GATICA Jr"
+  fromAddress?: string;            // Phase 2 only — populated after IT provisions company-domain email
+  ccGroups: {
+    dot: TansatCcGroup;
+    internal: TansatCcGroup;
+    client: TansatCcGroup;
+  };
+  thresholds: {
+    needsPacketDays: number;            // default 14 — notify when phase start within N days, no packet
+    awaitingInvoiceDays: number;        // default 7  — notify when emailed N days ago, no log #
+    paymentDueDays: number;             // default 3  — notify when payment due within N days
+    extensionWindowBusinessDays: number;// default 10 — notify within N business days of phase end
+    metersAffectedMaxDays: number;      // default 30 — Bureau of Parking referral threshold
+  };
+  aiExtractionEnabled: boolean;    // toggle to globally disable Gemini invoice extraction
 }
 
 // ── Compliance Track types ────────────────────────────────────────────────────

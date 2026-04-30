@@ -14,6 +14,7 @@ import { AccessTab }         from './settings/AccessTab';
 import { EmailTemplatesTab } from './settings/EmailTemplatesTab';
 import { EmailAuditTab }     from './settings/EmailAuditTab';
 import { NotificationsTab }  from './settings/NotificationsTab';
+import { TansatTab }         from './settings/TansatTab';
 
 interface SettingsViewProps {
   appConfig: AppConfig;
@@ -28,7 +29,7 @@ interface SettingsViewProps {
 }
 
 type Tab = 'branding' | 'workflow' | 'lists' | 'data' | 'compliance' | 'system' | 'access'
-         | 'email_templates' | 'email_audit' | 'notifications';
+         | 'email_templates' | 'email_audit' | 'notifications' | 'tansat';
 
 const TABS: { key: Tab; label: string; group?: string }[] = [
   { key: 'branding',         label: 'Branding' },
@@ -36,6 +37,7 @@ const TABS: { key: Tab; label: string; group?: string }[] = [
   { key: 'lists',            label: 'Managed Lists' },
   { key: 'data',             label: 'Data' },
   { key: 'compliance',       label: 'Compliance' },
+  { key: 'tansat',           label: 'TANSAT' },
   { key: 'access',           label: 'Team Access' },
   { key: 'system',           label: 'System' },
   { key: 'email_templates',  label: 'Email Templates',  group: 'email' },
@@ -122,6 +124,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {tab === 'lists'           && <ListsTab          form={form} setForm={setForm} saving={saving} handleSave={handleSave} />}
         {tab === 'data'            && <DataTab           role={role} setClearPlansConfirm={setClearPlansConfirm} onOpenImport={onOpenImport} onExportCSV={onExportCSV} />}
         {tab === 'compliance'      && <ComplianceTab     form={form} setForm={setForm} saving={saving} handleSave={handleSave} />}
+        {tab === 'tansat'          && <TansatTab         form={form} setForm={setForm} />}
         {tab === 'access'          && <AccessTab         form={form} setForm={setForm} />}
         {tab === 'system'          && <SystemTab         users={users} />}
         {tab === 'email_templates' && <EmailTemplatesTab currentUserEmail={currentUserEmail} notificationEmail={notificationEmail} />}
@@ -129,7 +132,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {tab === 'notifications'   && <NotificationsTab />}
 
         {/* Shared save button for tabs that don't have their own */}
-        {(tab === 'branding' || tab === 'workflow' || tab === 'access') && (
+        {(tab === 'branding' || tab === 'workflow' || tab === 'access' || tab === 'tansat') && (
           <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-700 flex justify-end">
             <button
               onClick={handleSave}
