@@ -9,6 +9,8 @@ import { fmtDate } from '../../utils/plans';
 import { TansatStatusPill, ACTIVITY_LABELS, fmtMoney, PhaseChips } from './tansat/tansatShared';
 import { TansatPhasePlanner } from '../NewRequestModal/TansatPhasePlanner';
 import { PacketBuilderModal } from '../Tansat/PacketBuilderModal';
+import { InvoiceIntakeModal } from '../Tansat/InvoiceIntakeModal';
+import { MarkPaidModal } from '../Tansat/MarkPaidModal';
 import { useApp } from '../../hooks/useApp';
 
 /**
@@ -33,6 +35,8 @@ export const TansatSection: React.FC = React.memo(() => {
   const [requests, setRequests] = useState<TansatRequest[]>([]);
   const [phaseEditorOpen, setPhaseEditorOpen] = useState(false);
   const [packetBuilderOpen, setPacketBuilderOpen] = useState(false);
+  const [invoiceIntakeFor, setInvoiceIntakeFor] = useState<TansatRequest | null>(null);
+  const [markPaidFor, setMarkPaidFor] = useState<TansatRequest | null>(null);
 
   // Subscribe to all TANSAT requests for this plan
   useEffect(() => {
@@ -145,6 +149,7 @@ export const TansatSection: React.FC = React.memo(() => {
                   <th className="text-left px-2 py-1.5 font-bold">Schedule</th>
                   <th className="text-right px-2 py-1.5 font-bold">Amount</th>
                   <th className="text-right px-2 py-1.5 font-bold">Status</th>
+                  {canEditFields && <th className="text-right px-2 py-1.5 font-bold">Action</th>}
                 </tr>
               </thead>
               <tbody>
@@ -170,6 +175,26 @@ export const TansatSection: React.FC = React.memo(() => {
                     <td className="px-2 py-1.5 text-right">
                       <TansatStatusPill status={r.status} />
                     </td>
+                    {canEditFields && (
+                      <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                        {r.status === 'emailed' && (
+                          <button
+                            onClick={() => setInvoiceIntakeFor(r)}
+                            className="text-[10px] font-bold text-violet-700 hover:underline"
+                          >
+                            Log Invoice →
+                          </button>
+                        )}
+                        {r.status === 'invoice_received' && (
+                          <button
+                            onClick={() => setMarkPaidFor(r)}
+                            className="text-[10px] font-bold text-emerald-700 hover:underline"
+                          >
+                            Mark Paid →
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -185,6 +210,27 @@ export const TansatSection: React.FC = React.memo(() => {
           appConfig={firestoreData?.appConfig}
           currentUserName={currentUser?.name ?? currentUser?.email ?? 'unknown'}
           onClose={() => setPacketBuilderOpen(false)}
+        />
+      )}
+
+      {/* Invoice intake modal — T-3.1 */}
+      {invoiceIntakeFor && (
+        <InvoiceIntakeModal
+          request={invoiceIntakeFor}
+          plan={selectedPlan}
+          appConfig={firestoreData?.appConfig}
+          currentUserName={currentUser?.name ?? currentUser?.email ?? 'unknown'}
+          onClose={() => setInvoiceIntakeFor(null)}
+        />
+      )}
+
+      {/* Mark Paid modal — T-3.3 */}
+      {markPaidFor && (
+        <MarkPaidModal
+          request={markPaidFor}
+          plan={selectedPlan}
+          currentUserName={currentUser?.name ?? currentUser?.email ?? 'unknown'}
+          onClose={() => setMarkPaidFor(null)}
         />
       )}
     </div>
