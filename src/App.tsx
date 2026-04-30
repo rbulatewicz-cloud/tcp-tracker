@@ -34,6 +34,7 @@ import { LocManagerPortalView } from './views/LocManagerPortalView';
 import { ComplianceView } from './views/ComplianceView';
 import VarianceLibraryView from './views/VarianceLibraryView';
 import { CRHubView } from './views/CRHubView';
+import MotHubView from './views/MotHubView';
 import CorridorMapView from './views/CorridorMapView';
 import ReferenceView from './views/ReferenceView';
 import { AppFeedbackView } from './views/AppFeedbackView';
@@ -711,11 +712,11 @@ function AppContent() {
   const _defaultTabVis: Record<string, string[]> = {
     GUEST:  ['table', 'corridor', 'calendar'],
     SFTC:   ['table', 'corridor', 'calendar', 'metrics', 'plan_requests', 'timeline', 'reports', 'compliance', 'variances', 'reference'],
-    MOT:    ['table', 'corridor', 'calendar', 'metrics', 'plan_requests', 'timeline', 'reports', 'compliance', 'variances', 'reference', 'users', 'log'],
+    MOT:    ['table', 'corridor', 'calendar', 'metrics', 'plan_requests', 'timeline', 'reports', 'mot_hub', 'compliance', 'variances', 'reference', 'users', 'log'],
     CR:     ['table', 'corridor', 'calendar', 'cr_hub', 'compliance', 'variances', 'reference'],
     DOT:    ['table', 'corridor', 'calendar', 'variances', 'reference'],
     METRO:  ['table', 'corridor', 'calendar', 'compliance', 'variances', 'reference'],
-    ADMIN:  ['table', 'corridor', 'calendar', 'metrics', 'plan_requests', 'timeline', 'reports', 'cr_hub', 'compliance', 'variances', 'reference', 'users', 'log'],
+    ADMIN:  ['table', 'corridor', 'calendar', 'metrics', 'plan_requests', 'timeline', 'reports', 'mot_hub', 'cr_hub', 'compliance', 'variances', 'reference', 'users', 'log'],
   };
   const _effectiveTabs: string[] = role === UserRole.ADMIN
     ? _defaultTabVis.ADMIN
@@ -731,6 +732,7 @@ function AppContent() {
   const canRequestAppChange = role === UserRole.MOT || role === UserRole.ADMIN;
   const canViewCompliance = canViewTab('compliance');
   const canViewCRHub = canViewTab('cr_hub');
+  const canViewMotHub = canViewTab('mot_hub');
   const canExport = role === UserRole.SFTC || role === UserRole.MOT || role === UserRole.ADMIN;
 
   useEffect(() => {
@@ -809,6 +811,7 @@ function AppContent() {
         canManageApp={canManageApp}
         canViewCompliance={canViewCompliance}
         canViewCRHub={canViewCRHub}
+        canViewMotHub={canViewMotHub}
         canViewTab={canViewTab}
         canCreateRequest={canCreateRequest}
         canRequestAppChange={canRequestAppChange}
@@ -1010,6 +1013,17 @@ function AppContent() {
         {/* CR HUB */}
         {view === "cr_hub" && canViewCRHub && (
           <CRHubView
+            currentUser={currentUser}
+            appConfig={appConfig}
+            plans={searchFiltered}
+            setSelectedPlan={setSelectedPlan}
+            setView={setView}
+          />
+        )}
+
+        {/* MOT HUB */}
+        {view === "mot_hub" && canViewMotHub && (
+          <MotHubView
             currentUser={currentUser}
             appConfig={appConfig}
             plans={searchFiltered}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { DrivewayLetter, Plan, User, AppConfig } from '../types';
 import { fmtDate } from '../utils/plans';
 import { getStagePill } from '../utils/corridor';
@@ -9,6 +9,12 @@ import {
   DOT_LEVEL_COLORS,
   computeDotTurnaroundByMonth,
 } from '../utils/dotOverdue';
+import {
+  getRequestsNeedingAttention,
+  getMonthlySpendTrend,
+} from '../utils/tansatSpend';
+import { subscribeToTansatRequests } from '../services/tansatService';
+import type { TansatRequest } from '../types';
 
 interface ReportsViewProps {
   plans: Plan[];
@@ -30,7 +36,7 @@ const STAGE_LABELS: Record<string, string> = Object.fromEntries(
   ALL_STAGES.map(s => [s.key, s.label])
 );
 
-type ReportId = 'status' | 'cd_concurrence' | 'compliance_summary' | 'monthly_rollup' | 'dot_turnaround';
+type ReportId = 'status' | 'cd_concurrence' | 'compliance_summary' | 'monthly_rollup' | 'dot_turnaround' | 'tansat_spend';
 
 interface ReportTemplate {
   id: ReportId;
@@ -70,7 +76,28 @@ const REPORT_TEMPLATES: ReportTemplate[] = [
     name: 'DOT Turnaround Trend',
     description: 'Avg DOT review days by month, last 6 months',
   },
+  {
+    id: 'tansat_spend',
+    icon: '🅿️',
+    name: 'TANSAT Spend Trend',
+    description: 'Monthly LADOT posting spend, by activity, last 6 months',
+  },
 ];
+
+// ── Helper: TANSAT severity & reason labels (used in StatusReport) ─────────
+const TANSAT_SEVERITY_COLORS = {
+  red:   { bg: '#FEE2E2', fg: '#991B1B', border: '#FECACA' },
+  amber: { bg: '#FEF3C7', fg: '#B45309', border: '#FDE68A' },
+  gray:  { bg: '#F1F5F9', fg: '#64748B', border: '#E2E8F0' },
+} as const;
+
+const TANSAT_REASON_LABELS = {
+  needs_packet:      'Needs packet',
+  awaiting_invoice:  'Awaiting invoice',
+  payment_due:       'Payment due',
+  extension_window:  'Extension window',
+  closeout_pending:  'Close-out pending',
+} as const;
 
 // ── Helper: CD status colored badge ──────────────────────────────────────────
 function CDStatusBadge({ status }: { status: string }) {
@@ -113,6 +140,15 @@ function StatusReport({ plans, monoFont, setSelectedPlan, appConfig }: {
   // Overdue-with-DOT rollup — shares the util with the dashboard tile
   // so the two surfaces never disagree on what counts as "overdue."
   const dotOverdueRows = getPlansOverdueWithDot(activePlans, appConfig, { includeWarnings: true, now });
+
+  // TANSAT needs-attention rollup — same util powers the dashboard tile,
+  // MOT Hub, and this section. Subscription is cheap (single Firestore listener).
+  const [tansatRequests, setTansatRequests] = useState<TansatRequest[]>([]);
+  useEffect(() => {
+    const unsub = subscribeToTansatRequests(setTansatRequests);
+    return () => unsub();
+  }, []);
+  const tansatNeeds = getRequestsNeedingAttention(plans, tansatRequests, appConfig?.tansatSettings, now);
 
   // Stage counts
   const stageCounts = new Map<string, number>();
@@ -204,6 +240,76 @@ function StatusReport({ plans, monoFont, setSelectedPlan, appConfig }: {
           })}
         </div>
       </div>
+
+      {/* TANSAT needs attention — surfaces all 5 triggers (needs_packet,
+          awaiting_invoice, payment_due, extension_window, closeout_pending)
+          ahead of DOT overdue because TANSAT items are typically time-bound
+          and money-bound. */}
+      {tansatNeeds.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#0F766E', marginBottom: 8 }}>
+            🅿️ TANSAT — Needs Attention This Week ({tansatNeeds.length})
+          </div>
+          <div style={{ border: '1px solid #99F6E4', borderRadius: 8, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Plan / Log #</th>
+                  <th style={thStyle}>Issue</th>
+                  <th style={thStyle}>Detail</th>
+                  <th style={thStyle}>Severity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tansatNeeds.map((item, idx) => {
+                  const sevColors = TANSAT_SEVERITY_COLORS[item.severity];
+                  const planRef = item.plan?.loc ?? item.plan?.id ?? item.request?.planId ?? '—';
+                  const logOrPlan = item.request?.logNumber ? `LOG #${item.request.logNumber}` : `Plan ${planRef}`;
+                  const onClick = item.request
+                    ? () => {
+                      // Find the plan to open
+                      const planId = item.request?.planId;
+                      const plan = plans.find(p => p.id === planId);
+                      if (plan) setSelectedPlan(plan);
+                    }
+                    : () => item.plan && setSelectedPlan(item.plan);
+                  return (
+                    <tr
+                      key={idx}
+                      style={{ cursor: 'pointer' }}
+                      onClick={onClick}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#F0FDFA')}
+                      onMouseLeave={e => (e.currentTarget.style.background = '')}
+                    >
+                      <td style={{ ...tdStyle, fontFamily: monoFont, color: '#0F766E', fontWeight: 700 }}>
+                        {logOrPlan}
+                      </td>
+                      <td style={tdStyle}>{TANSAT_REASON_LABELS[item.reason]}</td>
+                      <td style={{ ...tdStyle, fontSize: 11, color: '#475569' }}>{item.detail}</td>
+                      <td style={tdStyle}>
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          fontSize: 10,
+                          fontWeight: 700,
+                          background: sevColors.bg,
+                          color: sevColors.fg,
+                          border: `1px solid ${sevColors.border}`,
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.3,
+                        }}>
+                          {item.severity}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Overdue with DOT — same SLA math as the dashboard KPI tile */}
       {dotOverdueRows.length > 0 && (
@@ -1028,6 +1134,171 @@ function DotTurnaroundReport({ plans, monoFont }: {
   );
 }
 
+// ── Report: TANSAT Spend Trend ───────────────────────────────────────────────
+// 6-month bar chart of monthly LADOT posting spend, plus a per-activity
+// breakdown table. Mirrors DotTurnaroundReport's layout. Subscribes to
+// tansatRequests directly so the report is self-contained.
+function TansatSpendReport({ monoFont }: { monoFont: string }) {
+  const [requests, setRequests] = useState<TansatRequest[]>([]);
+  useEffect(() => {
+    const unsub = subscribeToTansatRequests(setRequests);
+    return () => unsub();
+  }, []);
+
+  const buckets = useMemo(() => getMonthlySpendTrend(requests, 6), [requests]);
+
+  // All activities seen across the window (sorted by total dollars desc)
+  const allActivities = useMemo(() => {
+    const totals = new Map<string, number>();
+    buckets.forEach(b => {
+      Object.entries(b.byActivity).forEach(([act, dollars]) => {
+        totals.set(act, (totals.get(act) ?? 0) + dollars);
+      });
+    });
+    return Array.from(totals.entries()).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+  }, [buckets]);
+
+  const totalSpend = buckets.reduce((sum, b) => sum + b.total, 0);
+  const totalCount = buckets.reduce((sum, b) => sum + b.count, 0);
+
+  // Bar-chart Y scale — floor of $500 so an empty/small set still draws cleanly
+  const maxBucket = Math.max(500, ...buckets.map(b => b.total));
+
+  const thStyle: React.CSSProperties = {
+    fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase',
+    letterSpacing: 0.5, padding: '6px 10px', textAlign: 'left',
+    background: '#F8FAFC', borderBottom: '1px solid #E2E8F0',
+  };
+  const tdStyle: React.CSSProperties = {
+    fontSize: 12, color: '#1E293B', padding: '8px 10px',
+    borderBottom: '1px solid #F1F5F9', verticalAlign: 'middle',
+  };
+
+  if (totalCount === 0) {
+    return (
+      <div style={{ fontSize: 13, color: '#94A3B8', fontStyle: 'italic', padding: 24, textAlign: 'center' }}>
+        No paid TANSAT requests in the last 6 months.
+      </div>
+    );
+  }
+
+  const fmt$ = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+
+  return (
+    <div>
+      {/* Summary header */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 160, padding: 14, background: '#F0FDFA', border: '1px solid #99F6E4', borderRadius: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#0F766E', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+            6-month total spend
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: '#0F766E', fontFamily: monoFont }}>
+            {fmt$(totalSpend)}
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 160, padding: 14, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+            Postings paid
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: '#1E293B', fontFamily: monoFont }}>
+            {totalCount}
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 160, padding: 14, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+            Avg per posting
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: '#1E293B', fontFamily: monoFont }}>
+            {fmt$(totalCount > 0 ? totalSpend / totalCount : 0)}
+          </div>
+        </div>
+      </div>
+
+      {/* Monthly bar chart */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#1E293B', marginBottom: 12 }}>
+          Spend by Month
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 180, padding: '0 4px', borderBottom: '1px solid #E2E8F0' }}>
+          {buckets.map(b => {
+            const heightPct = (b.total / maxBucket) * 100;
+            return (
+              <div key={b.monthKey} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#1E293B', fontFamily: monoFont }}>
+                  {b.total > 0 ? fmt$(b.total) : '—'}
+                </div>
+                <div
+                  style={{
+                    width: '100%',
+                    height: `${heightPct}%`,
+                    minHeight: b.total > 0 ? 2 : 0,
+                    background: '#0F766E',
+                    borderRadius: '4px 4px 0 0',
+                    transition: 'height 0.2s',
+                  }}
+                  title={`${b.monthLabel}: ${b.count} paid · ${fmt$(b.total)}`}
+                />
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 12, padding: '8px 4px 0' }}>
+          {buckets.map(b => (
+            <div key={b.monthKey} style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#64748B' }}>{b.monthLabel}</div>
+              <div style={{ fontSize: 9, color: '#94A3B8' }}>n={b.count}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Per-activity breakdown */}
+      {allActivities.length > 0 && (
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#1E293B', marginBottom: 8 }}>
+            Breakdown by Activity
+          </div>
+          <div style={{ border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Activity</th>
+                  {buckets.map(b => (
+                    <th key={b.monthKey} style={{ ...thStyle, textAlign: 'right' }}>{b.monthLabel}</th>
+                  ))}
+                  <th style={{ ...thStyle, textAlign: 'right' }}>6-mo total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allActivities.map(act => {
+                  let actTotal = 0;
+                  buckets.forEach(b => { actTotal += b.byActivity[act] ?? 0; });
+                  return (
+                    <tr key={act}>
+                      <td style={{ ...tdStyle, fontWeight: 700 }}>{act.replace(/_/g, ' ')}</td>
+                      {buckets.map(b => {
+                        const v = b.byActivity[act] ?? 0;
+                        return (
+                          <td key={b.monthKey} style={{ ...tdStyle, textAlign: 'right', fontFamily: monoFont }}>
+                            {v > 0 ? fmt$(v) : <span style={{ color: '#CBD5E1' }}>—</span>}
+                          </td>
+                        );
+                      })}
+                      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: monoFont, fontWeight: 700, color: '#0F766E' }}>
+                        {fmt$(actTotal)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Print helper: open report in a new tab ────────────────────────────────────
 function buildPrintHTML(reportName: string, bodyHtml: string): string {
   return `<!DOCTYPE html>
@@ -1174,6 +1445,9 @@ export function ReportsView({ plans, filtered, currentUser, monoFont, setSelecte
           )}
           {selected === 'monthly_rollup' && (
             <MonthlyRollupReport plans={filtered} monoFont={monoFont} />
+          )}
+          {selected === 'tansat_spend' && (
+            <TansatSpendReport monoFont={monoFont} />
           )}
           {selected === 'dot_turnaround' && (
             <DotTurnaroundReport plans={filtered} monoFont={monoFont} />
