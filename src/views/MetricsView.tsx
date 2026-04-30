@@ -1,7 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { daysBetween } from '../utils/plans';
 import { getPlansOverdueWithDot, DOT_LEVEL_COLORS } from '../utils/dotOverdue';
-import { Plan, ReportTemplate, FilterState, AppConfig } from '../types';
+import {
+  getMonthlySpend, getCurrentMonthKey, getRequestsNeedingAttention,
+} from '../utils/tansatSpend';
+import { subscribeToTansatRequests } from '../services/tansatService';
+import { Plan, ReportTemplate, FilterState, AppConfig, TansatRequest } from '../types';
 import { CLOCK_TARGETS, STAGES_AT_DOT_PIPELINE } from '../constants';
 import type { GlobalLogEntry } from '../services/logService';
 
@@ -731,6 +735,17 @@ function MetricsView({
   });
   const avgConcurDays = concurTimes30.length ? Math.round(concurTimes30.reduce((a, b) => a + b, 0) / concurTimes30.length) : null;
 
+  // TANSAT rollup — current-month spend + needs-attention count.
+  // Subscription is cheap; same data feeds the MOT Hub and Library.
+  const [tansatRequests, setTansatRequests] = useState<TansatRequest[]>([]);
+  useEffect(() => {
+    const unsub = subscribeToTansatRequests(setTansatRequests);
+    return () => unsub();
+  }, []);
+  const tansatMonthly = getMonthlySpend(tansatRequests, getCurrentMonthKey());
+  const tansatNeeds = getRequestsNeedingAttention(filtered, tansatRequests, appConfig?.tansatSettings);
+  const tansatNeedsCount = tansatNeeds.length;
+
   return (
     <div id="metrics-view-container">
 
@@ -745,7 +760,7 @@ function MetricsView({
       </div>
 
       {/* ── KPI row ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12, marginBottom: 16 }}>
         <KPICard
           label="Active Plans" value={activePlans.length}
           delta={atRiskCount > 0 ? `↑ ${atRiskCount} at risk (≤14d)` : 'None at risk'}
@@ -797,6 +812,21 @@ function MetricsView({
           barPct={metrics.total > 0 ? (approvedThisMonth.length / metrics.total) * 100 : 0}
           accent="#059669"
           onClick={() => { setFilter(f => ({ ...f, stage: 'plan_approved' })); setView('table'); }}
+        />
+        {/* TANSAT spend (this month) — running tally of what MOT has paid
+            LADOT for parking-removal postings. Click jumps to the MOT Hub. */}
+        <KPICard
+          label="🅿️ TANSAT Spend (mo)"
+          value={`$${tansatMonthly.total.toLocaleString('en-US', { maximumFractionDigits: 0 })}`}
+          delta={
+            tansatNeedsCount > 0 ? `${tansatNeedsCount} need${tansatNeedsCount === 1 ? 's' : ''} attention`
+            : tansatMonthly.count > 0 ? `${tansatMonthly.count} paid this month`
+            : 'No spend yet'
+          }
+          deltaType={tansatNeedsCount > 0 ? 'up' : 'neutral'}
+          barPct={tansatMonthly.total > 0 ? Math.min((tansatMonthly.count / 10) * 100, 100) : 0}
+          accent="#0F766E"
+          onClick={() => { setView('mot_hub'); }}
         />
       </div>
 

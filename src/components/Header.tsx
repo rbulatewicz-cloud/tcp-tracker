@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LayoutGrid, Ticket, Map as MapIcon, Calendar as CalendarIcon, Users, BarChart3, FileText, Menu, X, ShieldCheck, HelpCircle, FileWarning, BookOpen, CalendarRange, FileBarChart, ChevronDown, Inbox } from 'lucide-react';
+import { LayoutGrid, Ticket, Map as MapIcon, Calendar as CalendarIcon, Users, BarChart3, FileText, Menu, X, ShieldCheck, HelpCircle, FileWarning, BookOpen, CalendarRange, FileBarChart, ChevronDown, Inbox, ParkingSquare } from 'lucide-react';
 import { NavTab } from './NavTab';
 import { User, AppConfig, AppNotification } from '../types';
 import { SearchInput } from '../features/search/SearchInput';
@@ -24,6 +24,7 @@ interface HeaderProps {
   canManageApp: boolean;
   canViewCompliance: boolean;
   canViewCRHub: boolean;
+  canViewMotHub: boolean;
   canViewTab: (key: string) => boolean;
   canCreateRequest: boolean;
   canRequestAppChange: boolean;
@@ -51,7 +52,7 @@ const HeaderComponent: React.FC<HeaderProps> = ({
   currentUser, setCurrentUser,
   handleLogout,
   setShowLogin,
-  canViewTickets, canViewMetrics, canViewLogs, canManageUsers, canManageApp, canViewCompliance, canViewCRHub, canViewTab, canCreateRequest, canRequestAppChange,
+  canViewTickets, canViewMetrics, canViewLogs, canManageUsers, canManageApp, canViewCompliance, canViewCRHub, canViewMotHub, canViewTab, canCreateRequest, canRequestAppChange,
   onOpenHelp, setShowForm, setShowAppRequestModal, setShowAppRequestSidebar, appConfig, isDark, toggleDark, onOpenProfile, onOpenMyRequests,
   notifications, unreadCount, markRead, markAllRead, notifOpen, setNotifOpen, onNotifNavigate,
 }) => {
@@ -92,7 +93,8 @@ const HeaderComponent: React.FC<HeaderProps> = ({
     {
       label: 'Compliance',
       items: [
-        { label: 'CR Hub',     icon: Inbox,       view: 'cr_hub',    show: canViewCRHub },
+        { label: 'CR Hub',     icon: Inbox,         view: 'cr_hub',    show: canViewCRHub },
+        { label: 'MOT Hub',    icon: ParkingSquare, view: 'mot_hub',   show: canViewMotHub },
         { label: 'Compliance', icon: ShieldCheck, view: 'compliance', show: canViewCompliance },
         { label: 'Library',    icon: FileWarning, view: 'variances', show: canViewTab('variances') },
         { label: 'Reference',  icon: BookOpen,    view: 'reference', show: canViewTab('reference') },

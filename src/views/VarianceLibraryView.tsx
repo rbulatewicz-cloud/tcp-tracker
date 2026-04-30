@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ShieldCheck, Zap, Home, BookOpen } from 'lucide-react';
+import { ShieldCheck, Zap, Home, BookOpen, ParkingSquare } from 'lucide-react';
 import { User, AppConfig, Plan, DrivewayLetter } from '../types';
 import { NoiseVariancesSection } from './library/NoiseVariancesSection';
 import { SmartLinker } from './library/SmartLinker';
 import { DrivewayLinker } from './library/DrivewayLinker';
 import { ReferenceLibrarySection } from './library/ReferenceLibrarySection';
+import { TansatLogSection } from './library/TansatLogSection';
 import { subscribeToDrivewayLetters } from '../services/drivewayLetterService';
 
 interface VarianceLibraryViewProps {
@@ -14,7 +15,7 @@ interface VarianceLibraryViewProps {
   setSelectedPlan: (plan: Plan | null) => void;
 }
 
-type LibTab = 'noise_variances' | 'nv_linker' | 'driveway_linker' | 'reference';
+type LibTab = 'noise_variances' | 'nv_linker' | 'driveway_linker' | 'tansat_log' | 'reference';
 
 export default function VarianceLibraryView({ currentUser, appConfig, plans, setSelectedPlan }: VarianceLibraryViewProps) {
   const [tab, setTab] = useState<LibTab>('noise_variances');
@@ -42,6 +43,7 @@ export default function VarianceLibraryView({ currentUser, appConfig, plans, set
     { id: 'noise_variances',  label: 'Noise Variances',  icon: <ShieldCheck size={14} /> },
     { id: 'nv_linker',        label: 'NV Linker',        icon: <Zap size={14} />,      badge: smartLinkerBadge },
     { id: 'driveway_linker',  label: 'Driveway Linker',  icon: <Home size={14} />,     badge: dwayUnlinkedCount },
+    { id: 'tansat_log',       label: 'TANSAT Log',       icon: <ParkingSquare size={14} /> },
     { id: 'reference',        label: 'Reference Docs',   icon: <BookOpen size={14} /> },
   ];
 
@@ -96,6 +98,11 @@ export default function VarianceLibraryView({ currentUser, appConfig, plans, set
       {tab === 'driveway_linker' && (
         <div className="flex-1 px-6 pb-4 min-h-0 overflow-hidden">
           <DrivewayLinker plans={plans} letters={letters} />
+        </div>
+      )}
+      {tab === 'tansat_log' && (
+        <div className="max-w-6xl mx-auto px-6 pb-8">
+          <TansatLogSection plans={plans} setSelectedPlan={setSelectedPlan} />
         </div>
       )}
       {tab === 'reference' && (
