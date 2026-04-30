@@ -11,7 +11,10 @@ import { TansatPhasePlanner } from '../NewRequestModal/TansatPhasePlanner';
 import { PacketBuilderModal } from '../Tansat/PacketBuilderModal';
 import { InvoiceIntakeModal } from '../Tansat/InvoiceIntakeModal';
 import { MarkPaidModal } from '../Tansat/MarkPaidModal';
+import { ExtensionRequestModal } from '../Tansat/ExtensionRequestModal';
 import { useApp } from '../../hooks/useApp';
+import { createRenewal } from '../../services/tansatService';
+import { showToast } from '../../lib/toast';
 
 /**
  * Plan card → TANSAT track. Mirrors the visual language of the compliance
@@ -37,6 +40,8 @@ export const TansatSection: React.FC = React.memo(() => {
   const [packetBuilderOpen, setPacketBuilderOpen] = useState(false);
   const [invoiceIntakeFor, setInvoiceIntakeFor] = useState<TansatRequest | null>(null);
   const [markPaidFor, setMarkPaidFor] = useState<TansatRequest | null>(null);
+  const [extensionFor, setExtensionFor] = useState<TansatRequest | null>(null);
+  const [renewing, setRenewing] = useState<string | null>(null);
 
   // Subscribe to all TANSAT requests for this plan
   useEffect(() => {
@@ -154,7 +159,8 @@ export const TansatSection: React.FC = React.memo(() => {
               </thead>
               <tbody>
                 {requests.map(r => (
-                  <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50">
+                  <React.Fragment key={r.id}>
+                  <tr className="border-t border-slate-100 hover:bg-slate-50">
                     <td className="px-2 py-1.5 font-mono font-bold text-slate-700">
                       {r.logNumber || <span className="text-slate-400">—</span>}
                     </td>
@@ -193,9 +199,71 @@ export const TansatSection: React.FC = React.memo(() => {
                             Mark Paid →
                           </button>
                         )}
+                        {(r.status === 'paid' || r.status === 'posted' || r.status === 'active') && (
+                          <button
+                            onClick={() => setExtensionFor(r)}
+                            className="text-[10px] font-bold text-blue-700 hover:underline"
+                            title="Free email reply to Reggie with new end date"
+                          >
+                            Request Extension →
+                          </button>
+                        )}
+                        {r.status === 'expired' && (
+                          <button
+                            onClick={async () => {
+                              setRenewing(r.id);
+                              try {
+                                const newId = await createRenewal(
+                                  r.id,
+                                  currentUser?.name ?? currentUser?.email ?? 'unknown',
+                                );
+                                showToast(`Renewal created — new draft request opens for editing (${newId.slice(-6)})`, 'success');
+                              } catch (err) {
+                                console.error('Renewal failed:', err);
+                                showToast('Failed to create renewal', 'error');
+                              } finally {
+                                setRenewing(null);
+                              }
+                            }}
+                            disabled={renewing === r.id}
+                            className="text-[10px] font-bold text-orange-700 hover:underline disabled:opacity-50"
+                            title="Log # has expired. Renewal creates a new TANSAT request — full workflow + new payment required."
+                          >
+                            {renewing === r.id ? 'Renewing…' : 'Renew →'}
+                          </button>
+                        )}
                       </td>
                     )}
                   </tr>
+                  {/* Extension log — sub-rows shown when extensions exist */}
+                  {(r.extensions?.length ?? 0) > 0 && (
+                    <tr className="border-t border-slate-100 bg-blue-50/30">
+                      <td colSpan={canEditFields ? 7 : 6} className="px-3 py-1.5">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-blue-700 mb-1">
+                          Extensions ({r.extensions!.length})
+                        </div>
+                        <div className="space-y-0.5">
+                          {r.extensions!.map(ext => (
+                            <div key={ext.id} className="text-[11px] text-slate-700 flex items-center gap-3">
+                              <span className="font-mono text-blue-700">+ ext</span>
+                              <span>new end <b>{fmtDate(ext.newEndDate)}</b></span>
+                              <span className="text-slate-400">·</span>
+                              <span className="text-slate-500">filed {fmtDate(ext.requestedAt.slice(0, 10))}</span>
+                              {ext.notes && <span className="text-slate-400 italic truncate">— {ext.notes}</span>}
+                              <span className={`ml-auto px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                ext.status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' :
+                                ext.status === 'sent'      ? 'bg-blue-100 text-blue-700' :
+                                                             'bg-slate-100 text-slate-500'
+                              }`}>
+                                {ext.status}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
@@ -231,6 +299,16 @@ export const TansatSection: React.FC = React.memo(() => {
           plan={selectedPlan}
           currentUserName={currentUser?.name ?? currentUser?.email ?? 'unknown'}
           onClose={() => setMarkPaidFor(null)}
+        />
+      )}
+
+      {/* Extension request modal — T-4.1 */}
+      {extensionFor && (
+        <ExtensionRequestModal
+          request={extensionFor}
+          plan={selectedPlan}
+          appConfig={firestoreData?.appConfig}
+          onClose={() => setExtensionFor(null)}
         />
       )}
     </div>
