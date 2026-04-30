@@ -526,7 +526,10 @@ export type NotifyEvent =
   // CR Hub
   | 'cr_issue_assigned' | 'cr_issue_updated' | 'cr_issue_escalation' | 'queue_item'
   // Feedback
-  | 'feedback_updated' | 'feedback_comment' | 'request_comment';
+  | 'feedback_updated' | 'feedback_comment' | 'request_comment'
+  // TANSAT (parking-removal posting workflow)
+  | 'tansat_needs_packet' | 'tansat_awaiting_invoice' | 'tansat_payment_due'
+  | 'tansat_extension_window' | 'tansat_closeout_pending';
 
 /** Per-category email delivery preference */
 export type EmailDelivery = 'none' | 'in_app' | 'email' | 'both';
