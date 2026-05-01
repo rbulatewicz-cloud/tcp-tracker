@@ -68,39 +68,52 @@ export const TansatPhasePlanner: React.FC<TansatPhasePlannerProps> = ({ phases, 
       ) : (
         <div className="space-y-2">
           {phases.map((phase, idx) => (
-            <div key={idx} className="flex items-center gap-2 bg-white rounded border border-amber-200 px-2 py-1.5">
-              <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-[11px] font-bold text-white">
-                {phase.phaseNumber}
-              </div>
-              <input
-                type="text"
-                placeholder="Phase label (optional)"
-                value={phase.label ?? ''}
-                onChange={e => update(idx, { label: e.target.value })}
-                className="flex-1 rounded border border-slate-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
-              />
-              <input
-                type="date"
-                value={phase.anticipatedStart ?? ''}
-                onChange={e => update(idx, { anticipatedStart: e.target.value })}
-                className="rounded border border-slate-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
-              />
-              <span className="text-slate-400 text-xs">→</span>
-              <input
-                type="date"
-                value={phase.anticipatedEnd ?? ''}
-                onChange={e => update(idx, { anticipatedEnd: e.target.value })}
-                className="rounded border border-slate-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
-              />
-              <label className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 whitespace-nowrap cursor-pointer">
+            // Two-row layout per phase so the row fits inside the narrow
+            // plan card sidebar (where the previous single-row flex was
+            // clipping the date and "Needs TANSAT" checkbox).
+            <div key={idx} className="bg-white rounded border border-amber-200 p-2 space-y-1.5">
+              {/* Top row: number + label + Needs-TANSAT toggle */}
+              <div className="flex items-center gap-2">
+                <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-[11px] font-bold text-white">
+                  {phase.phaseNumber}
+                </div>
                 <input
-                  type="checkbox"
-                  checked={phase.needsTansat}
-                  onChange={e => update(idx, { needsTansat: e.target.checked })}
-                  className="rounded border-slate-300"
+                  type="text"
+                  placeholder="Phase label (optional)"
+                  value={phase.label ?? ''}
+                  onChange={e => update(idx, { label: e.target.value })}
+                  className="flex-1 min-w-0 rounded border border-slate-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
                 />
-                Needs TANSAT
-              </label>
+                <label
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 whitespace-nowrap cursor-pointer flex-shrink-0"
+                  title="Toggle whether this phase needs a TANSAT posting"
+                >
+                  <input
+                    type="checkbox"
+                    checked={phase.needsTansat}
+                    onChange={e => update(idx, { needsTansat: e.target.checked })}
+                    className="rounded border-slate-300"
+                  />
+                  Needs TANSAT
+                </label>
+              </div>
+              {/* Bottom row: date range — flex-wrap so it stays on one line
+                  when there's room and stacks cleanly when there isn't */}
+              <div className="flex items-center gap-1.5 flex-wrap pl-8">
+                <input
+                  type="date"
+                  value={phase.anticipatedStart ?? ''}
+                  onChange={e => update(idx, { anticipatedStart: e.target.value })}
+                  className="rounded border border-slate-200 px-2 py-1 text-xs min-w-0 flex-1 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                />
+                <span className="text-slate-400 text-xs flex-shrink-0">→</span>
+                <input
+                  type="date"
+                  value={phase.anticipatedEnd ?? ''}
+                  onChange={e => update(idx, { anticipatedEnd: e.target.value })}
+                  className="rounded border border-slate-200 px-2 py-1 text-xs min-w-0 flex-1 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                />
+              </div>
             </div>
           ))}
         </div>
