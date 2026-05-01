@@ -732,7 +732,10 @@ function AppContent() {
   const canRequestAppChange = role === UserRole.MOT || role === UserRole.ADMIN;
   const canViewCompliance = canViewTab('compliance');
   const canViewCRHub = canViewTab('cr_hub');
-  const canViewMotHub = canViewTab('mot_hub');
+  // MOT Hub is role-bound by design (it's MOT-team triage). Bypass the
+  // tabVisibility override so existing tenants whose stored config predates
+  // the MOT Hub release still see it without an admin re-save.
+  const canViewMotHub = role === UserRole.MOT || role === UserRole.ADMIN || canViewTab('mot_hub');
   const canExport = role === UserRole.SFTC || role === UserRole.MOT || role === UserRole.ADMIN;
 
   useEffect(() => {

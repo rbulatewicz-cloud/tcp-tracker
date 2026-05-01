@@ -111,6 +111,14 @@ export default function MotHubView({ currentUser, appConfig, plans, setSelectedP
     if (plan) setSelectedPlan(plan);
   };
 
+  // Scroll-to-section helpers — clicking a stat in the header banner
+  // smooth-scrolls to the first matching card so MOT can see the work
+  // immediately without hunting.
+  const scrollTo = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-6 pt-8 pb-12">
       {/* Header bar */}
@@ -124,30 +132,56 @@ export default function MotHubView({ currentUser, appConfig, plans, setSelectedP
           </div>
         </div>
         <div className="flex gap-5">
-          <Stat value={urgentCount} label="Urgent" tone="red" />
-          <Stat value={weekCount} label="This week" tone="amber" />
-          <Stat value={fmtMoney(monthSpend.total)} label="Spent this month" tone="emerald" />
+          <Stat
+            value={urgentCount}
+            label="Urgent"
+            tone="red"
+            onClick={() => scrollTo('mot-hub-urgent')}
+            title="Jump to urgent items"
+          />
+          <Stat
+            value={weekCount}
+            label="This week"
+            tone="amber"
+            onClick={() => scrollTo('mot-hub-this-week')}
+            title="Jump to this-week items"
+          />
+          <Stat
+            value={fmtMoney(monthSpend.total)}
+            label="Spent this month"
+            tone="emerald"
+            onClick={() => scrollTo('mot-hub-spend')}
+            title="Jump to spend tracker"
+          />
         </div>
       </div>
 
       {/* Triage card grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
-        <NeedsPacketCard items={byReason.needs_packet} onOpen={openPlanFromItem} />
+        {/* "Urgent" anchor — first red card in the grid */}
+        <div id="mot-hub-urgent">
+          <NeedsPacketCard items={byReason.needs_packet} onOpen={openPlanFromItem} />
+        </div>
         <PaymentDueCard items={byReason.payment_due} onOpen={openPlanFromItem} />
         <DotOverdueCard rows={dotOverdueOnly} onOpen={r => setSelectedPlan(r)} setView={setView} />
-        <ExtensionWindowCard items={byReason.extension_window} onOpen={openPlanFromItem} />
+        {/* "This week" anchor — first amber card */}
+        <div id="mot-hub-this-week">
+          <ExtensionWindowCard items={byReason.extension_window} onOpen={openPlanFromItem} />
+        </div>
         <AwaitingInvoiceCard items={byReason.awaiting_invoice} onOpen={openPlanFromItem} />
         <CloseoutCard items={byReason.closeout_pending} onOpen={openPlanFromItem} />
       </div>
 
       {/* Spend tracker — full-width */}
-      <SpendTrackerCard
-        recentlyPaid={recentlyPaid}
-        monthTotal={monthSpend.total}
-        ytdTotal={ytdSpend}
-        planById={planById}
-        onOpenLibrary={() => setView('variances')}
-      />
+      <div id="mot-hub-spend">
+        <SpendTrackerCard
+          recentlyPaid={recentlyPaid}
+          monthTotal={monthSpend.total}
+          ytdTotal={ytdSpend}
+          planById={planById}
+          onOpenLibrary={() => setView('variances')}
+        />
+      </div>
 
       <p className="text-xs text-slate-400 mt-6 text-center italic">
         💡 Tip: TANSAT actions live on the plan card too — open any plan and expand the TANSAT section to log invoices, mark paid, or file extensions.
@@ -158,14 +192,25 @@ export default function MotHubView({ currentUser, appConfig, plans, setSelectedP
 
 // ── Sub-components ──────────────────────────────────────────────────────────
 
-const Stat: React.FC<{ value: number | string; label: string; tone: 'red' | 'amber' | 'emerald' }> = ({ value, label, tone }) => {
+const Stat: React.FC<{
+  value: number | string;
+  label: string;
+  tone: 'red' | 'amber' | 'emerald';
+  onClick?: () => void;
+  title?: string;
+}> = ({ value, label, tone, onClick, title }) => {
   const fg = { red: '#F87171', amber: '#FCD34D', emerald: '#34D399' }[tone];
   const sub = { red: '#FCA5A5', amber: '#FDE68A', emerald: '#6EE7B7' }[tone];
+  const Tag: 'button' | 'div' = onClick ? 'button' : 'div';
   return (
-    <div className="text-center">
+    <Tag
+      onClick={onClick}
+      title={title}
+      className={`text-center px-2 py-1 rounded-lg transition-colors ${onClick ? 'cursor-pointer hover:bg-slate-800' : ''}`}
+    >
       <div className="text-2xl font-extrabold" style={{ color: fg }}>{value}</div>
       <div className="text-[10px] uppercase tracking-wider font-bold" style={{ color: sub }}>{label}</div>
-    </div>
+    </Tag>
   );
 };
 
