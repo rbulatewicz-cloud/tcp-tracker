@@ -162,14 +162,14 @@ export default function MotHubView({ currentUser, appConfig, plans, setSelectedP
         <div id="mot-hub-urgent">
           <NeedsPacketCard items={byReason.needs_packet} onOpen={openPlanFromItem} />
         </div>
-        <PaymentDueCard items={byReason.payment_due} onOpen={openPlanFromItem} />
+        <PaymentDueCard items={byReason.payment_due} planById={planById} onOpen={openPlanFromItem} />
         <DotOverdueCard rows={dotOverdueOnly} onOpen={r => setSelectedPlan(r)} setView={setView} />
         {/* "This week" anchor — first amber card */}
         <div id="mot-hub-this-week">
-          <ExtensionWindowCard items={byReason.extension_window} onOpen={openPlanFromItem} />
+          <ExtensionWindowCard items={byReason.extension_window} planById={planById} onOpen={openPlanFromItem} />
         </div>
         <AwaitingInvoiceCard items={byReason.awaiting_invoice} onOpen={openPlanFromItem} />
-        <CloseoutCard items={byReason.closeout_pending} onOpen={openPlanFromItem} />
+        <CloseoutCard items={byReason.closeout_pending} planById={planById} onOpen={openPlanFromItem} />
       </div>
 
       {/* Spend tracker — full-width */}
@@ -274,7 +274,7 @@ const NeedsPacketCard: React.FC<{ items: TansatAttentionItem[]; onOpen: (i: Tans
   </CardShell>
 );
 
-const PaymentDueCard: React.FC<{ items: TansatAttentionItem[]; onOpen: (i: TansatAttentionItem) => void }> = ({ items, onOpen }) => (
+const PaymentDueCard: React.FC<{ items: TansatAttentionItem[]; planById: Map<string, Plan>; onOpen: (i: TansatAttentionItem) => void }> = ({ items, planById, onOpen }) => (
   <CardShell
     emoji="🔴" title="TANSAT — Payment Due" count={items.length} tone="red"
     description="Invoice received, payment due window approaching."
@@ -282,17 +282,23 @@ const PaymentDueCard: React.FC<{ items: TansatAttentionItem[]; onOpen: (i: Tansa
     {items.length === 0 ? (
       <div className="text-[11px] text-slate-400 italic">No payments due 🎉</div>
     ) : (
-      items.slice(0, 5).map((item, i) => (
-        <Row key={i} onClick={() => onOpen(item)}>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold font-mono">LOG #{item.request?.logNumber ?? '—'}</span>
-            <span className="text-xs font-bold text-red-700 font-mono">
-              {item.request?.invoiceAmount != null ? fmtMoney(item.request.invoiceAmount) : '—'}
-            </span>
-          </div>
-          <div className="text-[10px] text-slate-600">{item.detail}</div>
-        </Row>
-      ))
+      items.slice(0, 5).map((item, i) => {
+        const logNumber = item.request?.logNumber;
+        const planId = item.request?.planId;
+        const plan = planId ? planById.get(planId) : undefined;
+        const displayLabel = logNumber ? `LOG #${logNumber}` : (plan ? `LOC ${plan.loc || plan.id}` : 'LOG #—');
+        return (
+          <Row key={i} onClick={() => onOpen(item)}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold font-mono">{displayLabel}</span>
+              <span className="text-xs font-bold text-red-700 font-mono">
+                {item.request?.invoiceAmount != null ? fmtMoney(item.request.invoiceAmount) : '—'}
+              </span>
+            </div>
+            <div className="text-[10px] text-slate-600">{item.detail}</div>
+          </Row>
+        );
+      })
     )}
   </CardShell>
 );
@@ -324,7 +330,7 @@ const DotOverdueCard: React.FC<{ rows: ReturnType<typeof getPlansOverdueWithDot>
   </CardShell>
 );
 
-const ExtensionWindowCard: React.FC<{ items: TansatAttentionItem[]; onOpen: (i: TansatAttentionItem) => void }> = ({ items, onOpen }) => (
+const ExtensionWindowCard: React.FC<{ items: TansatAttentionItem[]; planById: Map<string, Plan>; onOpen: (i: TansatAttentionItem) => void }> = ({ items, planById, onOpen }) => (
   <CardShell
     emoji="🟡" title="TANSAT — Extension Window" count={items.length} tone="amber"
     description="Phase ends ≤ 10 business days. File extension if work overruns."
@@ -332,12 +338,18 @@ const ExtensionWindowCard: React.FC<{ items: TansatAttentionItem[]; onOpen: (i: 
     {items.length === 0 ? (
       <div className="text-[11px] text-slate-400 italic">All clear</div>
     ) : (
-      items.slice(0, 5).map((item, i) => (
-        <Row key={i} onClick={() => onOpen(item)}>
-          <div className="text-xs font-bold font-mono">LOG #{item.request?.logNumber ?? '—'}</div>
-          <div className="text-[10px] text-slate-600">{item.detail}</div>
-        </Row>
-      ))
+      items.slice(0, 5).map((item, i) => {
+        const logNumber = item.request?.logNumber;
+        const planId = item.request?.planId;
+        const plan = planId ? planById.get(planId) : undefined;
+        const displayLabel = logNumber ? `LOG #${logNumber}` : (plan ? `LOC ${plan.loc || plan.id}` : 'LOG #—');
+        return (
+          <Row key={i} onClick={() => onOpen(item)}>
+            <div className="text-xs font-bold font-mono">{displayLabel}</div>
+            <div className="text-[10px] text-slate-600">{item.detail}</div>
+          </Row>
+        );
+      })
     )}
   </CardShell>
 );
@@ -364,7 +376,7 @@ const AwaitingInvoiceCard: React.FC<{ items: TansatAttentionItem[]; onOpen: (i: 
   </CardShell>
 );
 
-const CloseoutCard: React.FC<{ items: TansatAttentionItem[]; onOpen: (i: TansatAttentionItem) => void }> = ({ items, onOpen }) => (
+const CloseoutCard: React.FC<{ items: TansatAttentionItem[]; planById: Map<string, Plan>; onOpen: (i: TansatAttentionItem) => void }> = ({ items, planById, onOpen }) => (
   <CardShell
     emoji="⚪" title="TANSAT — Close-out Pending" count={items.length} tone="gray"
     description="Work end date passed, status not yet closed."
@@ -372,12 +384,18 @@ const CloseoutCard: React.FC<{ items: TansatAttentionItem[]; onOpen: (i: TansatA
     {items.length === 0 ? (
       <div className="text-[11px] text-slate-400 italic">All closed</div>
     ) : (
-      items.slice(0, 5).map((item, i) => (
-        <Row key={i} onClick={() => onOpen(item)}>
-          <div className="text-xs font-bold font-mono">LOG #{item.request?.logNumber ?? '—'}</div>
-          <div className="text-[10px] text-slate-600">{item.detail}</div>
-        </Row>
-      ))
+      items.slice(0, 5).map((item, i) => {
+        const logNumber = item.request?.logNumber;
+        const planId = item.request?.planId;
+        const plan = planId ? planById.get(planId) : undefined;
+        const displayLabel = logNumber ? `LOG #${logNumber}` : (plan ? `LOC ${plan.loc || plan.id}` : 'LOG #—');
+        return (
+          <Row key={i} onClick={() => onOpen(item)}>
+            <div className="text-xs font-bold font-mono">{displayLabel}</div>
+            <div className="text-[10px] text-slate-600">{item.detail}</div>
+          </Row>
+        );
+      })
     )}
   </CardShell>
 );
