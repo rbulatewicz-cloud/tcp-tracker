@@ -760,7 +760,7 @@ function MetricsView({
       </div>
 
       {/* ── KPI row ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12, marginBottom: 16, overflowX: 'auto', paddingBottom: 8 }}>
         <KPICard
           label="Active Plans" value={activePlans.length}
           delta={atRiskCount > 0 ? `↑ ${atRiskCount} at risk (≤14d)` : 'None at risk'}

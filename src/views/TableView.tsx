@@ -158,14 +158,14 @@ function TableView({
     filter.scope !== 'all',
   ].filter(Boolean).length;
 
-  // Inline summary stats (computed from all plans, not filtered)
-  const statsAtDOT    = plans.filter(p => p.stage === 'submitted_to_dot' || p.stage === 'submitted').length;
-  const statsAtRisk   = plans.filter(p => {
+  // Summary stats — reflect currently filtered/displayed plans
+  const statsAtDOT    = filtered.filter(p => p.stage === 'submitted_to_dot' || p.stage === 'submitted').length;
+  const statsAtRisk   = filtered.filter(p => {
     if (!p.needByDate || COMPLETED_STAGES.includes(p.stage)) return false;
     const d = daysFromToday(p.needByDate, TODAY);
     return d <= 14 && d >= 0;
   }).length;
-  const statsOverdue  = plans.filter(p => {
+  const statsOverdue  = filtered.filter(p => {
     if (!p.needByDate || COMPLETED_STAGES.includes(p.stage)) return false;
     return daysFromToday(p.needByDate, TODAY) < 0;
   }).length;
