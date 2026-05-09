@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { createPortal } from 'react-dom';
 
 interface TooltipProps {
   text: string;
@@ -12,14 +11,10 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children, position = 'to
   const [visible, setVisible] = useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
   const tooltipRef = React.useRef<HTMLDivElement>(null);
-  const [tooltipRect, setTooltipRect] = useState<DOMRect | null>(null);
-  const [tooltipLeft, setTooltipLeft] = useState<string | number>('50%');
-  const [tooltipTransform, setTooltipTransform] = useState<string>('translateX(-50%)');
+  const [left, setLeft] = useState('50%');
+  const [transform, setTransform] = useState('translateX(-50%)');
 
   const handleMouseEnter = () => {
-    if (containerRef.current) {
-      setTooltipRect(containerRef.current.getBoundingClientRect());
-    }
     setVisible(true);
   };
 
@@ -28,87 +23,94 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children, position = 'to
   };
 
   React.useEffect(() => {
-    if (!visible || !tooltipRef.current) return;
+    if (!visible || !tooltipRef.current || !containerRef.current) return;
 
-    // After tooltip renders, check if it overflows viewport and adjust
+    const tooltip = tooltipRef.current;
+    const container = containerRef.current;
+    const parentCard = container.closest('.max-w-\\[580px\\]') || container.parentElement?.parentElement?.parentElement;
+
+    if (!parentCard) return;
+
     setTimeout(() => {
-      const rect = tooltipRef.current?.getBoundingClientRect();
-      if (!rect || !tooltipRect) return;
+      const tooltipRect = tooltip.getBoundingClientRect();
+      const parentRect = parentCard.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
 
-      const centerLeft = tooltipRect.left + tooltipRect.width / 2;
-      const tooltipWidth = rect.width;
+      const tooltipWidth = tooltip.offsetWidth;
+      const centerX = containerRect.left - parentRect.left + containerRect.width / 2;
 
-      // If tooltip overflows left edge
-      if (centerLeft - tooltipWidth / 2 < 8) {
-        setTooltipLeft(8);
-        setTooltipTransform('translateX(0)');
-      }
-      // If tooltip overflows right edge
-      else if (centerLeft + tooltipWidth / 2 > window.innerWidth - 8) {
-        setTooltipLeft('auto');
-        setTooltipTransform('none');
-      }
-      // Center normally
-      else {
-        setTooltipLeft('50%');
-        setTooltipTransform('translateX(-50%)');
+      // Check if centered position would overflow
+      if (centerX - tooltipWidth / 2 < 0) {
+        // Shift right if overflowing left
+        setLeft('0');
+        setTransform('translateX(0)');
+      } else if (centerX + tooltipWidth / 2 > parentRect.width) {
+        // Shift left if overflowing right
+        setLeft('auto');
+        setTransform('translateX(-100%)');
+      } else {
+        // Center normally
+        setLeft('50%');
+        setTransform('translateX(-50%)');
       }
     }, 0);
-  }, [visible, tooltipRect]);
+  }, [visible]);
 
   return (
-    <>
-      <div
-        ref={containerRef}
-        style={{ position: 'relative', display: 'inline-block' }}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      >
-        {children}
-      </div>
-      {visible && tooltipRect && createPortal(
-        <div ref={tooltipRef} style={{
-          position: 'fixed',
-          top: position === 'top'
-            ? tooltipRect.top - 7
-            : tooltipRect.bottom + 7,
-          left: tooltipLeft,
-          right: tooltipTransform === 'none' ? 8 : 'auto',
-          transform: tooltipTransform,
-          background: '#1E293B',
-          color: '#F1F5F9',
-          padding: '8px 12px',
-          borderRadius: 7,
-          fontSize: 11,
-          fontWeight: 500,
-          lineHeight: 1.5,
-          maxWidth: `${maxWidth}px`,
-          width: `${maxWidth}px`,
-          zIndex: 9999,
-          pointerEvents: 'none',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          textAlign: 'center',
-          whiteSpace: 'normal',
-          wordWrap: 'break-word',
-          overflowWrap: 'break-word',
-        }}>
-          {text}
-          {/* Arrow */}
-          <div style={{
+    <div
+      ref={containerRef}
+      style={{ position: 'relative', display: 'inline-block' }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {children}
+      {visible && (
+        <div
+          ref={tooltipRef}
+          style={{
             position: 'absolute',
             ...(position === 'top'
-              ? { top: '100%', borderTop: '5px solid #1E293B', borderBottom: 'none' }
-              : { bottom: '100%', borderBottom: '5px solid #1E293B', borderTop: 'none' }),
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: 0,
-            height: 0,
-            borderLeft: '5px solid transparent',
-            borderRight: '5px solid transparent',
-          }} />
-        </div>,
-        document.body
+              ? { bottom: 'calc(100% + 7px)' }
+              : { top: 'calc(100% + 7px)' }),
+            left,
+            right: transform === 'translateX(-100%)' ? '0' : 'auto',
+            transform,
+            background: '#1E293B',
+            color: '#F1F5F9',
+            padding: '8px 12px',
+            borderRadius: 7,
+            fontSize: 11,
+            fontWeight: 500,
+            lineHeight: 1.5,
+            maxWidth: `${maxWidth}px`,
+            width: `${maxWidth}px`,
+            zIndex: 50,
+            pointerEvents: 'none',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            textAlign: 'center',
+            whiteSpace: 'normal',
+            wordWrap: 'break-word',
+            overflowWrap: 'break-word',
+          }}
+        >
+          {text}
+          {/* Arrow */}
+          <div
+            style={{
+              position: 'absolute',
+              ...(position === 'top'
+                ? { top: '100%', borderTop: '5px solid #1E293B', borderBottom: 'none' }
+                : { bottom: '100%', borderBottom: '5px solid #1E293B', borderTop: 'none' }),
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: 0,
+              height: 0,
+              borderLeft: '5px solid transparent',
+              borderRight: '5px solid transparent',
+            }}
+          />
+        </div>
       )}
-    </>
+    </div>
   );
 };
