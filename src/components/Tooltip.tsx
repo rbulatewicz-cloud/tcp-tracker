@@ -11,7 +11,10 @@ interface TooltipProps {
 export const Tooltip: React.FC<TooltipProps> = ({ text, children, position = 'top', maxWidth = 240 }) => {
   const [visible, setVisible] = useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const tooltipRef = React.useRef<HTMLDivElement>(null);
   const [tooltipRect, setTooltipRect] = useState<DOMRect | null>(null);
+  const [tooltipLeft, setTooltipLeft] = useState<string | number>('50%');
+  const [tooltipTransform, setTooltipTransform] = useState<string>('translateX(-50%)');
 
   const handleMouseEnter = () => {
     if (containerRef.current) {
@@ -24,6 +27,35 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children, position = 'to
     setVisible(false);
   };
 
+  React.useEffect(() => {
+    if (!visible || !tooltipRef.current) return;
+
+    // After tooltip renders, check if it overflows viewport and adjust
+    setTimeout(() => {
+      const rect = tooltipRef.current?.getBoundingClientRect();
+      if (!rect || !tooltipRect) return;
+
+      const centerLeft = tooltipRect.left + tooltipRect.width / 2;
+      const tooltipWidth = rect.width;
+
+      // If tooltip overflows left edge
+      if (centerLeft - tooltipWidth / 2 < 8) {
+        setTooltipLeft(8);
+        setTooltipTransform('translateX(0)');
+      }
+      // If tooltip overflows right edge
+      else if (centerLeft + tooltipWidth / 2 > window.innerWidth - 8) {
+        setTooltipLeft('auto');
+        setTooltipTransform('none');
+      }
+      // Center normally
+      else {
+        setTooltipLeft('50%');
+        setTooltipTransform('translateX(-50%)');
+      }
+    }, 0);
+  }, [visible, tooltipRect]);
+
   return (
     <>
       <div
@@ -35,13 +67,14 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children, position = 'to
         {children}
       </div>
       {visible && tooltipRect && createPortal(
-        <div style={{
+        <div ref={tooltipRef} style={{
           position: 'fixed',
           top: position === 'top'
             ? tooltipRect.top - 7
             : tooltipRect.bottom + 7,
-          left: tooltipRect.left + tooltipRect.width / 2,
-          transform: 'translateX(-50%)',
+          left: tooltipLeft,
+          right: tooltipTransform === 'none' ? 8 : 'auto',
+          transform: tooltipTransform,
           background: '#1E293B',
           color: '#F1F5F9',
           padding: '8px 12px',
@@ -50,7 +83,7 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children, position = 'to
           fontWeight: 500,
           lineHeight: 1.5,
           maxWidth,
-          width: 'auto',
+          width: maxWidth,
           zIndex: 9999,
           pointerEvents: 'none',
           boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
