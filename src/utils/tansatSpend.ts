@@ -187,11 +187,16 @@ export function getRequestsNeedingAttention(
   const today = todayIso(now);
   const items: TansatAttentionItem[] = [];
 
+  // Build a set of existing plan IDs to filter out requests for deleted plans
+  const existingPlanIds = new Set(plans.map(p => p.id));
+
   // Index requests by plan + phase coverage so we can detect "no request for
   // this phase yet". A request "covers" a phase if phaseNumbers includes it.
   const requestsByPlan = new Map<string, TansatRequest[]>();
   for (const r of requests) {
     if (!r.planId) continue;
+    // Skip requests for plans that no longer exist
+    if (!existingPlanIds.has(r.planId)) continue;
     const arr = requestsByPlan.get(r.planId) ?? [];
     arr.push(r);
     requestsByPlan.set(r.planId, arr);
