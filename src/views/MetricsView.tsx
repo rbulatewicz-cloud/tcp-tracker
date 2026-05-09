@@ -7,6 +7,7 @@ import {
 import { subscribeToTansatRequests } from '../services/tansatService';
 import { Plan, ReportTemplate, FilterState, AppConfig, TansatRequest } from '../types';
 import { CLOCK_TARGETS, STAGES_AT_DOT_PIPELINE } from '../constants';
+import { Tooltip } from '../components/Tooltip';
 import type { GlobalLogEntry } from '../services/logService';
 
 interface MetricsViewProps {
@@ -53,12 +54,13 @@ function timeAgo(iso: string): string {
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
-function KPICard({ label, value, delta, deltaType, barPct, accent, onClick }: {
+function KPICard({ label, value, delta, deltaType, barPct, accent, onClick, tooltip }: {
   label: string; value: number | string; delta: string;
   deltaType: 'up' | 'down' | 'neutral'; barPct: number; accent: string;
-  onClick?: () => void;
+  onClick?: () => void; tooltip?: string;
 }) {
   const deltaColor = deltaType === 'neutral' ? '#94A3B8' : deltaType === 'up' ? '#EF4444' : '#10B981';
+  const labelEl = <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>{label}</div>;
   return (
     <div
       onClick={onClick}
@@ -70,7 +72,7 @@ function KPICard({ label, value, delta, deltaType, barPct, accent, onClick }: {
       onMouseEnter={e => { if (onClick) (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 12px rgba(0,0,0,.08)'; }}
       onMouseLeave={e => { if (onClick) (e.currentTarget as HTMLDivElement).style.boxShadow = ''; }}
     >
-      <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>{label}</div>
+      {tooltip ? <Tooltip text={tooltip} position="bottom">{labelEl}</Tooltip> : labelEl}
       <div style={{ fontSize: 32, fontWeight: 800, lineHeight: 1.1, color: accent, margin: '4px 0 2px' }}>{value}</div>
       <div style={{ fontSize: 11, color: deltaColor, marginBottom: 10 }}>{delta}</div>
       <div style={{ height: 3, background: '#F1F5F9', borderRadius: 2, overflow: 'hidden' }}>
@@ -195,7 +197,7 @@ function PlanTypeSummary({ filtered, setView, setFilter }: {
                 )}
                 {atDot > 0 && (
                   <span style={{ display: 'inline-flex', padding: '2px 7px', borderRadius: 4, fontSize: 10, fontWeight: 700, color: overTarget > 0 ? '#991B1B' : '#92400E', background: overTarget > 0 ? '#FEE2E2' : '#FEF3C7' }}>
-                    {atDot} at DOT{overTarget > 0 ? ` · ${overTarget} over` : ''}
+                    {atDot} at <Tooltip text="Submitted to Department of Transportation for review" position="top">DOT Review</Tooltip>{overTarget > 0 ? ` · ${overTarget} over` : ''}
                   </span>
                 )}
               </div>
@@ -203,9 +205,11 @@ function PlanTypeSummary({ filtered, setView, setFilter }: {
               {/* Time-in-review stats */}
               {atDot > 0 && (
                 <div style={{ borderTop: `1px solid ${meta.border}`, paddingTop: 8 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>
-                    Days in Review
-                  </div>
+                  <Tooltip text="Average calendar days plans spend in DOT review stage" position="top">
+                    <div style={{ fontSize: 9, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 4 }}>
+                      Days in Review
+                    </div>
+                  </Tooltip>
                   <div style={{ display: 'flex', gap: 12 }}>
                     {avgDot !== null && (
                       <div>
@@ -297,7 +301,7 @@ function ComplianceHealthCards({ filtered, setView }: { filtered: any[]; setView
           <div onClick={() => setView('variances')} style={{ background: '#FFFBEB', borderRadius: 10, border: '1px solid #FEF3C7', padding: '12px 14px', cursor: 'pointer', transition: 'box-shadow .15s' }}
             onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.08)')} onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🏛 PHE (BOE)</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🏛 <Tooltip text="Public Hearing Exam approval process" position="right">PHE</Tooltip> (BOE)</span>
               <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#FEF3C7', color: '#92400E' }}>{pheAll.length} active</span>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
@@ -318,7 +322,7 @@ function ComplianceHealthCards({ filtered, setView }: { filtered: any[]; setView
           <div onClick={() => setView('variances')} style={{ background: '#F5F3FF', borderRadius: 10, border: '1px solid #EDE9FE', padding: '12px 14px', cursor: 'pointer', transition: 'box-shadow .15s' }}
             onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.08)')} onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🔊 Noise Variance</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🔊 <Tooltip text="Noise Variance from Community Benefits Office" position="right">NV</Tooltip></span>
               <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#EDE9FE', color: '#5B21B6' }}>{nvAll.length} active</span>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
@@ -339,7 +343,7 @@ function ComplianceHealthCards({ filtered, setView }: { filtered: any[]; setView
           <div onClick={() => setView('variances')} style={{ background: cdOverdue > 0 ? '#FFF5F5' : '#EFF6FF', borderRadius: 10, border: `1px solid ${cdOverdue > 0 ? '#FECACA' : '#DBEAFE'}`, padding: '12px 14px', cursor: 'pointer', transition: 'box-shadow .15s' }}
             onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.08)')} onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🏙 CD Concurrence</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🏙 <Tooltip text="City Department concurrence (various departments)" position="right">CD</Tooltip> Concurrence</span>
               <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#DBEAFE', color: '#1E40AF' }}>{cdAll.length} active</span>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
@@ -694,8 +698,17 @@ function MetricsView({
   const activePlans = filtered.filter(p => !INACTIVE.has(p.stage) && !p.isHistorical);
   const atRiskCount = activePlans.filter(p => p.needByDate && Math.ceil((new Date(p.needByDate + 'T00:00:00').getTime() - TODAY.getTime()) / 86_400_000) <= 14).length;
 
-  // DOT overdue rollup — uses SLA thresholds from Settings > Workflow.
-  const dotOverdueRows = getPlansOverdueWithDot(activePlans, appConfig, { includeWarnings: true });
+  // DOT overdue rollup — plans currently in DOT stages exceeding their time targets.
+  // Aligned with the pipeline breakdown below (same calculation).
+  const atDotPlans = activePlans.filter(p => AT_DOT_STAGE_SET.has(p.stage));
+  const dotOverdueRows = atDotPlans.map(p => {
+    const days = daysInCurrentStage(p);
+    if (days === null) return null;
+    const target = CLOCK_TARGETS[p.type]?.dot_review?.target ?? 10;
+    const warning = CLOCK_TARGETS[p.type]?.dot_review?.warning ?? 8;
+    const level = days >= target ? 'overdue' : days >= warning ? 'warning' : 'ok';
+    return { plan: p, status: { level, daysOpen: days, warningThreshold: warning, overdueThreshold: target } };
+  }).filter((r): r is any => r !== null && r.status.level !== 'ok');
   const dotOverdueCount = dotOverdueRows.filter(r => r.status.level === 'overdue').length;
   const dotWarningCount = dotOverdueRows.filter(r => r.status.level === 'warning').length;
 
@@ -787,6 +800,7 @@ function MetricsView({
               : 0
           }
           accent="#DC2626"
+          tooltip="Plans submitted to DOT that are past the SLA response window"
           onClick={() => { setFilter(f => ({ ...f, quickFilter: 'overdue_dot' })); setView('table'); }}
         />
         <KPICard
@@ -795,6 +809,7 @@ function MetricsView({
           deltaType={expiringCompliance > 0 ? 'up' : 'neutral'}
           barPct={filtered.length > 0 ? (pendingCompliance.length / filtered.length) * 100 : 0}
           accent="#D97706"
+          tooltip="Plans awaiting Public Hearing Exam or Noise Variance approval (expiring within 14 days highlighted)"
           onClick={() => { setFilter(f => ({ ...f, quickFilter: 'needs_compliance' })); setView('table'); }}
         />
         <KPICard
@@ -803,6 +818,7 @@ function MetricsView({
           deltaType={cdOverdueCount > 0 ? 'up' : 'neutral'}
           barPct={cdOverdueCount > 0 ? Math.min((cdOverdueCount / Math.max(cdOverdueCount + cdWaitingCount, 1)) * 100, 100) : 0}
           accent="#B45309"
+          tooltip="Plans awaiting City Department concurrence that are past the 21-day SLA"
           onClick={() => { setFilter(f => ({ ...f, quickFilter: 'needs_compliance' })); setView('table'); }}
         />
         <KPICard
@@ -811,6 +827,7 @@ function MetricsView({
           deltaType={approvedThisMonth.length > 0 ? 'down' : 'neutral'}
           barPct={metrics.total > 0 ? (approvedThisMonth.length / metrics.total) * 100 : 0}
           accent="#059669"
+          tooltip="City Department approvals received this month (shows avg days from request to approval)"
           onClick={() => { setFilter(f => ({ ...f, stage: 'plan_approved' })); setView('table'); }}
         />
         {/* TANSAT spend (this month) — running tally of what MOT has paid
