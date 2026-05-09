@@ -321,10 +321,34 @@ function AppContent() {
       if (!phePending && !nvPending && !cdPending) return false;
     }
     if (filter.quickFilter === 'overdue_dot') {
-      // Uses the same SLA math (Settings > Workflow thresholds per plan type)
-      // as the dashboard KPI and the Status Report — single source of truth.
-      const status = getDotOverdueStatus(p, appConfig);
-      if (!status || status.level === 'ok') return false;
+      // Show plans currently in DOT stages exceeding their stage-time targets.
+      // Aligned with the dashboard pipeline breakdown.
+      const AT_DOT_STAGES = new Set(['submitted_to_dot', 'dot_review', 'loc_submitted', 'loc_review', 'resubmitted', 'resubmit_review']);
+      if (!AT_DOT_STAGES.has(p.stage)) return false;
+
+      // Calculate days in current stage
+      const log = p.log || [];
+      let daysInStage: number | null = null;
+      for (let i = log.length - 1; i >= 0; i--) {
+        const action = log[i].action || '';
+        if (action.includes('Status') && (action.includes('→') || action.includes('changed') || action.includes('Changed'))) {
+          const rawDate = (log[i].date || '').split(',')[0].trim();
+          if (rawDate) {
+            daysInStage = Math.floor((Date.now() - new Date(rawDate + 'T00:00:00').getTime()) / 86_400_000);
+            break;
+          }
+        }
+      }
+      if (daysInStage === null) return false;
+
+      // Check against CLOCK_TARGETS
+      const CLOCK_TARGETS: Record<string, { target: number; warning: number }> = {
+        WATCH: { target: 10, warning: 8 },
+        Standard: { target: 10, warning: 8 },
+        Engineered: { target: 20, warning: 15 },
+      };
+      const threshold = CLOCK_TARGETS[p.type]?.target ?? 10;
+      if (daysInStage < threshold) return false;
     }
 
     if (searchQuery) {
