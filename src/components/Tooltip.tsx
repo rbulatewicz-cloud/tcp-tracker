@@ -32,9 +32,13 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children, position = 'to
       const tooltipWidth = tooltip.offsetWidth;
       const containerRect = container.getBoundingClientRect();
 
-      // Find the scroll container (plan card's overflow-y-auto parent)
-      let scrollContainer = container.parentElement;
-      while (scrollContainer && window.getComputedStyle(scrollContainer).overflowY !== 'auto') {
+      // Find the scroll container by walking up the DOM and checking for overflow-y
+      let scrollContainer: HTMLElement | null = container.parentElement;
+      while (scrollContainer) {
+        const overflow = window.getComputedStyle(scrollContainer).getPropertyValue('overflow-y');
+        if (overflow === 'auto' || overflow === 'scroll') {
+          break;
+        }
         scrollContainer = scrollContainer.parentElement;
       }
 
@@ -59,8 +63,9 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children, position = 'to
       }
 
       const scrollContainerRect = scrollContainer.getBoundingClientRect();
-      const centerX = containerRect.left - scrollContainerRect.left + containerRect.width / 2;
-      const containerWidth = scrollContainer.clientWidth;
+      const scrollContainerPadding = parseInt(window.getComputedStyle(scrollContainer).paddingLeft, 10);
+      const centerX = containerRect.left - scrollContainerRect.left - scrollContainerPadding + containerRect.width / 2;
+      const containerWidth = scrollContainerRect.width - 2 * scrollContainerPadding;
 
       if (centerX - tooltipWidth / 2 < 0) {
         // Shift right if overflowing left
