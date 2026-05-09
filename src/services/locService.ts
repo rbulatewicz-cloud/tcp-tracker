@@ -104,8 +104,9 @@ export const renewLoc = async (
   td: string,
   getUserLabel: () => string,
   setSelectedPlan: (plan: Plan | null) => void,
-  selectedPhaseNumbers: number[] = []
+  carryOverCategories?: Record<string, boolean>
 ): Promise<string> => {
+  const categories = carryOverCategories ?? { descriptive: true, compliance: true, tansat: true, documents: true };
   // Find root LOC id — if this plan is itself a renewal, walk to the parent
   const rootId = plan.parentLocId || plan.id;
 
@@ -124,38 +125,36 @@ export const renewLoc = async (
     rev: 0,
     revisionSuffix: nextSuffix,
     parentLocId: rootId,
-    // Carry over key descriptive fields
-    type: plan.type,
-    scope: plan.scope,
-    segment: plan.segment,
-    street1: plan.street1,
-    street2: plan.street2 || '',
-    lead: plan.lead,
-    requestedBy: plan.requestedBy || '',
-    priority: plan.priority,
-    notes: plan.notes || '',
-    // Carry over direction & impact fields
-    dir_nb: plan.dir_nb ?? false,
-    dir_sb: plan.dir_sb ?? false,
-    dir_directional: plan.dir_directional ?? false,
-    side_street: plan.side_street ?? false,
-    impact_krail: plan.impact_krail ?? false,
-    impact_driveway: plan.impact_driveway ?? false,
-    impact_fullClosure: plan.impact_fullClosure ?? false,
-    impact_sidewalkClosure: plan.impact_sidewalkClosure ?? false,
-    impact_crosswalkClosure: plan.impact_crosswalkClosure ?? false,
-    impact_busStop: plan.impact_busStop ?? false,
-    impact_transit: plan.impact_transit ?? false,
-    impact_i5Freeway: plan.impact_i5Freeway ?? false,
-    impact_uprrBridge: plan.impact_uprrBridge ?? false,
+    // Carry over key descriptive fields (if descriptive category is selected)
+    type: categories.descriptive ? plan.type : 'Standard',
+    scope: categories.descriptive ? plan.scope : '',
+    segment: categories.descriptive ? plan.segment : '',
+    street1: categories.descriptive ? plan.street1 : '',
+    street2: categories.descriptive ? (plan.street2 || '') : '',
+    lead: categories.descriptive ? plan.lead : '',
+    requestedBy: categories.descriptive ? (plan.requestedBy || '') : '',
+    priority: categories.descriptive ? plan.priority : '',
+    notes: categories.descriptive ? (plan.notes || '') : '',
+    // Carry over direction & impact fields (if descriptive category is selected)
+    dir_nb: categories.descriptive ? (plan.dir_nb ?? false) : false,
+    dir_sb: categories.descriptive ? (plan.dir_sb ?? false) : false,
+    dir_directional: categories.descriptive ? (plan.dir_directional ?? false) : false,
+    side_street: categories.descriptive ? (plan.side_street ?? false) : false,
+    impact_krail: categories.descriptive ? (plan.impact_krail ?? false) : false,
+    impact_driveway: categories.descriptive ? (plan.impact_driveway ?? false) : false,
+    impact_fullClosure: categories.descriptive ? (plan.impact_fullClosure ?? false) : false,
+    impact_sidewalkClosure: categories.descriptive ? (plan.impact_sidewalkClosure ?? false) : false,
+    impact_crosswalkClosure: categories.descriptive ? (plan.impact_crosswalkClosure ?? false) : false,
+    impact_busStop: categories.descriptive ? (plan.impact_busStop ?? false) : false,
+    impact_transit: categories.descriptive ? (plan.impact_transit ?? false) : false,
+    impact_i5Freeway: categories.descriptive ? (plan.impact_i5Freeway ?? false) : false,
+    impact_uprrBridge: categories.descriptive ? (plan.impact_uprrBridge ?? false) : false,
     // Carry over hours of work
-    work_hours: plan.work_hours,
+    work_hours: categories.descriptive ? plan.work_hours : undefined,
     // Carry over compliance approvals (PHE, NV, CD, driveway status)
-    compliance: plan.compliance,
-    // Carry over selected TANSAT phases
-    tansatPhases: selectedPhaseNumbers.length > 0
-      ? (plan.tansatPhases ?? []).filter(p => selectedPhaseNumbers.includes(p.phaseNumber))
-      : [],
+    compliance: categories.compliance ? plan.compliance : undefined,
+    // Carry over TANSAT phases (if tansat category is selected)
+    tansatPhases: categories.tansat ? (plan.tansatPhases ?? []) : [],
     // Reset workflow fields
     stage: 'requested',
     needByDate: '',
@@ -168,8 +167,8 @@ export const renewLoc = async (
     isCriticalPath: false,
     // Empty history
     attachments: [],
-    approvedTCPs: [],
-    approvedLOCs: [],
+    approvedTCPs: categories.documents ? (plan.approvedTCPs || []) : [],
+    approvedLOCs: categories.documents ? (plan.approvedLOCs || []) : [],
     stageAttachments: [],
     reviewCycles: [],
     implementationWindow: null,

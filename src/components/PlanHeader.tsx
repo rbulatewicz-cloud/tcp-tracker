@@ -30,8 +30,13 @@ export const PlanHeader: React.FC = () => {
   const [showExportModal, setShowExportModal] = useState(false);
   // Optimistic local state so the button flips immediately without waiting for Firestore
   const [localFollowing, setLocalFollowing] = useState<boolean | null>(null);
-  // TANSAT phases to carry over during renewal
-  const [selectedTansatPhaseNumbers, setSelectedTansatPhaseNumbers] = useState<number[]>([]);
+  // Categories to carry over during renewal (all default to true)
+  const [carryOverCategories, setCarryOverCategories] = useState({
+    descriptive: true,
+    compliance: true,
+    tansat: true,
+    documents: true,
+  });
 
   const isFollowing = localFollowing !== null
     ? localFollowing
@@ -85,14 +90,14 @@ export const PlanHeader: React.FC = () => {
   const handleRenew = async () => {
     setRenewing(true);
     try {
-      const newId = await renewLoc(selectedPlan.id, selectedTansatPhaseNumbers);
+      const newId = await renewLoc(selectedPlan.id, carryOverCategories);
       if (newId) showToast(`Renewed — ${newId} created and opened.`, 'success');
     } catch {
       showToast('Failed to create renewal. Please try again.', 'error');
     } finally {
       setRenewing(false);
       setConfirmRenew(false);
-      setSelectedTansatPhaseNumbers([]);
+      setCarryOverCategories({ descriptive: true, compliance: true, tansat: true, documents: true });
     }
   };
 
@@ -164,35 +169,52 @@ export const PlanHeader: React.FC = () => {
             — same location &amp; team, reset to Requested. The original stays unchanged.
           </div>
 
-          {/* TANSAT phases picker */}
-          {(selectedPlan.tansatPhases?.length ?? 0) > 0 && (
-            <div className="mb-2 p-2 bg-indigo-100 rounded border border-indigo-300">
-              <div className="text-[10px] font-bold text-indigo-800 mb-1">
-                Select TANSAT phases to carry over:
-              </div>
-              <div className="space-y-1">
-                {selectedPlan.tansatPhases!.map(phase => (
-                  <label key={phase.phaseNumber} className="flex items-center gap-2 text-[10px]">
-                    <input
-                      type="checkbox"
-                      checked={selectedTansatPhaseNumbers.includes(phase.phaseNumber)}
-                      onChange={e => {
-                        if (e.target.checked) {
-                          setSelectedTansatPhaseNumbers([...selectedTansatPhaseNumbers, phase.phaseNumber]);
-                        } else {
-                          setSelectedTansatPhaseNumbers(selectedTansatPhaseNumbers.filter(n => n !== phase.phaseNumber));
-                        }
-                      }}
-                      className="cursor-pointer"
-                    />
-                    <span className="text-indigo-900">
-                      Phase {phase.phaseNumber}{phase.anticipatedStart ? ` (${phase.anticipatedStart})` : ''}
-                    </span>
-                  </label>
-                ))}
-              </div>
+          {/* Carryover categories picker */}
+          <div className="mb-2 p-2 bg-indigo-100 rounded border border-indigo-300">
+            <div className="text-[10px] font-bold text-indigo-800 mb-1">
+              Select what to carry over:
             </div>
-          )}
+            <div className="space-y-1">
+              <label className="flex items-center gap-2 text-[10px]">
+                <input
+                  type="checkbox"
+                  checked={carryOverCategories.descriptive}
+                  onChange={e => setCarryOverCategories({ ...carryOverCategories, descriptive: e.target.checked })}
+                  className="cursor-pointer"
+                />
+                <span className="text-indigo-900">Descriptive Info (scope, streets, lead, priority)</span>
+              </label>
+              <label className="flex items-center gap-2 text-[10px]">
+                <input
+                  type="checkbox"
+                  checked={carryOverCategories.compliance}
+                  onChange={e => setCarryOverCategories({ ...carryOverCategories, compliance: e.target.checked })}
+                  className="cursor-pointer"
+                />
+                <span className="text-indigo-900">Compliance (PHE, NV, CD, driveway)</span>
+              </label>
+              {(selectedPlan.tansatPhases?.length ?? 0) > 0 && (
+                <label className="flex items-center gap-2 text-[10px]">
+                  <input
+                    type="checkbox"
+                    checked={carryOverCategories.tansat}
+                    onChange={e => setCarryOverCategories({ ...carryOverCategories, tansat: e.target.checked })}
+                    className="cursor-pointer"
+                  />
+                  <span className="text-indigo-900">TANSAT Phases ({selectedPlan.tansatPhases!.length})</span>
+                </label>
+              )}
+              <label className="flex items-center gap-2 text-[10px]">
+                <input
+                  type="checkbox"
+                  checked={carryOverCategories.documents}
+                  onChange={e => setCarryOverCategories({ ...carryOverCategories, documents: e.target.checked })}
+                  className="cursor-pointer"
+                />
+                <span className="text-indigo-900">Approved Documents (LOCs, TCPs)</span>
+              </label>
+            </div>
+          </div>
 
           <div className="flex gap-2">
             <button
@@ -203,7 +225,7 @@ export const PlanHeader: React.FC = () => {
               {renewing ? 'Creating…' : 'Yes, Renew'}
             </button>
             <button
-              onClick={() => { setConfirmRenew(false); setSelectedTansatPhaseNumbers([]); }}
+              onClick={() => { setConfirmRenew(false); setCarryOverCategories({ descriptive: true, compliance: true, tansat: true, documents: true }); }}
               className="px-3 py-1 text-[11px] font-bold text-indigo-600 bg-white border border-indigo-200 rounded-md hover:bg-indigo-50"
             >
               Cancel
