@@ -187,10 +187,16 @@ export function getRequestsNeedingAttention(
   const today = todayIso(now);
   const items: TansatAttentionItem[] = [];
 
+  // Build a set of existing plan IDs to filter out requests for deleted plans
+  const existingPlanIds = new Set(plans.map(p => p.id));
+
+  // Filter requests to only include those for existing plans
+  const activeRequests = requests.filter(r => !r.planId || existingPlanIds.has(r.planId));
+
   // Index requests by plan + phase coverage so we can detect "no request for
   // this phase yet". A request "covers" a phase if phaseNumbers includes it.
   const requestsByPlan = new Map<string, TansatRequest[]>();
-  for (const r of requests) {
+  for (const r of activeRequests) {
     if (!r.planId) continue;
     const arr = requestsByPlan.get(r.planId) ?? [];
     arr.push(r);
@@ -229,7 +235,7 @@ export function getRequestsNeedingAttention(
   }
 
   // 2. Awaiting invoice — emailed but no log # received
-  for (const r of requests) {
+  for (const r of activeRequests) {
     if (r.status !== 'emailed') continue;
     if (!r.emailSentAt) continue;
     const daysWaited = daysBetween(r.emailSentAt.slice(0, 10), today);
@@ -244,7 +250,7 @@ export function getRequestsNeedingAttention(
   }
 
   // 3. Payment due — invoice received, due soon, not paid
-  for (const r of requests) {
+  for (const r of activeRequests) {
     if (r.status !== 'invoice_received') continue;
     if (!r.paymentDueDate) continue;
     const daysUntil = daysBetween(today, r.paymentDueDate);
@@ -261,7 +267,7 @@ export function getRequestsNeedingAttention(
   }
 
   // 4. Extension window — phase end within N business days, no active extension
-  for (const r of requests) {
+  for (const r of activeRequests) {
     if (r.status !== 'paid' && r.status !== 'posted' && r.status !== 'active') continue;
     if (!r.schedule?.endDate) continue;
     const businessDaysUntil = getBusinessDaysUntil(r.schedule.endDate, now);
@@ -281,7 +287,7 @@ export function getRequestsNeedingAttention(
   }
 
   // 5. Close-out pending — work end passed, not closed
-  for (const r of requests) {
+  for (const r of activeRequests) {
     if (r.status === 'closed' || r.status === 'cancelled') continue;
     if (!r.schedule?.endDate) continue;
     const daysSinceEnd = daysBetween(r.schedule.endDate, today);
