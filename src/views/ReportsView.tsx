@@ -5,7 +5,6 @@ import { getStagePill } from '../utils/corridor';
 import { ALL_STAGES } from '../constants';
 import { subscribeToDrivewayLetters } from '../services/drivewayLetterService';
 import {
-  getPlansOverdueWithDot,
   DOT_LEVEL_COLORS,
   computeDotTurnaroundByMonth,
 } from '../utils/dotOverdue';
@@ -137,9 +136,35 @@ function StatusReport({ plans, monoFont, setSelectedPlan, appConfig }: {
   const now = Date.now();
   const activePlans = plans.filter(p => !COMPLETED_STAGE_SET.has(p.stage));
 
-  // Overdue-with-DOT rollup — shares the util with the dashboard tile
-  // so the two surfaces never disagree on what counts as "overdue."
-  const dotOverdueRows = getPlansOverdueWithDot(activePlans, appConfig, { includeWarnings: true, now });
+  // Overdue-with-DOT rollup — same calculation as dashboard tile and filter,
+  // to ensure all three surfaces show the same plans.
+  const AT_DOT_STAGE_SET = new Set(['submitted_to_dot', 'dot_review', 'loc_submitted', 'loc_review', 'resubmitted', 'resubmit_review']);
+  const atDotPlans = activePlans.filter(p => AT_DOT_STAGE_SET.has(p.stage));
+  const dotOverdueRows = atDotPlans.map(p => {
+    // Calculate days in current stage from log entries
+    const log = p.log || [];
+    let daysInStage: number | null = null;
+    for (let i = log.length - 1; i >= 0; i--) {
+      const action = log[i].action || '';
+      if (action.includes('Status') && (action.includes('→') || action.includes('changed') || action.includes('Changed'))) {
+        const rawDate = (log[i].date || '').split(',')[0].trim();
+        if (rawDate) {
+          daysInStage = Math.floor((now - new Date(rawDate + 'T00:00:00').getTime()) / 86_400_000);
+          break;
+        }
+      }
+    }
+    if (daysInStage === null) return null;
+    const CLOCK_TARGETS: Record<string, { target: number; warning: number }> = {
+      WATCH: { target: 10, warning: 8 },
+      Standard: { target: 10, warning: 8 },
+      Engineered: { target: 20, warning: 15 },
+    };
+    const target = CLOCK_TARGETS[p.type]?.target ?? 10;
+    const warning = CLOCK_TARGETS[p.type]?.warning ?? 8;
+    const level = daysInStage >= target ? 'overdue' : daysInStage >= warning ? 'warning' : 'ok';
+    return { plan: p, status: { level, daysOpen: daysInStage, warningThreshold: warning, overdueThreshold: target } };
+  }).filter((r): r is any => r !== null && r.status.level !== 'ok');
 
   // TANSAT needs-attention rollup — same util powers the dashboard tile,
   // MOT Hub, and this section. Subscription is cheap (single Firestore listener).
@@ -247,8 +272,11 @@ function StatusReport({ plans, monoFont, setSelectedPlan, appConfig }: {
           and money-bound. */}
       {tansatNeeds.length > 0 && (
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#0F766E', marginBottom: 8 }}>
-            🅿️ TANSAT — Needs Attention This Week ({tansatNeeds.length})
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#0F766E', marginBottom: 2 }}>
+            🅿️ TANSAT — Requiring Action ({tansatNeeds.length})
+          </div>
+          <div style={{ fontSize: 11, color: '#64748B', marginBottom: 8 }}>
+            Items with escalating urgency (payment overdue, extension window closing, or closeout pending)
           </div>
           <div style={{ border: '1px solid #99F6E4', borderRadius: 8, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -422,8 +450,13 @@ function StatusReport({ plans, monoFont, setSelectedPlan, appConfig }: {
       {/* Recent DOT submissions */}
       {recentDOT.length > 0 && (
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#1E293B', marginBottom: 8 }}>
-            Recent DOT Submissions (past 20 days)
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1E293B', marginBottom: 2 }}>
+              DOT Submissions — Last 20 Days
+            </div>
+            <div style={{ fontSize: 11, color: '#64748B', marginBottom: 8 }}>
+              Plans sent to DOT in the recent period
+            </div>
           </div>
           <div style={{ border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -516,12 +549,14 @@ function CDConcurrenceReport({ plans, monoFont, setSelectedPlan }: { plans: Plan
         </div>
         <div style={{ padding: '10px 16px', background: '#DBEAFE', border: '1px solid #93C5FD', borderRadius: 8, textAlign: 'center' }}>
           <div style={{ fontSize: 22, fontWeight: 800, color: '#1D4ED8' }}>{totalWaiting}</div>
-          <div style={{ fontSize: 10, color: '#1E40AF', fontWeight: 600 }}>Waiting</div>
+          <div style={{ fontSize: 10, color: '#1E40AF', fontWeight: 600 }}>Pending</div>
+          <div style={{ fontSize: 9, color: '#1E40AF', marginTop: 2 }}>Concurrence</div>
         </div>
         {totalOverdue > 0 && (
           <div style={{ padding: '10px 16px', background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 8, textAlign: 'center' }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: '#B91C1C' }}>{totalOverdue}</div>
-            <div style={{ fontSize: 10, color: '#991B1B', fontWeight: 600 }}>Overdue</div>
+            <div style={{ fontSize: 10, color: '#991B1B', fontWeight: 600 }}>Overdue by</div>
+            <div style={{ fontSize: 9, color: '#991B1B', marginTop: 2 }}>SLA (&gt;21 days)</div>
           </div>
         )}
       </div>
