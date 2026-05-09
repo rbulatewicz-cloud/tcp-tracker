@@ -198,6 +198,8 @@ export function getRequestsNeedingAttention(
   const requestsByPlan = new Map<string, TansatRequest[]>();
   for (const r of activeRequests) {
     if (!r.planId) continue;
+    // Skip requests for plans that no longer exist
+    if (!existingPlanIds.has(r.planId)) continue;
     const arr = requestsByPlan.get(r.planId) ?? [];
     arr.push(r);
     requestsByPlan.set(r.planId, arr);
