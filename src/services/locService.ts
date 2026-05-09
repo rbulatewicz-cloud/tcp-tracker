@@ -149,6 +149,8 @@ export const renewLoc = async (
     impact_uprrBridge: plan.impact_uprrBridge ?? false,
     // Carry over hours of work
     work_hours: plan.work_hours,
+    // Carry over compliance approvals (PHE, NV, CD, driveway status)
+    compliance: plan.compliance,
     // Reset workflow fields
     stage: 'requested',
     needByDate: '',
