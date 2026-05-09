@@ -27,24 +27,46 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children, position = 'to
 
     const tooltip = tooltipRef.current;
     const container = containerRef.current;
-    const parentCard = container.closest('.max-w-\\[580px\\]') || container.parentElement?.parentElement?.parentElement;
-
-    if (!parentCard) return;
 
     setTimeout(() => {
-      const tooltipRect = tooltip.getBoundingClientRect();
-      const parentRect = parentCard.getBoundingClientRect();
+      const tooltipWidth = tooltip.offsetWidth;
       const containerRect = container.getBoundingClientRect();
 
-      const tooltipWidth = tooltip.offsetWidth;
-      const centerX = containerRect.left - parentRect.left + containerRect.width / 2;
+      // Find the scroll container (plan card's overflow-y-auto parent)
+      let scrollContainer = container.parentElement;
+      while (scrollContainer && window.getComputedStyle(scrollContainer).overflowY !== 'auto') {
+        scrollContainer = scrollContainer.parentElement;
+      }
 
-      // Check if centered position would overflow
+      if (!scrollContainer) {
+        // Fallback: use window viewport
+        const leftEdge = 0;
+        const rightEdge = window.innerWidth;
+        const tooltipLeft = containerRect.left + containerRect.width / 2 - tooltipWidth / 2;
+        const tooltipRight = tooltipLeft + tooltipWidth;
+
+        if (tooltipLeft < leftEdge) {
+          setLeft('0');
+          setTransform('translateX(0)');
+        } else if (tooltipRight > rightEdge) {
+          setLeft('auto');
+          setTransform('translateX(-100%)');
+        } else {
+          setLeft('50%');
+          setTransform('translateX(-50%)');
+        }
+        return;
+      }
+
+      const scrollContainerRect = scrollContainer.getBoundingClientRect();
+      const centerX = containerRect.left - scrollContainerRect.left + containerRect.width / 2;
+      const containerWidth = scrollContainer.clientWidth;
+
       if (centerX - tooltipWidth / 2 < 0) {
         // Shift right if overflowing left
         setLeft('0');
         setTransform('translateX(0)');
-      } else if (centerX + tooltipWidth / 2 > parentRect.width) {
+      } else if (centerX + tooltipWidth / 2 > containerWidth) {
         // Shift left if overflowing right
         setLeft('auto');
         setTransform('translateX(-100%)');
