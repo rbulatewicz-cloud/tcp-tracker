@@ -6,7 +6,7 @@ interface SearchInputProps {
   setSearchQuery: (query: string) => void;
 }
 
-export const SearchInput: React.FC<SearchInputProps> = ({ view, searchQuery, setSearchQuery }) => {
+export const SearchInput: React.FC<SearchInputProps> = React.memo(({ view, searchQuery, setSearchQuery }) => {
   const font = "'Outfit', sans-serif";
   const inp: any = {
     background: "#F8FAFC",
@@ -58,4 +58,4 @@ export const SearchInput: React.FC<SearchInputProps> = ({ view, searchQuery, set
       )}
     </div>
   );
-};
+});

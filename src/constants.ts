@@ -36,9 +36,6 @@ export const ALL_STAGES = [
   { key: "tcp_approved_final",label: "TCP Approved (Final)",   color: "#10B981" },
   { key: "closed",            label: "Closed Out",             color: "#64748B" },
   { key: "cancelled",         label: "Cancelled",              color: "#94A3B8" },
-  // Legacy aliases — existing plans use these keys
-  { key: "submitted",         label: "Submitted to DOT",       color: "#F59E0B" },
-  { key: "approved",          label: "Plan Approved",          color: "#10B981" },
 ];
 
 // Filter-only groupings — collapse "submitted" + "review cycle" pairs in the

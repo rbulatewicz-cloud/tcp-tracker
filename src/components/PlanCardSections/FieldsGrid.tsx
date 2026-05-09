@@ -268,23 +268,32 @@ export const FieldsGrid: React.FC = React.memo(() => {
                 <>
                   {/* Plan Duration */}
                   <div className="flex flex-col gap-1">
-                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Plan Duration</div>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                      Plan Duration
+                      <span className="text-[9px] font-normal text-slate-400">(optional)</span>
+                    </div>
                     {canEditFields ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min="1"
-                          max="365"
-                          value={selectedPlan.planDurationDays ?? ''}
-                          onChange={e => updatePlanField(selectedPlan.id, 'planDurationDays', e.target.value ? parseInt(e.target.value, 10) : null)}
-                          placeholder="—"
-                          className="text-xs font-semibold text-slate-900 bg-white border border-slate-200 rounded-md p-2 w-20 outline-none focus:border-blue-400"
-                        />
-                        <span className="text-[11px] text-slate-500">days</span>
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="365"
+                            value={selectedPlan.planDurationDays ?? ''}
+                            onChange={e => updatePlanField(selectedPlan.id, 'planDurationDays', e.target.value ? parseInt(e.target.value, 10) : null)}
+                            placeholder="—"
+                            className="text-xs font-semibold text-slate-900 bg-white border border-slate-200 rounded-md p-2 w-20 outline-none focus:border-blue-400"
+                          />
+                          <span className="text-[11px] text-slate-500">days</span>
+                        </div>
+                        <p className="text-[9px] text-slate-400 italic">Length of work window. Helps calculate estimated end date and compliance deadlines.</p>
                       </div>
                     ) : (
-                      <div className="text-xs font-semibold text-slate-900 p-2 border border-transparent">
-                        {selectedPlan.planDurationDays ? `${selectedPlan.planDurationDays} days` : '—'}
+                      <div>
+                        <div className="text-xs font-semibold text-slate-900 p-2 border border-transparent">
+                          {selectedPlan.planDurationDays ? `${selectedPlan.planDurationDays} days` : 'Not specified'}
+                        </div>
+                        <p className="text-[9px] text-slate-400 italic">Length of work window. Helps calculate estimated end date and compliance deadlines.</p>
                       </div>
                     )}
                   </div>
