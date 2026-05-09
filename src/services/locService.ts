@@ -103,7 +103,8 @@ export const renewLoc = async (
   existingPlans: Plan[],
   td: string,
   getUserLabel: () => string,
-  setSelectedPlan: (plan: Plan | null) => void
+  setSelectedPlan: (plan: Plan | null) => void,
+  selectedPhaseNumbers: number[] = []
 ): Promise<string> => {
   // Find root LOC id — if this plan is itself a renewal, walk to the parent
   const rootId = plan.parentLocId || plan.id;
@@ -151,6 +152,10 @@ export const renewLoc = async (
     work_hours: plan.work_hours,
     // Carry over compliance approvals (PHE, NV, CD, driveway status)
     compliance: plan.compliance,
+    // Carry over selected TANSAT phases
+    tansatPhases: selectedPhaseNumbers.length > 0
+      ? (plan.tansatPhases ?? []).filter(p => selectedPhaseNumbers.includes(p.phaseNumber))
+      : [],
     // Reset workflow fields
     stage: 'requested',
     needByDate: '',

@@ -291,10 +291,10 @@ const deleteLogEntryHandler = async (pid: string, logEntryIndex: string) => {
     return getPreviousStageUtil(plan);
   };
 
-  const renewLoc = async (pid: string): Promise<string | null> => {
+  const renewLoc = async (pid: string, selectedPhaseNumbers: number[] = []): Promise<string | null> => {
     const plan = plansById.get(pid) ?? selectedPlan;
     if (!plan) return null;
-    return renewLocService(plan, plans, td, getUserLabel, setSelectedPlan);
+    return renewLocService(plan, plans, td, getUserLabel, setSelectedPlan, selectedPhaseNumbers);
   };
 
   const convertPlanType = async (pid: string, newType: string): Promise<{ remappedStage: string | null }> => {
