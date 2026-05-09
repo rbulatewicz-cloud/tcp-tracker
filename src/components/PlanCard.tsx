@@ -34,6 +34,14 @@ const PlanCardComponent: React.FC = () => {
   if (!selectedPlan) return null;
   const [statusDate, setStatusDate] = React.useState(getLocalDateString());
 
+  React.useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') planActions.handleClosePlanCard();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [planActions]);
+
   const contextValue = usePlanCardContext(planManagement, planActions, permissions, auth, firestoreData, statusDate, setStatusDate, uiState.isPermissionEditingMode, libraryVariances);
 
   return (

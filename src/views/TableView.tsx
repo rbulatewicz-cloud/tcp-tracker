@@ -158,14 +158,14 @@ function TableView({
     filter.scope !== 'all',
   ].filter(Boolean).length;
 
-  // Inline summary stats (computed from all plans, not filtered)
-  const statsAtDOT    = plans.filter(p => p.stage === 'submitted_to_dot' || p.stage === 'submitted').length;
-  const statsAtRisk   = plans.filter(p => {
+  // Summary stats — reflect currently filtered/displayed plans
+  const statsAtDOT    = filtered.filter(p => p.stage === 'submitted_to_dot' || p.stage === 'submitted').length;
+  const statsAtRisk   = filtered.filter(p => {
     if (!p.needByDate || COMPLETED_STAGES.includes(p.stage)) return false;
     const d = daysFromToday(p.needByDate, TODAY);
     return d <= 14 && d >= 0;
   }).length;
-  const statsOverdue  = plans.filter(p => {
+  const statsOverdue  = filtered.filter(p => {
     if (!p.needByDate || COMPLETED_STAGES.includes(p.stage)) return false;
     return daysFromToday(p.needByDate, TODAY) < 0;
   }).length;
@@ -834,7 +834,9 @@ function TableView({
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={canEditPlan ? mainCols.length + 1 : mainCols.length} style={{ padding: 40, textAlign: 'center', color: '#94A3B8' }}>
-                  No plans match filters
+                  {filter.quickFilter === 'my_plans'
+                    ? 'No active plans assigned to you. You can request a new one or ask to be added as a lead or subscriber.'
+                    : 'No plans match filters'}
                 </td>
               </tr>
             )}

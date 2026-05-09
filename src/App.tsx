@@ -898,6 +898,35 @@ function AppContent() {
             );
           })()}
 
+          {/* Active filter banner — shows when non-search filters are set */}
+          {(() => {
+            const hasAdvancedFilters = filter.stage !== "all" || filter.type !== "all" || filter.lead !== "all" ||
+              filter.priority !== "all" || filter.scope !== "all" || filter.importStatus !== "all" || filter.requestedBy !== "all";
+            if (!hasAdvancedFilters) return null;
+
+            const filterParts: string[] = [];
+            if (filter.stage !== "all") filterParts.push(`Stage: ${filter.stage}`);
+            if (filter.type !== "all") filterParts.push(`Type: ${filter.type}`);
+            if (filter.lead !== "all") filterParts.push(`Lead: ${filter.lead}`);
+            if (filter.priority !== "all") filterParts.push(`Priority: ${filter.priority}`);
+            if (filter.scope !== "all") filterParts.push(`Scope: ${filter.scope}`);
+            if (filter.importStatus !== "all") filterParts.push(`Import: ${filter.importStatus}`);
+            if (filter.requestedBy !== "all") filterParts.push(`Requested by: ${filter.requestedBy}`);
+
+            return (
+              <div style={{ width: '100%', fontSize: 12, color: '#D97706', paddingTop: 8, paddingLeft: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontWeight: 600 }}>⚠️ Filters active:</span>
+                <span>{filterParts.join(' • ')}</span>
+                <button
+                  onClick={() => setFilter({ stage: "all", type: "all", lead: "all", priority: "all", importStatus: "all", requestedBy: "all", scope: "all", quickFilter: "all" })}
+                  style={{ marginLeft: 'auto', padding: '4px 8px', borderRadius: 4, border: '1px solid #D97706', background: '#FEF3C7', color: '#D97706', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: font }}
+                >
+                  Clear all
+                </button>
+              </div>
+            );
+          })()}
+
         </div>
       )}
 
@@ -964,7 +993,7 @@ function AppContent() {
         {/* METRICS VIEW */}
         {view==="metrics"&&(
           <MetricsView
-            filtered={filtered}
+            filtered={plans}
             allPlans={plans}
             globalLogs={globalLogs}
             metrics={metrics}
@@ -1071,7 +1100,7 @@ function AppContent() {
             canViewTickets={canViewTickets}
             metrics={metrics}
             monoFont={monoFont}
-            filtered={filtered}
+            filtered={plans}
             LEADS={LEADS}
             updatePlanField={updatePlanField}
             setSelectedPlan={setSelectedPlan}
