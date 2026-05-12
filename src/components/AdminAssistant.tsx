@@ -12,15 +12,20 @@ interface ChatTurn {
   content: string;
 }
 
-const BRIEFING_PROMPT =
-  'Give me a 3-4 bullet morning briefing: overall pipeline state, what needs attention, and the single most important thing for me to look at today.';
-
 const SUGGESTIONS = [
+  'Morning briefing',
   'What needs my attention?',
   'How many plans at DOT?',
   'Who is overloaded?',
-  'What changed this week?',
 ];
+
+const BRIEFING_PROMPT =
+  'Give me a 3-4 bullet morning briefing: overall pipeline state, what needs attention, and the single most important thing for me to look at today.';
+
+// Map suggestion chip labels to the actual prompt sent to Claude.
+function suggestionPrompt(label: string): string {
+  return label === 'Morning briefing' ? BRIEFING_PROMPT : label;
+}
 
 const askAssistant = httpsCallable<
   { message: string; history: ChatTurn[] },
@@ -32,7 +37,6 @@ export const AdminAssistant: React.FC<AdminAssistantProps> = ({ isRealAdmin }) =
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [briefingFired, setBriefingFired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
 
@@ -55,14 +59,6 @@ export const AdminAssistant: React.FC<AdminAssistantProps> = ({ isRealAdmin }) =
     }
   }, [turns, loading]);
 
-  // Auto-briefing on first open of session
-  useEffect(() => {
-    if (open && !briefingFired && turns.length === 0) {
-      setBriefingFired(true);
-      send(BRIEFING_PROMPT);
-    }
-  }, [open, briefingFired, turns.length, send]);
-
   // Auto-scroll transcript on new message
   useEffect(() => {
     if (transcriptRef.current) {
@@ -74,7 +70,6 @@ export const AdminAssistant: React.FC<AdminAssistantProps> = ({ isRealAdmin }) =
 
   const reset = () => {
     setTurns([]);
-    setBriefingFired(false);
     setError(null);
   };
 
@@ -117,8 +112,21 @@ export const AdminAssistant: React.FC<AdminAssistantProps> = ({ isRealAdmin }) =
           {/* Transcript */}
           <div ref={transcriptRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
             {turns.length === 0 && !loading && (
-              <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
-                Ask anything about plans, leads, or what needs attention. The briefing will load when you open this.
+              <div className="space-y-3">
+                <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
+                  Ask anything about plans, leads, or what needs attention — or pick a starter below.
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {SUGGESTIONS.map(s => (
+                    <button
+                      key={s}
+                      onClick={() => send(suggestionPrompt(s))}
+                      className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-medium text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-100"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             {turns.map((t, i) => (
@@ -152,13 +160,13 @@ export const AdminAssistant: React.FC<AdminAssistantProps> = ({ isRealAdmin }) =
             )}
           </div>
 
-          {/* Suggestions (only when empty after briefing) */}
-          {turns.length > 0 && turns.length <= 2 && !loading && (
+          {/* Follow-up suggestions after a few exchanges */}
+          {turns.length > 0 && turns.length <= 4 && !loading && (
             <div className="flex flex-wrap gap-1.5 border-t border-slate-100 px-3 pb-2 pt-2">
-              {SUGGESTIONS.map(s => (
+              {SUGGESTIONS.filter(s => s !== 'Morning briefing').map(s => (
                 <button
                   key={s}
-                  onClick={() => send(s)}
+                  onClick={() => send(suggestionPrompt(s))}
                   className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-200"
                 >
                   {s}

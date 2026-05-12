@@ -1613,7 +1613,7 @@ function AppContent() {
         />
       )}
 
-      <AdminAssistant isRealAdmin={isRealAdmin} />
+      <AdminAssistant isRealAdmin={isRealAdmin && role === UserRole.ADMIN} />
     </>
     </AppListsProvider>
   )
