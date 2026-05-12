@@ -16,9 +16,11 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { defineSecret } from 'firebase-functions/params';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp, FieldValue } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
+import { runAssistant, AssistantTurn } from './assistant/agent';
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 
@@ -721,5 +723,56 @@ export const backfillAllClaims = onCall(
 
     console.log(`[backfill] processed ${count} users`);
     return { processed: count };
+  }
+);
+
+// ── Admin AI Assistant ───────────────────────────────────────────────────────
+
+const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
+
+/**
+ * Callable: admin-only AI assistant. Runs a Claude tool-use loop server-side
+ * against the plans collection and returns a manager-friendly answer.
+ *
+ * Input:  { message: string, history?: Array<{role:'user'|'assistant', content:string}> }
+ * Output: { text: string, toolsUsed: string[] }
+ */
+export const askAssistant = onCall(
+  {
+    region: 'us-central1',
+    secrets: [ANTHROPIC_API_KEY],
+    timeoutSeconds: 60,
+    memory: '512MiB',
+  },
+  async (request) => {
+    const caller = request.auth;
+    if (!caller) throw new HttpsError('unauthenticated', 'Sign-in required.');
+    if (caller.token.role !== 'ADMIN') {
+      throw new HttpsError('permission-denied', 'Admin only.');
+    }
+
+    const message = String(request.data?.message ?? '').trim();
+    if (!message) throw new HttpsError('invalid-argument', 'message is required.');
+
+    const rawHistory = Array.isArray(request.data?.history) ? request.data.history : [];
+    const history: AssistantTurn[] = rawHistory
+      .filter((h: unknown): h is AssistantTurn =>
+        !!h && typeof h === 'object' &&
+        ((h as AssistantTurn).role === 'user' || (h as AssistantTurn).role === 'assistant') &&
+        typeof (h as AssistantTurn).content === 'string'
+      )
+      .slice(-20); // cap history to last 20 turns
+
+    const callerEmail = (caller.token.email || '').toLowerCase();
+    const apiKey = ANTHROPIC_API_KEY.value();
+    if (!apiKey) throw new HttpsError('failed-precondition', 'ANTHROPIC_API_KEY secret is not configured.');
+
+    try {
+      const reply = await runAssistant(apiKey, DATABASE_ID, callerEmail, history, message);
+      return reply;
+    } catch (e) {
+      console.error('[askAssistant] error:', e);
+      throw new HttpsError('internal', e instanceof Error ? e.message : 'Assistant error');
+    }
   }
 );

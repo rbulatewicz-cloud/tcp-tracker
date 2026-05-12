@@ -44,6 +44,7 @@ import { MyRequestsModal } from './views/MyRequestsModal';
 import { daysBetween, daysFromToday, formatFileSize, calcMetrics, getLocalDateString } from './utils/plans';
 import { getDotOverdueStatus } from './utils/dotOverdue';
 import { TodoSidebar } from './components/TodoSidebar';
+import { AdminAssistant } from './components/AdminAssistant';
 import { Tooltip } from './components/Tooltip';
 import { AppRequestSidebar } from './features/appRequests/AppRequestSidebar';
 import { ToastContainer } from './components/ToastContainer';
@@ -1611,6 +1612,8 @@ function AppContent() {
           onClose={() => setShowHelp(false)}
         />
       )}
+
+      <AdminAssistant isRealAdmin={isRealAdmin && role === UserRole.ADMIN} />
     </>
     </AppListsProvider>
   )

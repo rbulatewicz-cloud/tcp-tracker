@@ -27,29 +27,67 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children, position = 'to
 
     const tooltip = tooltipRef.current;
     const container = containerRef.current;
-    const parentCard = container.closest('.max-w-\\[580px\\]') || container.parentElement?.parentElement?.parentElement;
-
-    if (!parentCard) return;
 
     setTimeout(() => {
-      const tooltipRect = tooltip.getBoundingClientRect();
-      const parentRect = parentCard.getBoundingClientRect();
+      const tooltipWidth = tooltip.offsetWidth;
       const containerRect = container.getBoundingClientRect();
 
-      const tooltipWidth = tooltip.offsetWidth;
-      const centerX = containerRect.left - parentRect.left + containerRect.width / 2;
+      // Find the scroll container by walking up the DOM and checking for overflow-y
+      let scrollContainer: HTMLElement | null = container.parentElement;
+      while (scrollContainer) {
+        const overflow = window.getComputedStyle(scrollContainer).getPropertyValue('overflow-y');
+        if (overflow === 'auto' || overflow === 'scroll') {
+          break;
+        }
+        scrollContainer = scrollContainer.parentElement;
+      }
 
-      // Check if centered position would overflow
-      if (centerX - tooltipWidth / 2 < 0) {
-        // Shift right if overflowing left
-        setLeft('0');
+      if (!scrollContainer) {
+        // Fallback: use window viewport
+        const leftEdge = 0;
+        const rightEdge = window.innerWidth;
+        const tooltipCenterX = containerRect.left + containerRect.width / 2;
+        const tooltipLeftPos = tooltipCenterX - tooltipWidth / 2;
+        const tooltipRightPos = tooltipLeftPos + tooltipWidth;
+
+        if (tooltipLeftPos < leftEdge) {
+          setLeft('0');
+          setTransform('translateX(0)');
+        } else if (tooltipRightPos > rightEdge) {
+          setLeft('auto');
+          setTransform('translateX(-100%)');
+        } else {
+          setLeft('50%');
+          setTransform('translateX(-50%)');
+        }
+        return;
+      }
+
+      const scrollContainerRect = scrollContainer.getBoundingClientRect();
+      const scrollContainerPadding = parseInt(window.getComputedStyle(scrollContainer).paddingLeft, 10);
+      const rightPadding = parseInt(window.getComputedStyle(scrollContainer).paddingRight, 10);
+
+      // Calculate tooltip position in viewport coordinates
+      const tooltipCenterX = containerRect.left + containerRect.width / 2;
+      const tooltipLeftPos = tooltipCenterX - tooltipWidth / 2;
+      const tooltipRightPos = tooltipLeftPos + tooltipWidth;
+
+      // Calculate scroll container bounds in viewport coordinates
+      const scrollContainerLeft = scrollContainerRect.left + scrollContainerPadding;
+      const scrollContainerRight = scrollContainerRect.right - rightPadding;
+
+      if (tooltipLeftPos < scrollContainerLeft) {
+        // Overflowing left - shift right to align with container's left edge
+        const pixelsFromLeft = scrollContainerLeft - containerRect.left;
+        setLeft(pixelsFromLeft + 'px');
         setTransform('translateX(0)');
-      } else if (centerX + tooltipWidth / 2 > parentRect.width) {
-        // Shift left if overflowing right
+      } else if (tooltipRightPos > scrollContainerRight) {
+        // Overflowing right - shift left to align with container's right edge
+        const pixelsFromRight = containerRect.right - scrollContainerRight;
         setLeft('auto');
-        setTransform('translateX(-100%)');
+        setTransform(`translateX(-${pixelsFromRight}px)`);
       } else {
-        // Center normally
+        // Fits within bounds - center normally
         setLeft('50%');
         setTransform('translateX(-50%)');
       }
@@ -73,7 +111,7 @@ export const Tooltip: React.FC<TooltipProps> = ({ text, children, position = 'to
               ? { bottom: 'calc(100% + 7px)' }
               : { top: 'calc(100% + 7px)' }),
             left,
-            right: transform === 'translateX(-100%)' ? '0' : 'auto',
+            right: 'auto',
             transform,
             background: '#1E293B',
             color: '#F1F5F9',
