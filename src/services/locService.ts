@@ -186,8 +186,11 @@ export const renewLoc = async (
     }],
   };
 
-  // Write new plan
-  await setDoc(doc(db, 'plans', newId), newPlan);
+  // Write new plan — strip undefined keys (Firestore rejects them by default)
+  const cleanPlan = Object.fromEntries(
+    Object.entries(newPlan).filter(([, v]) => v !== undefined)
+  );
+  await setDoc(doc(db, 'plans', newId), cleanPlan);
 
   // Log the renewal on the original plan
   const updatedLog = [
