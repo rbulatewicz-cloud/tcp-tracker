@@ -675,6 +675,8 @@ export interface FilterState {
   requestedBy: string;
   scope: string;
   quickFilter: 'all' | 'my_plans' | 'at_risk' | 'needs_compliance' | 'overdue_dot' | 'at_dot' | 'past_due';
+  /** P6 schedule activity ID. When set, plans view shows only plans whose p6Activities includes this ID. */
+  p6ActivityId?: string;
 }
 
 export interface SortConfig {
@@ -922,6 +924,8 @@ export interface PlanForm {
   parentLocId?: string;         // original plan's LOC ID, set for renewals
   planDurationDays?: number;    // how many days the work window lasts; end = needByDate + planDurationDays
   driveway_addresses?: Array<{ address: string; propertyId?: string }>;
+  // P6 schedule activity links — required for new requests (blocks submit if empty).
+  p6Activities?: { id: string; name?: string; wbsPath?: string }[];
   attachments: File[];
   approvedTCPs: PlanDocument[];
   approvedLOCs: PlanDocument[];
@@ -1050,6 +1054,11 @@ export interface Plan {
 
   // Compliance tracks (PHE, Noise Variance, CD Concurrence)
   compliance?: PlanCompliance;
+
+  // P6 schedule activity links — which schedule activities this plan enables.
+  // Required on new requests; grandfathered (optional) on plans created before this feature.
+  // Snapshot of {id, name, wbsPath} is denormalized so display survives XER renames or stale phonebook.
+  p6Activities?: { id: string; name?: string; wbsPath?: string }[];
 
   // Subscribers — list of user emails who follow this plan
   subscribers?: string[];

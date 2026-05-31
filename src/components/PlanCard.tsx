@@ -8,6 +8,7 @@ import { HoursOfWorkDisplay } from './PlanCardSections/HoursOfWorkDisplay';
 import { ComplianceSection } from './PlanCardSections/ComplianceSection';
 import { TansatSection } from './PlanCardSections/TansatSection';
 import { SiblingPlansSection } from './PlanCardSections/SiblingPlansSection';
+import { P6ActivitySection } from './PlanCardSections/P6ActivitySection';
 import { PlanNotes } from './PlanCardSections/PlanNotes';
 import { Documents } from './PlanCardSections/Documents';
 import { ActivityLog } from './PlanCardSections/ActivityLog';
@@ -69,6 +70,10 @@ const PlanCardComponent: React.FC = () => {
 
             <CollapsibleSection title="Scope & Location">
               <FieldsGrid />
+            </CollapsibleSection>
+
+            <CollapsibleSection title="P6 Schedule Activities">
+              <P6ActivitySection />
             </CollapsibleSection>
 
             {/* ── Work Conditions ── */}

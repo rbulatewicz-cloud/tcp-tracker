@@ -35,6 +35,7 @@ const EMPTY_FORM: PlanForm = {
   phe_justification: '',
   planDurationDays: undefined,
   driveway_addresses: [],
+  p6Activities: [],
   attachments: [],
   approvedTCPs: [],
   approvedLOCs: [],
