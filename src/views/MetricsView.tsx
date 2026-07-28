@@ -301,7 +301,7 @@ function ComplianceHealthCards({ filtered, setView }: { filtered: any[]; setView
           <div onClick={() => setView('variances')} style={{ background: '#FFFBEB', borderRadius: 10, border: '1px solid #FEF3C7', padding: '12px 14px', cursor: 'pointer', transition: 'box-shadow .15s' }}
             onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.08)')} onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🏛 <Tooltip text="Public Hearing Exam approval process" position="right">PHE</Tooltip> (BOE)</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🏛 <Tooltip text="Public Hearing Exam approval process" position="bottom">PHE</Tooltip> (BOE)</span>
               <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#FEF3C7', color: '#92400E' }}>{pheAll.length} active</span>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
@@ -322,7 +322,7 @@ function ComplianceHealthCards({ filtered, setView }: { filtered: any[]; setView
           <div onClick={() => setView('variances')} style={{ background: '#F5F3FF', borderRadius: 10, border: '1px solid #EDE9FE', padding: '12px 14px', cursor: 'pointer', transition: 'box-shadow .15s' }}
             onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.08)')} onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🔊 <Tooltip text="Noise Variance from Community Benefits Office" position="right">NV</Tooltip></span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🔊 <Tooltip text="Noise Variance from Community Benefits Office" position="bottom">NV</Tooltip></span>
               <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#EDE9FE', color: '#5B21B6' }}>{nvAll.length} active</span>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
@@ -343,7 +343,7 @@ function ComplianceHealthCards({ filtered, setView }: { filtered: any[]; setView
           <div onClick={() => setView('variances')} style={{ background: cdOverdue > 0 ? '#FFF5F5' : '#EFF6FF', borderRadius: 10, border: `1px solid ${cdOverdue > 0 ? '#FECACA' : '#DBEAFE'}`, padding: '12px 14px', cursor: 'pointer', transition: 'box-shadow .15s' }}
             onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.08)')} onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🏙 <Tooltip text="City Department concurrence (various departments)" position="right">CD</Tooltip> Concurrence</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>🏙 <Tooltip text="City Department concurrence (various departments)" position="bottom">CD</Tooltip> Concurrence</span>
               <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#DBEAFE', color: '#1E40AF' }}>{cdAll.length} active</span>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>

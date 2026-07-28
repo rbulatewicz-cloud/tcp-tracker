@@ -42,7 +42,6 @@ import { GanttView } from './views/GanttView';
 import { ReportsView } from './views/ReportsView';
 import { MyRequestsModal } from './views/MyRequestsModal';
 import { daysBetween, daysFromToday, formatFileSize, calcMetrics, getLocalDateString } from './utils/plans';
-import { getDotOverdueStatus } from './utils/dotOverdue';
 import { TodoSidebar } from './components/TodoSidebar';
 import { AdminAssistant } from './components/AdminAssistant';
 import { Tooltip } from './components/Tooltip';
