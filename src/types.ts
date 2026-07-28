@@ -674,6 +674,7 @@ export interface FilterState {
   importStatus: string;
   requestedBy: string;
   scope: string;
+  impacts: string[];   // selected impact field keys (e.g. "impact_fullClosure"); empty = no impact filter
   quickFilter: 'all' | 'my_plans' | 'at_risk' | 'needs_compliance' | 'overdue_dot' | 'at_dot' | 'past_due';
 }
 

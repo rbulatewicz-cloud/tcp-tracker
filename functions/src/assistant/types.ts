@@ -15,6 +15,15 @@ export interface AssistantPlan {
   dateRequested?: string;
   street1?: string;
   street2?: string;
+  // Impact flags — public-right-of-way / agency coordination requirements.
+  impact_driveway?: boolean;
+  impact_fullClosure?: boolean;
+  impact_sidewalkClosure?: boolean;
+  impact_crosswalkClosure?: boolean;
+  impact_busStop?: boolean;
+  impact_transit?: boolean;
+  impact_i5Freeway?: boolean;
+  impact_uprrBridge?: boolean;
   isHistorical?: boolean;
   log?: Array<{ date: string; action: string; user: string }>;
   statusHistory?: Array<{ date: string; action: string }>;
