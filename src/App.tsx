@@ -57,6 +57,7 @@ import {
   COMPLETED_STAGES,
   APPROVED_STAGES,
   STAGE_GROUP_MEMBERS,
+  IMPACT_FIELDS,
 } from './constants';
 
 import { useMasterFileImport } from './hooks/useMasterFileImport';
@@ -303,6 +304,8 @@ function AppContent() {
     if(filter.importStatus==="tbd"&&p.locStatus!=="unassigned") return false;
     if(filter.requestedBy!=="all"&&p.requestedBy!==filter.requestedBy) return false;
     if(filter.scope!=="all"&&p.scope!==filter.scope) return false;
+    // Impacts: ANY-match — keep the plan if it has at least one of the selected impacts.
+    if(filter.impacts.length && !filter.impacts.some(k => p[k as keyof Plan])) return false;
 
     // P6 activity reverse lookup — "show all plans tied to activity X"
     if (filter.p6ActivityId) {
@@ -955,7 +958,8 @@ function AppContent() {
           {/* Active filter banner — shows when non-search filters are set */}
           {(() => {
             const hasAdvancedFilters = filter.stage !== "all" || filter.type !== "all" || filter.lead !== "all" ||
-              filter.priority !== "all" || filter.scope !== "all" || filter.importStatus !== "all" || filter.requestedBy !== "all";
+              filter.priority !== "all" || filter.scope !== "all" || filter.importStatus !== "all" || filter.requestedBy !== "all" ||
+              filter.impacts.length > 0;
             if (!hasAdvancedFilters) return null;
 
             const filterParts: string[] = [];
@@ -966,13 +970,17 @@ function AppContent() {
             if (filter.scope !== "all") filterParts.push(`Scope: ${filter.scope}`);
             if (filter.importStatus !== "all") filterParts.push(`Import: ${filter.importStatus}`);
             if (filter.requestedBy !== "all") filterParts.push(`Requested by: ${filter.requestedBy}`);
+            if (filter.impacts.length) {
+              const labels = filter.impacts.map(k => IMPACT_FIELDS.find(f => f.key === k)?.label ?? k);
+              filterParts.push(`Impacts: ${labels.join(', ')}`);
+            }
 
             return (
               <div style={{ width: '100%', fontSize: 12, color: '#D97706', paddingTop: 8, paddingLeft: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontWeight: 600 }}>⚠️ Filters active:</span>
                 <span>{filterParts.join(' • ')}</span>
                 <button
-                  onClick={() => setFilter({ stage: "all", type: "all", lead: "all", priority: "all", importStatus: "all", requestedBy: "all", scope: "all", quickFilter: "all" })}
+                  onClick={() => setFilter({ stage: "all", type: "all", lead: "all", priority: "all", importStatus: "all", requestedBy: "all", scope: "all", impacts: [], quickFilter: "all" })}
                   style={{ marginLeft: 'auto', padding: '4px 8px', borderRadius: 4, border: '1px solid #D97706', background: '#FEF3C7', color: '#D97706', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: font }}
                 >
                   Clear all

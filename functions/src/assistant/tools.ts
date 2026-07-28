@@ -10,6 +10,37 @@ function db(databaseId: string) {
   return getFirestore(databaseId);
 }
 
+// ── Impacts ──────────────────────────────────────────────────────────────────
+// Impact flag keys the assistant can filter/aggregate on, with human labels.
+// Mirrors IMPACT_FIELDS in the frontend constants.
+const IMPACT_KEYS = [
+  { key: 'impact_driveway',        label: 'Driveway Closures' },
+  { key: 'impact_fullClosure',     label: 'Full Street Closure' },
+  { key: 'impact_sidewalkClosure', label: 'Sidewalk Closure' },
+  { key: 'impact_crosswalkClosure', label: 'Crosswalk Closure' },
+  { key: 'impact_busStop',         label: 'Bus Stop Impacts' },
+  { key: 'impact_transit',         label: 'TANSAT Needed' },
+  { key: 'impact_i5Freeway',       label: 'I-5 Freeway Encroachment' },
+  { key: 'impact_uprrBridge',      label: 'UPRR Bridge Encroachment' },
+] as const;
+
+// True when the plan carries the given impact flag.
+function planHasImpact(plan: AssistantPlan, impactKey: string): boolean {
+  return !!(plan as unknown as Record<string, unknown>)[impactKey];
+}
+
+// True when the plan's needByDate falls within [from, to] inclusive.
+// Dates are ISO YYYY-MM-DD, so lexical comparison is correct. Missing bounds
+// are open-ended; a plan with no needByDate never matches a date-range filter.
+function needByInRange(plan: AssistantPlan, from?: string, to?: string): boolean {
+  if (!from && !to) return true;
+  const d = plan.needByDate;
+  if (!d) return false;
+  if (from && d < from) return false;
+  if (to && d > to) return false;
+  return true;
+}
+
 // ── Date helpers ─────────────────────────────────────────────────────────────
 
 function todayISO(): string {
@@ -205,6 +236,9 @@ export interface SummarizePlansArgs {
   atDOT?: boolean;      // true = only stages in STAGES_AT_DOT_PIPELINE
   inDOTReview?: boolean; // true = only stages in STAGES_IN_DOT_REVIEW
   stage?: string;       // exact stage key
+  impact?: string;      // impact flag key (e.g. "impact_fullClosure")
+  needByFrom?: string;  // ISO YYYY-MM-DD, inclusive lower bound on needByDate
+  needByTo?: string;    // ISO YYYY-MM-DD, inclusive upper bound on needByDate
 }
 
 export async function summarizePlans(databaseId: string, args: SummarizePlansArgs) {
@@ -215,12 +249,15 @@ export async function summarizePlans(databaseId: string, args: SummarizePlansArg
     if (args.stage && p.stage !== args.stage) return false;
     if (args.atDOT && !STAGES_AT_DOT_PIPELINE.has(p.stage)) return false;
     if (args.inDOTReview && !STAGES_IN_DOT_REVIEW.has(p.stage)) return false;
+    if (args.impact && !planHasImpact(p, args.impact)) return false;
+    if (!needByInRange(p, args.needByFrom, args.needByTo)) return false;
     return true;
   });
 
   const byStage: Record<string, number> = {};
   const byLead: Record<string, number> = {};
   const byType: Record<string, number> = {};
+  const byImpact: Record<string, number> = {};
   let oldestDays = 0;
   let oldestId = '';
   let totalDays = 0;
@@ -230,6 +267,9 @@ export async function summarizePlans(databaseId: string, args: SummarizePlansArg
     byStage[stageLabel(p.stage)] = (byStage[stageLabel(p.stage)] || 0) + 1;
     byLead[p.lead || 'unassigned'] = (byLead[p.lead || 'unassigned'] || 0) + 1;
     byType[p.type || 'unknown'] = (byType[p.type || 'unknown'] || 0) + 1;
+    for (const { key, label } of IMPACT_KEYS) {
+      if (planHasImpact(p, key)) byImpact[label] = (byImpact[label] || 0) + 1;
+    }
     const d = daysInCurrentStage(p);
     if (d > oldestDays) { oldestDays = d; oldestId = p.id; }
     totalDays += d;
@@ -241,6 +281,7 @@ export async function summarizePlans(databaseId: string, args: SummarizePlansArg
     byStage,
     byLead,
     byType,
+    byImpact,
     oldestDays,
     oldestPlanId: oldestId || null,
     avgDaysInStage: withDays ? Math.round(totalDays / withDays) : 0,
@@ -281,6 +322,9 @@ export interface GetPlansArgs {
   atDOT?: boolean;
   inDOTReview?: boolean;
   minDaysInStage?: number;
+  impact?: string;      // impact flag key (e.g. "impact_fullClosure")
+  needByFrom?: string;  // ISO YYYY-MM-DD, inclusive lower bound on needByDate
+  needByTo?: string;    // ISO YYYY-MM-DD, inclusive upper bound on needByDate
   limit?: number;
 }
 
@@ -296,6 +340,8 @@ export async function getPlans(databaseId: string, args: GetPlansArgs) {
       if (args.atDOT && !STAGES_AT_DOT_PIPELINE.has(p.stage)) return false;
       if (args.inDOTReview && !STAGES_IN_DOT_REVIEW.has(p.stage)) return false;
       if (args.minDaysInStage != null && daysInCurrentStage(p) < args.minDaysInStage) return false;
+      if (args.impact && !planHasImpact(p, args.impact)) return false;
+      if (!needByInRange(p, args.needByFrom, args.needByTo)) return false;
       return true;
     })
     .map(p => ({
@@ -306,6 +352,7 @@ export async function getPlans(databaseId: string, args: GetPlansArgs) {
       lead: p.lead || 'unassigned',
       daysInStage: daysInCurrentStage(p),
       needByDate: p.needByDate || null,
+      impacts: IMPACT_KEYS.filter(i => planHasImpact(p, i.key)).map(i => i.label),
     }))
     .sort((a, b) => b.daysInStage - a.daysInStage)
     .slice(0, limit);
