@@ -18,37 +18,48 @@ export function useFirestoreData(currentUser: User | null, role: UserRole, canMa
   });
   const [appConfig, setAppConfig] = useState<AppConfig>({ ...DEFAULT_APP_CONFIG });
 
+  // Plans and LOCs are public (visible to all users, including unauthenticated
+  // guests) and never depend on identity, so subscribe ONCE for the app's
+  // lifetime. Keeping them out of the identity-scoped effect below prevents a
+  // full re-read of both entire collections on every auth/role change.
   useEffect(() => {
-    let unsubUsers = () => {};
-    let unsubAppRequests = () => {};
-    let unsubAppTodos = () => {};
-    let unsubSettings = () => {};
-
-    // Plans and LOCs are visible to all users, including unauthenticated guests
     const unsubPlans = firestoreService.subscribeToPlans(setPlans);
     const unsubLocs = firestoreService.subscribeToLocs(setLocs);
-
-    if (currentUser) {
-      unsubUsers = firestoreService.subscribeToUsers(role, setUsers);
-
-      if (canManageApp) {
-        unsubAppRequests = firestoreService.subscribeToAppFeedback(setAppRequests);
-        unsubAppTodos = firestoreService.subscribeToAppTodos(setAppTodos);
-      }
-
-      unsubSettings = firestoreService.subscribeToReportTemplate(setReportTemplate);
-      firestoreService.subscribeToAppConfig((data) => setAppConfig(prev => ({ ...DEFAULT_APP_CONFIG, ...prev, ...data })));
-    }
-
     return () => {
       unsubPlans();
       unsubLocs();
+    };
+  }, []);
+
+  // Identity-scoped listeners. Keyed off primitives (email/role/canManageApp)
+  // rather than the currentUser object so an unchanged identity that merely got
+  // a new object reference does not tear down and re-subscribe everything.
+  const email = currentUser?.email ?? null;
+  useEffect(() => {
+    if (!email) return;
+
+    const unsubUsers = firestoreService.subscribeToUsers(role, setUsers);
+
+    let unsubAppRequests = () => {};
+    let unsubAppTodos = () => {};
+    if (canManageApp) {
+      unsubAppRequests = firestoreService.subscribeToAppFeedback(setAppRequests);
+      unsubAppTodos = firestoreService.subscribeToAppTodos(setAppTodos);
+    }
+
+    const unsubSettings = firestoreService.subscribeToReportTemplate(setReportTemplate);
+    const unsubAppConfig = firestoreService.subscribeToAppConfig(
+      (data) => setAppConfig(prev => ({ ...DEFAULT_APP_CONFIG, ...prev, ...data }))
+    );
+
+    return () => {
       unsubUsers();
       unsubSettings();
+      unsubAppConfig();
       unsubAppRequests();
       unsubAppTodos();
     };
-  }, [currentUser, canManageApp, role]);
+  }, [email, canManageApp, role]);
 
   return {
     plans, setPlans,

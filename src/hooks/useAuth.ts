@@ -84,7 +84,11 @@ export function useAuth() {
             let liveRole = (data.role as UserRole) ?? UserRole.GUEST;
             if (isBootstrapAdmin) liveRole = UserRole.ADMIN;
             const livePC = data.profileComplete === true;
-            setCurrentUser(prev => prev ? { ...prev, role: liveRole } : prev);
+            // Only mint a new currentUser object when the role actually changed.
+            // Returning the same `prev` reference lets React bail out of the update,
+            // which prevents downstream effects (e.g. useFirestoreData) from re-running
+            // and re-reading the full plans/locs collections on every role-doc snapshot.
+            setCurrentUser(prev => (prev && prev.role !== liveRole) ? { ...prev, role: liveRole } : prev);
             setIsRealAdmin(liveRole === UserRole.ADMIN);
             setProfileComplete(livePC);
 
