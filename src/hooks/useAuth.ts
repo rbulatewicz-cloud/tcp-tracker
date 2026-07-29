@@ -5,9 +5,13 @@ import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { User, UserRole } from '../types';
 import * as authService from '../services/authService';
 
-// Module-level flag — reset to false on every true page load.
+// Module-level flags — reset on every true page load.
 // Prevents onAuthStateChanged firing 2–3 times per load from each counting as a login.
 let _loginCountedThisPageLoad = false;
+// Tracks which user we've already run login bookkeeping for this page load, so the
+// extra onAuthStateChanged fires don't re-run initializeUser (which WRITES
+// users_private.lastLogin and would re-trigger the role listener every time).
+let _initializedEmailThisPageLoad: string | null = null;
 
 const DEV_USER: User = {
   uid: 'dev-admin',
@@ -43,9 +47,17 @@ export function useAuth() {
         let initialRole = await authService.fetchUserRole(userEmail);
         if (isBootstrapAdmin) initialRole = UserRole.ADMIN;
 
-        const shouldCountLogin = !_loginCountedThisPageLoad;
-        _loginCountedThisPageLoad = true;
-        await authService.initializeUser(firebaseUser, userEmail, initialRole, shouldCountLogin);
+        // Only run login bookkeeping once per page load per user. The 2nd/3rd
+        // onAuthStateChanged fires are token refreshes — re-running initializeUser
+        // would rewrite users_private.lastLogin and re-trigger the role listener
+        // (and the collection re-reads) for no benefit. Set the flag before the
+        // await so a concurrent fire also skips.
+        if (_initializedEmailThisPageLoad !== userEmail) {
+          const shouldCountLogin = !_loginCountedThisPageLoad;
+          _loginCountedThisPageLoad = true;
+          _initializedEmailThisPageLoad = userEmail;
+          await authService.initializeUser(firebaseUser, userEmail, initialRole, shouldCountLogin);
+        }
 
         // Read profileComplete + profile fields before setting loaded
         const [pubSnap, privSnap] = await Promise.all([
