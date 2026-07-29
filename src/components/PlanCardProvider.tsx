@@ -30,7 +30,7 @@ export interface PlanActions {
   linkNewLOC: (pid: string, file: File) => void;
   uploadStageAttachment: (pid: string, file: File, stage: string, documentType: import('../types').StageAttachment['documentType'], isPrimary: boolean) => Promise<void>;
   batchUploadStageAttachments: (pid: string, files: File[], stage: string, documentType: import('../types').StageAttachment['documentType']) => Promise<void>;
-  renewLoc: (pid: string) => Promise<string | null>;
+  renewLoc: (pid: string, carryOverCategories?: Record<string, boolean>) => Promise<string | null>;
   convertPlanType: (pid: string, newType: string) => Promise<{ remappedStage: string | null }>;
   assignLocToTBD: (pid: string, customLoc: string | null) => Promise<string>;
   deleteStageAttachment: (pid: string, attachmentId: string, plan: any) => Promise<void>;

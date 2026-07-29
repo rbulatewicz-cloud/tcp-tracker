@@ -1,5 +1,5 @@
-import { collection, getDocs, query, where, deleteDoc, doc, writeBatch } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { collection, getDocs, doc, writeBatch } from 'firebase/firestore';
+import { db } from '../firebase';
 import { writeGlobalLog } from './logService';
 import { Plan } from '../types';
 

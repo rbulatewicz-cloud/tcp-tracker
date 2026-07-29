@@ -1,7 +1,7 @@
 import React from 'react';
 import { Spinner } from '../components/Spinner';
 import { daysFromToday, daysBetween } from '../utils/plans';
-import { COMPLETED_STAGES, APPROVED_STAGES, ALL_STAGES, STAGE_FILTER_OPTIONS } from '../constants';
+import { COMPLETED_STAGES, APPROVED_STAGES, ALL_STAGES, STAGE_FILTER_OPTIONS, IMPACT_FIELDS } from '../constants';
 import { UserRole, Plan, Stage, FilterState, SortConfig, ColumnDef, LoadingState, User, NoiseVariance, AppConfig } from '../types';
 import { detectComplianceTriggers } from '../utils/compliance';
 import { getVarianceExpiryStatus } from '../services/varianceService';
@@ -156,6 +156,7 @@ function TableView({
     filter.importStatus !== 'all',
     filter.requestedBy !== 'all',
     filter.scope !== 'all',
+    filter.impacts.length > 0,
     !!filter.p6ActivityId,
   ].filter(Boolean).length;
 
@@ -350,13 +351,36 @@ function TableView({
                   </select>
                 </div>
               )}
+              {/* Impacts — ANY-match multi-select */}
+              <div style={{ gridColumn: '1 / -1' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#94A3B8', marginBottom: 4 }}>Impacts</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px' }}>
+                  {IMPACT_FIELDS.map(f => {
+                    const checked = filter.impacts.includes(f.key);
+                    return (
+                      <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-primary, #334155)', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => setFilter(pr => ({
+                            ...pr,
+                            impacts: checked ? pr.impacts.filter(k => k !== f.key) : [...pr.impacts, f.key],
+                          }))}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        {f.label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
               {/* Footer */}
               <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
                 <span style={{ fontSize: 11, color: '#94A3B8' }}>{filtered.length} of {plans.length} plans shown</span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {activeFilterCount > 0 && (
                     <button
-                      onClick={() => { setFilter({ stage: 'all', type: 'all', lead: 'all', priority: 'all', importStatus: 'all', requestedBy: 'all', scope: 'all', quickFilter: filter.quickFilter, p6ActivityId: undefined }); }}
+                      onClick={() => { setFilter({ stage: 'all', type: 'all', lead: 'all', priority: 'all', importStatus: 'all', requestedBy: 'all', scope: 'all', impacts: [], quickFilter: filter.quickFilter, p6ActivityId: undefined }); }}
                       style={{ background: 'transparent', color: '#D97706', border: '1px solid #FDE68A', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer', fontFamily: font, fontWeight: 600 }}
                     >
                       Clear filters

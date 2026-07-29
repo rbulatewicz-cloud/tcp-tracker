@@ -142,7 +142,7 @@ export async function markDrivewayLetterSent(id: string, dateStr?: string, addre
  */
 export function validateLetterForMetro(
   letter: DrivewayLetter
-): { ok: true } | { ok: false; missing: string[] } {
+): { ok: boolean; missing: string[] } {
   const missing: string[] = [];
   const f = letter.fields;
 
@@ -163,7 +163,7 @@ export function validateLetterForMetro(
 
   if (!f.street1?.trim()) missing.push('Impacted street');
 
-  return missing.length === 0 ? { ok: true } : { ok: false, missing };
+  return { ok: missing.length === 0, missing };
 }
 
 export async function submitLetterToMetro(id: string, dateStr?: string, address?: string): Promise<void> {

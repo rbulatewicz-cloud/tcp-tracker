@@ -63,6 +63,22 @@ ones"), skip the offer and give the list. Otherwise stay high-level.
 - MOT / DOT clock work: led by Garrett.
 - Stuck: days in current stage exceeds the clock target for that stage/type.
 - Overdue: needByDate has passed and plan isn't approved.
+- Impacts: work requirements flagged on a plan. Keys → meaning:
+  impact_fullClosure = full street closure, impact_driveway = driveway closures,
+  impact_sidewalkClosure = sidewalk closure, impact_crosswalkClosure = crosswalk
+  closure, impact_busStop = bus stop impacts, impact_transit = TANSAT needed,
+  impact_i5Freeway = I-5 / Caltrans encroachment, impact_uprrBridge = UPRR bridge
+  encroachment. A plan can carry several. Filter with the \`impact\` arg on
+  summarizePlans / getPlans; summarizePlans also returns a byImpact breakdown.
+
+# Dates and "needed in <month>"
+- "Needed in <month>" / "due in <month>" / "coming up in <month>" refers to the
+  plan's needByDate. Translate the month to an inclusive needByFrom/needByTo
+  range (e.g. August 2026 → needByFrom "2026-08-01", needByTo "2026-08-31").
+- Call getContext first so you know the current year; assume the next upcoming
+  occurrence of a bare month name unless the user gives a year.
+- Note when relevant that these tools only see active (open) plans — already
+  approved or closed plans are excluded from the counts.
 
 # Numbers and certainty
 - Quote numbers exactly as returned by tools. Don't round unless you say so.
@@ -89,7 +105,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'summarizePlans',
-    description: 'Returns aggregate counts and breakdowns (byStage, byLead, byType, oldestDays, avg days in stage) for active plans matching optional filters. Use for "how many" / "what does the pipeline look like" / "Paula\'s plans" questions. Returns rollups, not rows.',
+    description: 'Returns aggregate counts and breakdowns (byStage, byLead, byType, byImpact, oldestDays, avg days in stage) for active plans matching optional filters. Use for "how many" / "what does the pipeline look like" / "Paula\'s plans" / "how many full closures in August" questions. Returns rollups, not rows. byImpact counts how many matched plans carry each impact.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -98,6 +114,9 @@ const TOOLS: Anthropic.Tool[] = [
         stage:       { type: 'string', description: 'Filter to a specific stage key (e.g. "dot_review")' },
         atDOT:       { type: 'boolean', description: 'True = only plans in any "at DOT" stage' },
         inDOTReview: { type: 'boolean', description: 'True = only plans actively in a DOT review cycle' },
+        impact:      { type: 'string', enum: ['impact_driveway', 'impact_fullClosure', 'impact_sidewalkClosure', 'impact_crosswalkClosure', 'impact_busStop', 'impact_transit', 'impact_i5Freeway', 'impact_uprrBridge'], description: 'Only count plans carrying this impact. E.g. impact_fullClosure for full street closures.' },
+        needByFrom:  { type: 'string', description: 'Inclusive lower bound on needByDate, ISO YYYY-MM-DD. Use with needByTo to bound a month (e.g. needByFrom "2026-08-01").' },
+        needByTo:    { type: 'string', description: 'Inclusive upper bound on needByDate, ISO YYYY-MM-DD (e.g. needByTo "2026-08-31" for August).' },
       },
     },
   },
@@ -118,6 +137,9 @@ const TOOLS: Anthropic.Tool[] = [
         atDOT:          { type: 'boolean' },
         inDOTReview:    { type: 'boolean' },
         minDaysInStage: { type: 'number', description: 'Only include plans with at least this many days in current stage' },
+        impact:         { type: 'string', enum: ['impact_driveway', 'impact_fullClosure', 'impact_sidewalkClosure', 'impact_crosswalkClosure', 'impact_busStop', 'impact_transit', 'impact_i5Freeway', 'impact_uprrBridge'], description: 'Only include plans carrying this impact' },
+        needByFrom:     { type: 'string', description: 'Inclusive lower bound on needByDate, ISO YYYY-MM-DD' },
+        needByTo:       { type: 'string', description: 'Inclusive upper bound on needByDate, ISO YYYY-MM-DD' },
         limit:          { type: 'number', description: 'Max plans to return (default 20, hard cap 50)' },
       },
     },
