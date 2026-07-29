@@ -39,6 +39,7 @@ export function useAuth() {
 
         const isBootstrapAdmin = userEmail === 'r.bulatewicz@gmail.com';
 
+        try {
         let initialRole = await authService.fetchUserRole(userEmail);
         if (isBootstrapAdmin) initialRole = UserRole.ADMIN;
 
@@ -104,6 +105,14 @@ export function useAuth() {
           },
           (error) => { console.error(`[Auth] role listener error for ${userEmail}:`, error); }
         );
+        } catch (err) {
+          // A failed initial read (commonly Firestore daily-read quota exhaustion)
+          // must not leave the app stuck on "Loading..." forever. Enter a degraded
+          // mode: still finish loading so the UI renders and the user can reload.
+          console.error('[Auth] initial load failed (likely Firestore quota); entering degraded mode:', err);
+          setShowLogin(false);
+          setLoaded(true);
+        }
       } else {
         setCurrentUser(null);
         setIsRealAdmin(false);

@@ -18,6 +18,7 @@ import { doc, setDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { UserManagementView } from './views/UserManagementView';
 import { Spinner } from './components/Spinner';
+import { LoadingScreen } from './components/LoadingScreen';
 import { Header } from './components/Header';
 import { AdminToolbar } from './components/AdminToolbar';
 import { NewRequestModal } from './components/NewRequestModal';
@@ -42,7 +43,6 @@ import { GanttView } from './views/GanttView';
 import { ReportsView } from './views/ReportsView';
 import { MyRequestsModal } from './views/MyRequestsModal';
 import { daysBetween, daysFromToday, formatFileSize, calcMetrics, getLocalDateString } from './utils/plans';
-import { getDotOverdueStatus } from './utils/dotOverdue';
 import { TodoSidebar } from './components/TodoSidebar';
 import { AdminAssistant } from './components/AdminAssistant';
 import { Tooltip } from './components/Tooltip';
@@ -826,7 +826,7 @@ function AppContent() {
     document.title = appConfig.pageTitle || appConfig.appName || 'TCP Tracker';
   }, [appConfig.pageTitle, appConfig.appName]);
 
-  if(!loaded) return <div style={{fontFamily:font,padding:60,textAlign:"center",color:"#94A3B8"}}>Loading...</div>;
+  if(!loaded) return <LoadingScreen font={font} />;
 
 
 
