@@ -157,6 +157,7 @@ function TableView({
     filter.requestedBy !== 'all',
     filter.scope !== 'all',
     filter.impacts.length > 0,
+    !!filter.p6ActivityId,
   ].filter(Boolean).length;
 
   // Summary stats — reflect currently filtered/displayed plans
@@ -323,6 +324,23 @@ function TableView({
                   </select>
                 </div>
               )}
+              {/* P6 Activity reverse-lookup */}
+              <div style={{ gridColumn: '1 / -1' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#94A3B8', marginBottom: 4 }}>
+                  P6 Activity (Reverse Lookup)
+                </div>
+                <input
+                  type="text"
+                  value={filter.p6ActivityId || ''}
+                  onChange={e => setFilter(pr => ({ ...pr, p6ActivityId: e.target.value.trim() || undefined }))}
+                  placeholder="Paste a P6 activity ID, e.g. SFTC-2460"
+                  style={{ ...inp, padding: '6px 10px', fontSize: 12, width: '100%', fontFamily: monoFont }}
+                />
+                <div style={{ fontSize: 9, color: '#94A3B8', marginTop: 3 }}>
+                  Shows every plan whose schedule link includes this activity. URL is shareable.
+                </div>
+              </div>
+
               {/* Scope — full width if requestors is absent */}
               {scopeNames.length > 0 && (
                 <div style={{ gridColumn: requestorNames.length > 0 ? 'auto' : '1 / -1' }}>
@@ -362,7 +380,7 @@ function TableView({
                 <div style={{ display: 'flex', gap: 8 }}>
                   {activeFilterCount > 0 && (
                     <button
-                      onClick={() => { setFilter({ stage: 'all', type: 'all', lead: 'all', priority: 'all', importStatus: 'all', requestedBy: 'all', scope: 'all', impacts: [], quickFilter: filter.quickFilter }); }}
+                      onClick={() => { setFilter({ stage: 'all', type: 'all', lead: 'all', priority: 'all', importStatus: 'all', requestedBy: 'all', scope: 'all', impacts: [], quickFilter: filter.quickFilter, p6ActivityId: undefined }); }}
                       style={{ background: 'transparent', color: '#D97706', border: '1px solid #FDE68A', borderRadius: 6, padding: '5px 12px', fontSize: 11, cursor: 'pointer', fontFamily: font, fontWeight: 600 }}
                     >
                       Clear filters
@@ -401,6 +419,33 @@ function TableView({
               style={{ background: 'var(--bg-surface)', color: 'var(--text-muted)', padding: '6px 11px', border: 'none', fontSize: 11, cursor: loading.export ? 'not-allowed' : 'pointer', fontFamily: font, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}
             >
               CSV
+            </button>
+          </div>
+        )}
+
+        {/* P6 activity filter chip — visible only when ?activity=… is set.
+            Lets the user (and any teammate the URL was shared with) see and clear
+            the active reverse-lookup. The filter itself is driven by URL ↔ state
+            sync in App.tsx. */}
+        {filter.p6ActivityId && (
+          <div
+            title="Showing plans tied to this P6 activity. Click × to clear."
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '4px 8px', borderRadius: 999,
+              background: '#EEF2FF', border: '1px solid #C7D2FE',
+              color: '#3730A3', fontSize: 11, fontWeight: 700,
+              fontFamily: font,
+            }}
+          >
+            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', opacity: 0.7 }}>P6</span>
+            <span style={{ fontFamily: monoFont }}>{filter.p6ActivityId}</span>
+            <button
+              onClick={() => setFilter(pr => ({ ...pr, p6ActivityId: undefined }))}
+              aria-label="Clear P6 activity filter"
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#6366F1', fontSize: 14, lineHeight: 1, padding: 0 }}
+            >
+              ×
             </button>
           </div>
         )}

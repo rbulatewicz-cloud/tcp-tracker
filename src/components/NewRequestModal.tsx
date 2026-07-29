@@ -9,6 +9,7 @@ import { findSimilarPlans } from './NewRequestModal/similarity';
 import { SimilarPlansBanner } from './NewRequestModal/SimilarPlansBanner';
 import { PlanIdentificationSection } from './NewRequestModal/PlanIdentificationSection';
 import { TansatPhasePlanner } from './NewRequestModal/TansatPhasePlanner';
+import { P6ActivityPicker, P6PickerValue } from './P6ActivityPicker';
 import { HoursOfWorkForm } from './HoursOfWorkForm';
 import { ComplianceBanner } from './ComplianceBanner';
 import { formatFileSize, getNextRevisionLoc } from '../utils/plans';
@@ -113,6 +114,10 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
     if (!workHoursValid()) missing.push('Hours of Work: select a shift and at least one day (or 24/7 Continuous)');
     // Renewal requests inherit parent's drawings — uploads are optional. For non-renewals, drawings are required.
     if (!form.parentLocId && form.attachments.length === 0) missing.push('At least one PDF attachment is required');
+    // P6 schedule link — required on all new requests so we can answer
+    // "which TCPs affect this activity" from the schedule side.
+    const p6 = (form.p6Activities as P6PickerValue[] | undefined) ?? [];
+    if (p6.length === 0) missing.push('Select at least one P6 schedule activity this plan enables');
     return missing;
   };
 
@@ -225,6 +230,22 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({
               setWarningMessage={setWarningMessage}
               setShowNeedByWarningModal={setShowNeedByWarningModal}
               TODAY={new Date()}
+            />
+          </CollapsibleSection>
+
+          {/* ── P6 Schedule Link ──
+              Required: ties the plan to one or more P6 activities so we can
+              reverse-lookup "what TCPs affect activity X" from the schedule side. */}
+          <CollapsibleSection title="P6 Schedule Activities">
+            <div className="text-[10px] text-slate-400 mb-3">
+              Required — which P6 schedule activities does this plan enable? Search by activity ID,
+              description, or WBS segment. If you can't find an activity, ask the admin to upload the
+              latest P6 schedule.
+            </div>
+            <P6ActivityPicker
+              value={(form.p6Activities as P6PickerValue[] | undefined) ?? []}
+              onChange={next => update('p6Activities', next)}
+              required
             />
           </CollapsibleSection>
 

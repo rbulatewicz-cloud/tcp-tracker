@@ -120,6 +120,18 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ── P6 schedule phonebook ───────────────────────────────────────────────
+    // Read: any authed user (picker fetches the list on the TCP request form).
+    // Write: admin only (XER upload happens in Settings → P6 Schedule).
+    match /p6_activities/{activityId} {
+      allow read:  if authed();
+      allow write: if isAdmin();
+    }
+    match /p6_schedule_meta/{docId} {
+      allow read:  if authed();
+      allow write: if isAdmin();
+    }
+
     // ── Catch-all ───────────────────────────────────────────────────────────
     // Legacy / unclassified collections: require auth. If a new collection is
     // added, add an explicit rule above rather than relying on this fallback.

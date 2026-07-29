@@ -154,6 +154,29 @@ function AppContent() {
   const [globalLogs, setGlobalLogs] = useState<GlobalLogEntry[]>([]);
   useEffect(() => subscribeToGlobalLog(setGlobalLogs), []);
 
+  // ── P6 activity URL ↔ filter sync ───────────────────────────────────────
+  // ?activity=A1245 in the URL drives the filter; clearing the filter clears
+  // the param. Lets schedulers paste a deep link from P6 / Teams and land on
+  // every TCP gating that activity.
+  // Read once on mount.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const a = params.get('activity');
+    if (a) setFilter(pr => ({ ...pr, p6ActivityId: a }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Write whenever the filter changes.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const current = params.get('activity') ?? undefined;
+    if (current === filter.p6ActivityId) return;
+    if (filter.p6ActivityId) params.set('activity', filter.p6ActivityId);
+    else params.delete('activity');
+    const qs = params.toString();
+    const next = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+    window.history.replaceState({}, '', next);
+  }, [filter.p6ActivityId]);
+
   // Show welcome screen for new users (profileComplete === false, not null)
   const showWelcomeScreen = loaded && !!currentUser && profileComplete === false;
 
@@ -282,6 +305,12 @@ function AppContent() {
     if(filter.scope!=="all"&&p.scope!==filter.scope) return false;
     // Impacts: ANY-match — keep the plan if it has at least one of the selected impacts.
     if(filter.impacts.length && !filter.impacts.some(k => p[k as keyof Plan])) return false;
+
+    // P6 activity reverse lookup — "show all plans tied to activity X"
+    if (filter.p6ActivityId) {
+      const ids = (p.p6Activities ?? []).map(a => a.id);
+      if (!ids.includes(filter.p6ActivityId)) return false;
+    }
 
     // Quick filter pills
     if (filter.quickFilter === 'my_plans') {

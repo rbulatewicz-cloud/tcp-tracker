@@ -187,7 +187,7 @@ const deleteLogEntryHandler = async (pid: string, logEntryIndex: string) => {
     await handleClearPlans(plans, setPlans, setSelectedPlan, setSelectedPlanIds, setLoading, setClearPlansConfirm);
   };
 
-  const updatePlanField = async (pid: string, field: string, value: string | number | boolean | null, isDraft: boolean = true) => {
+  const updatePlanField = async (pid: string, field: string, value: string | number | boolean | null | object, isDraft: boolean = true) => {
     await updatePlanFieldService(pid, field, value, isDraft, selectedPlan, draftPlan, setDraftPlan, setSelectedPlan, setIsDirty, getUserLabel, td, currentUser, role, _UserRole);
   };
 

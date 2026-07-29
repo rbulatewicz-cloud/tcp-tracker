@@ -15,6 +15,7 @@ import { EmailTemplatesTab } from './settings/EmailTemplatesTab';
 import { EmailAuditTab }     from './settings/EmailAuditTab';
 import { NotificationsTab }  from './settings/NotificationsTab';
 import { TansatTab }         from './settings/TansatTab';
+import { P6ScheduleTab }     from './settings/P6ScheduleTab';
 
 interface SettingsViewProps {
   appConfig: AppConfig;
@@ -29,7 +30,7 @@ interface SettingsViewProps {
 }
 
 type Tab = 'branding' | 'workflow' | 'lists' | 'data' | 'compliance' | 'system' | 'access'
-         | 'email_templates' | 'email_audit' | 'notifications' | 'tansat';
+         | 'email_templates' | 'email_audit' | 'notifications' | 'tansat' | 'p6_schedule';
 
 const TABS: { key: Tab; label: string; group?: string }[] = [
   { key: 'branding',         label: 'Branding' },
@@ -38,6 +39,7 @@ const TABS: { key: Tab; label: string; group?: string }[] = [
   { key: 'data',             label: 'Data' },
   { key: 'compliance',       label: 'Compliance' },
   { key: 'tansat',           label: 'TANSAT' },
+  { key: 'p6_schedule',      label: 'P6 Schedule' },
   { key: 'access',           label: 'Team Access' },
   { key: 'system',           label: 'System' },
   { key: 'email_templates',  label: 'Email Templates',  group: 'email' },
@@ -125,6 +127,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {tab === 'data'            && <DataTab           role={role} setClearPlansConfirm={setClearPlansConfirm} onOpenImport={onOpenImport} onExportCSV={onExportCSV} />}
         {tab === 'compliance'      && <ComplianceTab     form={form} setForm={setForm} saving={saving} handleSave={handleSave} />}
         {tab === 'tansat'          && <TansatTab         form={form} setForm={setForm} />}
+        {tab === 'p6_schedule'     && <P6ScheduleTab     role={role} currentUserEmail={currentUserEmail} />}
         {tab === 'access'          && <AccessTab         form={form} setForm={setForm} />}
         {tab === 'system'          && <SystemTab         users={users} />}
         {tab === 'email_templates' && <EmailTemplatesTab currentUserEmail={currentUserEmail} notificationEmail={notificationEmail} />}
